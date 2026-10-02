@@ -20,14 +20,13 @@ from fiscus.models import (
     Budget,
     ForecastCache,
     Loan,
-    PaySchedule,
     Payslip,
     RecurringTransfer,
     Scenario,
     Transaction,
     User,
 )
-from fiscus.services import bills, ledger
+from fiscus.services import bills, ledger, pay
 from fiscus.services.access import owned
 from fiscus.services.users import settings_for
 
@@ -153,14 +152,14 @@ def build_input(db: Session, user: User, today: date, months: int) -> ForecastIn
         return aid if aid in valid else spend_acct
 
     flows: list[Flow] = []
-    for ps in db.execute(owned(PaySchedule, user)).scalars():
+    for ps, net in pay.schedules(db, user, today):
         target = acct_or_default(ps.account_id)
         if target is None:
             continue
         for d in recurrence.occurrences(
             ps.anchor_date, ps.frequency, first, end, until=ps.end_date
         ):
-            flows.append(Flow(d, target, ps.net_cents, 'pay', ps.name, ps.id))
+            flows.append(Flow(d, target, net, 'pay', ps.name, ps.id))
 
     # A payslip dated after today is a one-off pay still to come, such as a bonus.
     for slip in db.execute(

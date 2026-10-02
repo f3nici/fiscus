@@ -25,7 +25,7 @@ user's `data_version` (the forecast cache key).
 | accounts (owned) | type, opening balance, set-aside flag, `loan_id` for an offset, archived |
 | transactions (owned) | date, signed amount, description, category, import, `dedup_hash` unique per account |
 | imports (owned) | file name, status (`pending`, `committed`, `undone`), counts, staged file path |
-| import_mappings (owned) | one column mapping per account, for non-ANZ files |
+| import_mappings (owned) | one column mapping per account, for non-ANZ files; a PDF statement's mapping sits under its `pdf` key |
 | categories (owned) | name unique per user; income, business, deductible, transfer flags |
 | rules (owned) | pattern, regex flag, category, priority |
 
@@ -41,7 +41,7 @@ user's `data_version` (the forecast cache key).
 
 | Table | Notes |
 | --- | --- |
-| pay_schedules (owned) | frequency, anchor payday, net, optional gross and withholding, end date, account |
+| pay_schedules (owned) | frequency, anchor payday, net, optional gross and withholding, end date, account; `varies` and `match_text` for casual pay (expects the 13-week average per payday of deposits containing the text, the net until any arrive) |
 | payslips (owned) | date, gross, withheld, net, source, account (paid into). Dated after today, a payslip is one-off income in the forecast, calendar and tax projection |
 | loans (owned) | principal, start, term, repayment frequency, current balance and its date, optional repayment override, repayment account |
 | loan_rates (owned) | rate from an effective date; the history |

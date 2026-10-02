@@ -15,8 +15,8 @@ from sqlalchemy.orm import Session
 from fiscus.clock import Clock
 from fiscus.domain import recurrence
 from fiscus.domain.loan import repayments as loan_repayments
-from fiscus.models import Loan, PaySchedule, Payslip, User
-from fiscus.services import bills, forecasting, ledger
+from fiscus.models import Loan, Payslip, User
+from fiscus.services import bills, forecasting, ledger, pay
 from fiscus.services.access import owned
 
 VIEWS = ('month', 'week', 'day', 'agenda')
@@ -70,7 +70,7 @@ def events(db: Session, user: User, start: date, end: date, today: date) -> list
                 occ.bill.id,
             )
         )
-    for ps in db.execute(owned(PaySchedule, user)).scalars():
+    for ps, net in pay.schedules(db, user, today):
         for d in recurrence.occurrences(
             ps.anchor_date, ps.frequency, start, end, until=ps.end_date
         ):
@@ -79,7 +79,7 @@ def events(db: Session, user: User, start: date, end: date, today: date) -> list
                     d,
                     'pay',
                     ps.name,
-                    ps.net_cents,
+                    net,
                     'paid' if d <= today else 'scheduled',
                     None,
                     ps.id,

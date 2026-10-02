@@ -5,7 +5,7 @@ accounts, budget, forecast and tax stay their own; bills can be shared. Runs
 as one Docker container on your homelab, signs in with passkeys, and installs
 on your phone as an app. Nothing leaves your network.
 
-- Import ANZ CSVs (other banks by column mapping), with dedup and undo
+- Import ANZ CSVs (other banks by column mapping) and PDF statements, with dedup and undo
 - Categories and rules, and a fast recategorise screen for the phone
 - Bills, shared and split, matched to payments automatically
 - A calendar of bills and paydays with your projected balance on every day
@@ -189,7 +189,8 @@ CSVs):
    range. Overlapping a previous export is fine: duplicates are skipped.
 3. Choose **Download** / **Export**, format **CSV**, and save.
 
-In Fiscus: Import, choose the account, pick the file, Upload and preview.
+In Fiscus: Transactions, the **Import** tab, choose the account, pick the
+file, Upload and preview.
 ANZ's headerless `date, amount, description` format is recognised
 automatically. Check the preview (new rows, duplicates, unreadable rows), then
 Import. Every import is in the log on the Import page and can be undone.
@@ -201,6 +202,17 @@ preview. If your bank shows spending as positive, tick "flip the sign".
 
 If ANZ changes its export format or you use ANZ Plus and the file is not
 recognised, the mapping screen handles it the same way.
+
+**PDF statements**: upload the statement PDF the same way. Fiscus reads the
+transaction table (dates, descriptions, and the withdrawal, deposit and
+balance columns by their position), skips opening and closing balance lines,
+and joins descriptions that wrap onto a second line. Dates without a year take
+it from the statement period. If the columns are not labelled clearly, it asks
+which is which once and remembers it for that account's statements, separately
+from any CSV mapping. Scanned statements are pictures with no text and cannot
+be read; download the statement from online banking instead. A statement and a
+CSV of the same period may describe transactions slightly differently, so
+import one or the other for a given period.
 
 ## Budget import from a spreadsheet
 

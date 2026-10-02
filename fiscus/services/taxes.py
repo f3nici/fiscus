@@ -10,8 +10,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from fiscus.domain import recurrence, tax
-from fiscus.models import Account, Category, PaySchedule, Payslip, Transaction, User
-from fiscus.services import ledger
+from fiscus.models import Account, Category, Payslip, Transaction, User
+from fiscus.services import ledger, pay
 from fiscus.services.access import owned
 
 
@@ -83,16 +83,21 @@ def view(db: Session, user: User, today: date, tax_dir: Path | None = None) -> T
     ).scalars():
         proj_gross += p.gross_cents
         proj_tax += p.tax_withheld_cents
-    for ps in db.execute(owned(PaySchedule, user)).scalars():
+    for ps, net in pay.schedules(db, user, today):
         for _d in recurrence.occurrences(
             ps.anchor_date, ps.frequency, first, fy_end, until=ps.end_date
         ):
+            # A varying pay's gross and tax scale with its average, not the guess.
             g = ps.gross_cents
+            if g is not None and ps.varies and ps.net_cents:
+                g = round(g * net / ps.net_cents)
             if g is None:
-                g = round(ps.net_cents * ratio_gross) if ratio_gross else ps.net_cents
+                g = round(net * ratio_gross) if ratio_gross else net
             w = ps.tax_withheld_cents
+            if w is not None and ps.varies and ps.gross_cents:
+                w = round(w * g / ps.gross_cents)
             if w is None:
-                w = round(g * ratio_tax) if ratio_tax else g - ps.net_cents
+                w = round(g * ratio_tax) if ratio_tax else g - net
             proj_gross += g
             proj_tax += w
     elapsed = (today - fy_start).days + 1

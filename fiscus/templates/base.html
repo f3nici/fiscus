@@ -35,7 +35,6 @@
         ('/calendar', 'Calendar', 'calendar'),
         ('/accounts', 'Accounts', 'wallet'),
         ('/transactions', 'Transactions', 'list'),
-        ('/import', 'Import', 'upload'),
         ('/bills', 'Bills', 'receipt'),
         ('/pay', 'Pay', 'cash'),
         ('/budget', 'Budget', 'pie'),
@@ -48,7 +47,7 @@
         <nav class="sidebar" aria-label="Main">
           <a class="brand" href="/"><img src="/static/icons/icon-192.png" alt=""> Fiscus</a>
           {% for href, label, ic in nav %}
-            <a href="{{ href }}" class="{{ 'active' if (href == '/' and path == '/') or (href != '/' and path.startswith(href)) else '' }}">{{ icon(ic) }} {{ label }}</a>
+            <a href="{{ href }}" class="{{ 'active' if (href == '/' and path == '/') or (href != '/' and path.startswith(href)) or (href == '/transactions' and path.startswith('/import')) else '' }}">{{ icon(ic) }} {{ label }}</a>
           {% endfor %}
           <div class="section">You</div>
           <a href="/settings" class="{{ 'active' if path.startswith('/settings') else '' }}">{{ icon('cog') }} Settings</a>
@@ -72,8 +71,8 @@
         </div>
       </div>
       <nav class="bottom-nav" aria-label="Quick">
-        {% for href, label, ic in [('/', 'Home', 'home'), ('/calendar', 'Calendar', 'calendar'), ('/import', 'Import', 'upload'), ('/bills', 'Bills', 'receipt'), ('/more', 'More', 'menu')] %}
-          <a href="{{ href }}" class="{{ 'active' if (href == '/' and path == '/') or (href != '/' and path.startswith(href)) else '' }}">{{ icon(ic) }}<span>{{ label }}</span></a>
+        {% for href, label, ic in [('/', 'Home', 'home'), ('/calendar', 'Calendar', 'calendar'), ('/transactions', 'Transactions', 'list'), ('/bills', 'Bills', 'receipt'), ('/more', 'More', 'menu')] %}
+          <a href="{{ href }}" class="{{ 'active' if (href == '/' and path == '/') or (href != '/' and path.startswith(href)) or (href == '/transactions' and path.startswith('/import')) else '' }}">{{ icon(ic) }}<span>{{ label }}</span></a>
         {% endfor %}
       </nav>
     {% endblock %}

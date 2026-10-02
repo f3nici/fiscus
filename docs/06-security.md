@@ -48,6 +48,9 @@
   against it; they are deleted on apply or after a day.
 - XLSX files are size-checked before unzipping and parsed through defusedxml
   (no entity expansion); only cached cell values are read, nothing is executed.
+- PDF statements are size-checked (10 MB, 100 pages), parsed off the event
+  loop, and only their text is kept: the staged file is the extracted table as
+  CSV, never the PDF. Nothing in a PDF is executed; encrypted ones are refused.
 - CSV exports guard against formula injection.
 - The service worker never stores data responses; offline shows a static
   screen.

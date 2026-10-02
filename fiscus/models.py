@@ -364,6 +364,10 @@ class PaySchedule(Base, Owned):
     account_id: Mapped[int | None] = mapped_column(
         ForeignKey('accounts.id', ondelete='SET NULL'), nullable=True
     )
+    # Casual pay: expect the recent average of deposits whose description
+    # contains match_text; net_cents is the guess until any arrive.
+    varies: Mapped[bool] = mapped_column(Boolean, default=False)
+    match_text: Mapped[str] = mapped_column(String(120), default='')
 
 
 class Payslip(Base, Owned):

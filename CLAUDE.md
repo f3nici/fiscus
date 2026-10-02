@@ -101,9 +101,9 @@ doc 10 wins.
 fiscus/
   config.py clock.py money.py db.py models.py web.py app.py jobs.py cli.py
   domain/     recurrence, splits, csvimport, rules, matching, loan, forecast,
-              tax, bill_import, budget_import. Pure, no I/O.
+              tax, bill_import, budget_import, pdfstatement, pay. Pure, no I/O.
   services/   access (ownership), auth (sessions, links, WebAuthn), users,
-              ledger, imports, bills, forecasting, loans, taxes, budgeting,
+              ledger, imports, pay, bills, forecasting, loans, taxes, budgeting,
               bill_import, calendar_events, reminders, ntfy, backup, versioning, audit
   routes/     one module per screen
   templates/  Jinja2 + HTMX
@@ -119,7 +119,7 @@ scripts/      smoke.sh, generate_icons.py, icon.svg
 
 Python 3.12, FastAPI, SQLAlchemy 2.1 + Alembic on SQLite (WAL), Jinja2 +
 HTMX, py_webauthn, argon2-cffi, httpx (ntfy only), openpyxl + defusedxml
-(budget XLSX import). uPlot for the forecast
+(budget XLSX import), pdfminer.six (PDF statements). uPlot for the forecast
 chart, vue-cal's stylesheet for the calendar. pytest, ruff, mypy --strict,
 djlint, Playwright.
 

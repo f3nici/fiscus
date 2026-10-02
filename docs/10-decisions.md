@@ -26,6 +26,9 @@
 | D20 | Strict CSP: no inline script or style | uPlot styles through the CSSOM, which CSP allows. |
 | D21 | One home per cost: every recurring cost is a bill; a category's budget is its bills (monthly equivalent of your share) plus what you set aside on top | Housing costs were a third place that made a bill and a budget line; migration 0003 folded them into bills. Only the part beyond the bills is stored and used in the forecast, so bills are never counted twice. |
 
+| D22 | PDF statements are read once at upload into a CSV-shaped table (pdfminer.six, positions of characters) and then go through the CSV import | Amounts sit in columns by right edge; header words name them. Scans (no text) are refused. |
+| D23 | Casual pay: a schedule marked as varying expects the average received per payday over 13 weeks, from deposits matching its text | Paydays with nothing paid count as zero; the window starts at the first deposit seen. |
+
 ## 2. Assumptions
 
 - One household, a handful of users. SQLite and an in-process rate limiter are

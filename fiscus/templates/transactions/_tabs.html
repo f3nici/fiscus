@@ -1,0 +1,9 @@
+<nav class="tabs" aria-label="Transactions">
+  {% for href, label in [('/transactions', 'Transactions'), ('/import', 'Import')] %}
+    {% if path.startswith(href) %}
+      <a href="{{ href }}" class="active" aria-current="page">{{ label }}</a>
+    {% else %}
+      <a href="{{ href }}">{{ label }}</a>
+    {% endif %}
+  {% endfor %}
+</nav>
