@@ -9,7 +9,7 @@ accounts and ANZ/mapped CSV import with dedup and undo; categories, rules and
 recategorising; bills with shares, matching and states; pay schedules and
 payslips; the calendar; home loan and offset; forecasting with scenarios;
 the budget (bills count towards it); bill import; the tax estimate; the dashboard; ntfy reminders;
-backups. Next steps are in `docs/10-decisions.md` §3.
+backups; PDF statement import; casual pay; Square sync. Next steps are in `docs/10-decisions.md` §3.
 
 ## Read before building
 
@@ -71,10 +71,12 @@ doc 10 wins.
   script tag when it swaps a boosted page.
 - **Everything frontend is vendored** in `fiscus/static/vendor` with its
   licence and a line in its README. Nothing loads from another origin.
-- **No external calls** except the user's own ntfy server, off by default.
-  ntfy refuses loopback, link-local (cloud metadata) and unspecified
-  addresses, and allows private LAN ranges, because that is where a homelab
-  ntfy lives.
+- **No external calls** except two, both off by default and per user: the
+  user's own ntfy server, and Square's API. ntfy refuses loopback, link-local
+  (cloud metadata) and unspecified addresses, and allows private LAN ranges,
+  because that is where a homelab ntfy lives. Square only ever goes to the
+  fixed `connect.squareup.com` host (no address from a form), reads only, and
+  tests never reach it (`conftest.no_square`).
 - **A CSV field starting `=`, `+`, `-` or `@` is prefixed with an apostrophe**
   on export (`csv_safe`).
 - **Every tax figure is labelled an estimate.** Rates live in
@@ -101,10 +103,12 @@ doc 10 wins.
 fiscus/
   config.py clock.py money.py db.py models.py web.py app.py jobs.py cli.py
   domain/     recurrence, splits, csvimport, rules, matching, loan, forecast,
-              tax, bill_import, budget_import, pdfstatement, pay. Pure, no I/O.
+              tax, bill_import, budget_import, pdfstatement, pay, square.
+              Pure, no I/O.
   services/   access (ownership), auth (sessions, links, WebAuthn), users,
               ledger, imports, pay, bills, forecasting, loans, taxes, budgeting,
-              bill_import, calendar_events, reminders, ntfy, backup, versioning, audit
+              bill_import, calendar_events, reminders, ntfy, square, backup,
+              versioning, audit
   routes/     one module per screen
   templates/  Jinja2 + HTMX
   static/     css, js (app, webauthn, calendar, forecast-chart, sw.src.js),
@@ -118,7 +122,7 @@ scripts/      smoke.sh, generate_icons.py, icon.svg
 ## Stack
 
 Python 3.12, FastAPI, SQLAlchemy 2.1 + Alembic on SQLite (WAL), Jinja2 +
-HTMX, py_webauthn, argon2-cffi, httpx (ntfy only), openpyxl + defusedxml
+HTMX, py_webauthn, argon2-cffi, httpx (ntfy and Square only), openpyxl + defusedxml
 (budget XLSX import), pdfminer.six (PDF statements). uPlot for the forecast
 chart, vue-cal's stylesheet for the calendar. pytest, ruff, mypy --strict,
 djlint, Playwright.

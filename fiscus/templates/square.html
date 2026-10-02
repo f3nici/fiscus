@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% from "_macros.html" import money_cell %}
+{% block title %}Square{% endblock %}
+{% block content %}
+  <h1>Square</h1>
+  <p class="muted">Pulls the payments, fees, refunds and payouts from your Square seller account into one of your accounts, every six hours, and lists invoices still to be paid. Off until you connect it. Fiscus only reads from Square, and talks to nothing else but your own ntfy server.</p>
+
+  {% if conn and conn.enabled %}
+    <div class="card">
+      <div class="row between">
+        <div>
+          <div class="title">Connected</div>
+          <div class="text-sm muted">
+            {% if conn.last_sync_at %}Last synced {{ conn.last_sync_at.strftime('%d %b %Y %H:%M') }} UTC{% if conn.last_result %}: {{ conn.last_result }}{% endif %}{% else %}Not synced yet{% endif %}
+          </div>
+        </div>
+        <form method="post" action="/square/sync">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn btn-primary" type="submit">Sync now</button>
+        </form>
+      </div>
+      {% if conn.last_error %}<div class="alert alert-error mt">{{ conn.last_error }}</div>{% endif %}
+    </div>
+  {% endif %}
+
+  <form class="card mt" method="post" action="/square">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <h2>Connection</h2>
+    <label class="check"><input type="checkbox" name="enabled" value="true" {{ 'checked' if conn and conn.enabled }}> Sync from Square</label>
+    <div class="form-grid">
+      <div class="field full">
+        <label class="label" for="sq-token">Access token</label>
+        <input class="input" id="sq-token" name="token" type="password" autocomplete="off" maxlength="255" placeholder="{{ 'saved, leave blank to keep' if conn and conn.access_token else 'EAAA…' }}">
+        <small>From the Square Developer Console: create an application, open its Production credentials and copy the access token. It needs PAYMENTS_READ, PAYOUTS_READ, INVOICES_READ and MERCHANT_PROFILE_READ; a personal access token has them.</small>
+      </div>
+      <div class="field">
+        <label class="label" for="sq-account">Into account</label>
+        <select class="input" id="sq-account" name="account_id">
+          <option value="0">Choose…</option>
+          {% for a in accounts %}<option value="{{ a.id }}" {{ 'selected' if conn and conn.account_id == a.id else '' }}>{{ a.name }}</option>{% endfor %}
+        </select>
+        <small>An account for the Square balance works best, so payouts show as transfers to your bank.</small>
+      </div>
+      <div class="field">
+        <label class="label" for="sq-start">Fetch from</label>
+        <input class="input" type="date" id="sq-start" name="start_date" required value="{{ (conn.start_date if conn else start_default).isoformat() }}">
+      </div>
+      {% macro cat_select(name, label, current) %}
+        <div class="field">
+          <label class="label" for="sq-{{ name }}">{{ label }}</label>
+          <select class="input" id="sq-{{ name }}" name="{{ name }}">
+            <option value="0">Leave to my rules</option>
+            {% for c in cats %}<option value="{{ c.id }}" {{ 'selected' if current == c.id else '' }}>{{ c.name }}</option>{% endfor %}
+          </select>
+        </div>
+      {% endmacro %}
+      {{ cat_select('income_category_id', 'Payments and refunds', conn.income_category_id if conn else None) }}
+      {{ cat_select('fee_category_id', 'Square fees', conn.fee_category_id if conn else None) }}
+      {{ cat_select('payout_category_id', 'Payouts to the bank', conn.payout_category_id if conn else None) }}
+    </div>
+    <p class="muted text-xs">For the tax estimate, put payments in a category marked business income and fees in a business expense category. Payouts belong in a transfer category, like the matching deposit in your bank account.</p>
+    <button class="btn btn-primary" type="submit">Save</button>
+  </form>
+
+  {% if conn and conn.access_token %}
+    <form class="mt" method="post" action="/square/disconnect" data-confirm="Disconnect Square and forget the access token? Transactions already synced stay.">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn btn-danger btn-sm" type="submit">Disconnect</button>
+    </form>
+  {% endif %}
+
+  <div class="card mt">
+    <h2>Unpaid invoices</h2>
+    <p class="muted text-sm">As of the last sync. They show on the calendar on their due date. The forecast already counts business income through your recent average, so they are not added to it again.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Due</th><th>Invoice</th><th>Customer</th><th class="num">Owing</th></tr></thead>
+        <tbody>
+          {% for i in invoices %}
+            <tr>
+              <td class="num">{{ i.due_date | d }}{% if i.due_date < today %} <span class="pill pill-overdue">Overdue</span>{% endif %}</td>
+              <td>{{ i.number }}</td>
+              <td>{{ i.customer }}</td>
+              <td class="num">{{ money_cell(i.amount_due_cents) }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="4" class="muted">None.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endblock %}

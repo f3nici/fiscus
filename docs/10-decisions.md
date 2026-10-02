@@ -18,7 +18,7 @@
 | D12 | Tax: Australian resident rates, Medicare levy with the low-income phase-in, LITO; HELP and the surcharge out | Rates in `config/tax/<year>.yaml`, checked each July. |
 | D13 | Calendar: vue-cal's DOM and stylesheet rendered on the server, CareLane's tint | Month, week, day, agenda; agenda default on a phone. |
 | D14 | Service worker caches `/static/*` and `/offline` only | Offline shows the offline screen, never data. |
-| D15 | ntfy only, off by default, private LAN allowed, loopback and link-local refused | CareLane blocks private ranges; a homelab ntfy lives in one. |
+| D15 | ntfy, off by default, private LAN allowed, loopback and link-local refused | CareLane blocks private ranges; a homelab ntfy lives in one. Square (D24) is the only other outside service. |
 | D16 | CareLane's dark palette throughout | |
 | D17 | Default timezone Australia/Perth | `FISCUS_TIMEZONE`. |
 | D18 | PolyForm Noncommercial 1.0.0, copyright Fenici | As Vigilo. |
@@ -28,6 +28,8 @@
 
 | D22 | PDF statements are read once at upload into a CSV-shaped table (pdfminer.six, positions of characters) and then go through the CSV import | Amounts sit in columns by right edge; header words name them. Scans (no text) are refused. |
 | D23 | Casual pay: a schedule marked as varying expects the average received per payday over 13 weeks, from deposits matching its text | Paydays with nothing paid count as zero; the window starts at the first deposit seen. |
+
+| D24 | Square sync: a second outside service, off by default, per user, read only, fixed host | Payments (gross) and fees as separate rows, refunds, payouts out to the bank, into one account as an import, every six hours with a week of overlap; ids make it idempotent. Unpaid invoices show on the calendar, not in the forecast, which already averages business income. The token is stored like the ntfy token. |
 
 ## 2. Assumptions
 

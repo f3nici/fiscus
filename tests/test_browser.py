@@ -134,6 +134,7 @@ def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any
         '/settings',
         '/tax',
         '/bills/import',
+        '/square',
     ]:
         page.goto(f'{base}{path}')
         page.wait_for_load_state('networkidle')

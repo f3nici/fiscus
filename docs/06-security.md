@@ -54,6 +54,10 @@
 - CSV exports guard against formula injection.
 - The service worker never stores data responses; offline shows a static
   screen.
+- Square: off by default, per user, read only, only to `connect.squareup.com`
+  with redirects off. The access token is write-only in the UI, stored in the
+  database like the ntfy token (so it is in backups), and setting or removing
+  it is audited. Disconnecting forgets it.
 - ntfy: off by default; refuses loopback, link-local and unspecified targets;
   messages carry bill names, dates and amounts only.
 - Backups contain everyone's data: admin only, audited.

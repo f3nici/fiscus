@@ -16,6 +16,8 @@ user's `data_version` (the forecast cache key).
 | auth_challenges | WebAuthn challenge by opaque handle, purpose, five-minute expiry, deleted on first use |
 | audit_log | append-only (triggers refuse UPDATE and DELETE) |
 | app_state | small key/value for instance state |
+| square_connections (owned) | one per user: enabled, access token, target account, categories for payments, fees and payouts, start date, synced-until, last result and error |
+| square_invoices (owned) | unpaid invoice payment requests as of the last sync: number, customer, due date, amount owing |
 | user_settings (owned) | low-balance threshold, forecast horizon, spending account, large-bill threshold, ntfy settings |
 
 ## Money

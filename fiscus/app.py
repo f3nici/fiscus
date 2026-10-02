@@ -237,6 +237,7 @@ def create_app(
         pwa,
         settings_routes,
         setup,
+        square,
         tax,
         transactions,
     )
@@ -263,6 +264,7 @@ def create_app(
         forecast,
         budget,
         tax,
+        square,
     ):
         app.include_router(module.router)
 

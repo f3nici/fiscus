@@ -35,6 +35,7 @@ Rate limited: everything under `/auth/` and `/setup/`, by IP and by username.
 | Budget | `/budget?month=YYYY-MM`, `POST /budget`, `/budget/template.csv`, `POST /budget/import`, `/budget/import/{file}?sheet=`, `POST .../apply` |
 | Bill import | `/bills/import`, `POST /bills/import`, `/bills/template.csv`, `/bills/template.json`, `/bills/import/{file}`, `POST .../apply`; `/housing` redirects to `/bills` |
 | Tax | `/tax` |
+| Square | `/square`, `POST /square`, `/square/sync`, `/square/disconnect` |
 | Settings | `/settings`, `POST /settings/passkeys/options`, `/verify`, `/{id}/rename`, `/{id}/revoke`, `POST /settings/password`, `/password/clear`, `POST /settings/forecast`, `POST /settings/ntfy`, `/ntfy/test`, `/ntfy/clear-token` |
 | Sign out | `POST /auth/logout` |
 

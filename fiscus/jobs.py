@@ -2,7 +2,8 @@
 
 Once a minute the loop checks what is due: the nightly backup at
 FISCUS_BACKUP_HOUR local time, ntfy reminders at each user's chosen hour, and
-housekeeping (expired challenges, sessions and abandoned uploads).
+housekeeping (expired challenges, sessions and abandoned uploads), and a
+Square sync for anyone connected, at most every six hours.
 """
 
 from __future__ import annotations
@@ -14,8 +15,8 @@ from datetime import timedelta
 from sqlalchemy import delete, select
 
 from fiscus.clock import utcnow_naive
-from fiscus.models import AuthChallenge, AuthSession, Import, User
-from fiscus.services import backup, reminders
+from fiscus.models import AuthChallenge, AuthSession, Import, SquareConnection, User
+from fiscus.services import backup, reminders, square
 from fiscus.web import AppContext
 
 log = logging.getLogger('fiscus.jobs')
@@ -61,6 +62,29 @@ def run_reminders(c: AppContext) -> int:
     return total
 
 
+def run_square(c: AppContext) -> int:
+    """Sync every Square connection that is due. Each user's failure is their own."""
+    synced = 0
+    now = utcnow_naive(c.clock)
+    with c.sessions() as db:
+        conns = [x for x in db.execute(select(SquareConnection)).scalars() if square.due(x, now)]
+        for conn in conns:
+            user = db.get(User, conn.user_id)
+            if user is None or not user.is_active:
+                continue
+            try:
+                square.sync(db, c.clock, user)
+                synced += 1
+            except square.SquareError as exc:
+                log.warning('square sync for user %s: %s', user.id, exc)
+            except Exception:
+                db.rollback()
+                log.exception('square sync failed for user %s', user.id)
+                continue
+            db.commit()
+    return synced
+
+
 def tick(c: AppContext, state: dict[str, str]) -> None:
     local = c.clock.local_now()
     hour_key = local.strftime('%Y-%m-%d %H')
@@ -68,6 +92,7 @@ def tick(c: AppContext, state: dict[str, str]) -> None:
         state['hour'] = hour_key
         housekeeping(c)
         run_reminders(c)
+        run_square(c)
         if local.hour == c.settings.backup_hour and state.get('backup') != local.date().isoformat():
             path = backup.nightly(c.settings, c.engine, c.clock)
             state['backup'] = local.date().isoformat()

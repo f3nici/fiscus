@@ -34,6 +34,7 @@ and is used mostly from phones as an installed PWA.
 | Dashboard | Balances, spending this month, the next 14 days, budget status, tax position, offset savings and a 3-month sparkline with any low-balance warning. |
 | PWA | Installable on iOS, Android and desktop. The service worker caches the app shell only; offline shows an offline screen. Bottom navigation when installed. Update prompt. |
 | Reminders | Optional ntfy pushes for bills due soon, overdue bills and low balances. |
+| Square | Optional, per person. Payments, fees, refunds and payouts from a Square seller account synced into an account every six hours, categorised as chosen; unpaid invoices listed and shown on the calendar. |
 | Ops | One container, a named volume, health and ready checks, nightly backups with retention, admin download, CLI restore, CSV export. |
 
 ## Out of scope for v1

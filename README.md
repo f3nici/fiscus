@@ -14,6 +14,7 @@ on your phone as an app. Nothing leaves your network.
 - A budget that counts your bills for you, and an Australian tax estimate
   against your set-aside
 - Optional reminders through your own ntfy server
+- Optional sync from a Square seller account (payments, fees, payouts, unpaid invoices)
 
 Every forecast and tax figure is an estimate from your own data, not
 financial or tax advice.
@@ -28,6 +29,7 @@ financial or tax advice.
 - [Budget import from a spreadsheet](#budget-import-from-a-spreadsheet)
 - [Importing bills from a file](#importing-bills-from-a-file)
 - [Reminders with ntfy](#reminders-with-ntfy)
+- [Square](#square)
 - [Backup and restore](#backup-and-restore)
 - [Configuration](#configuration)
 - [Tax tables](#tax-tables)
@@ -316,6 +318,32 @@ overdue bill, and one per low-balance warning, each once, at the hour you
 choose. Messages contain the bill name, date and amount only. Private LAN
 addresses are allowed; the container's own loopback and link-local addresses
 are not.
+
+## Square
+
+If you take payments or send invoices through Square, Fiscus can pull them in.
+It only reads, only talks to Square's API, and is off until you connect it.
+
+1. In the [Square Developer Console](https://developer.squareup.com/apps),
+   create an application (any name), open **Credentials**, switch to
+   **Production** and copy the access token.
+2. In Fiscus, add an account for the Square balance (for example "Square",
+   opening balance 0), and categories: one marked income and business for
+   payments, one marked business for fees, and a transfer category for payouts.
+3. Open **Square** (sidebar, or Menu on a phone), tick **Sync from Square**,
+   paste the token, choose the account, categories and the date to fetch
+   from, Save, then **Sync now**.
+
+After that it syncs every six hours. Each payment is income at its full
+amount, with Square's fee as a separate expense, so the tax estimate sees
+gross income and the fee as a deduction. Refunds come out, and a payout is
+money leaving the Square account; the deposit in your bank import is the other
+side, so put both in the transfer category. Unpaid invoices are listed on the
+Square page and on the calendar on their due date.
+
+Disconnect forgets the token; transactions already synced stay. Anyone with
+the token can read your Square data, so treat it like a password; it is kept
+in the Fiscus database and therefore in its backups.
 
 ## Backup and restore
 
