@@ -15,8 +15,8 @@ from sqlalchemy.orm import Session
 from fiscus.clock import Clock
 from fiscus.domain import recurrence
 from fiscus.domain.loan import repayments as loan_repayments
-from fiscus.models import Loan, PaySchedule, Payslip, User
-from fiscus.services import bills, forecasting, ledger
+from fiscus.models import Loan, Payslip, SquareInvoice, User
+from fiscus.services import bills, forecasting, ledger, pay
 from fiscus.services.access import owned
 
 VIEWS = ('month', 'week', 'day', 'agenda')
@@ -70,7 +70,7 @@ def events(db: Session, user: User, start: date, end: date, today: date) -> list
                 occ.bill.id,
             )
         )
-    for ps in db.execute(owned(PaySchedule, user)).scalars():
+    for ps, net in pay.schedules(db, user, today):
         for d in recurrence.occurrences(
             ps.anchor_date, ps.frequency, start, end, until=ps.end_date
         ):
@@ -79,7 +79,7 @@ def events(db: Session, user: User, start: date, end: date, today: date) -> list
                     d,
                     'pay',
                     ps.name,
-                    ps.net_cents,
+                    net,
                     'paid' if d <= today else 'scheduled',
                     None,
                     ps.id,
@@ -93,6 +93,16 @@ def events(db: Session, user: User, start: date, end: date, today: date) -> list
         out.append(
             Event(slip.date, 'pay', slip.source or 'Payslip', slip.net_cents, 'scheduled', None)
         )
+    # Unpaid Square invoices on their due date. Not in the forecast: business
+    # income already comes in there through the 90-day average.
+    for inv in db.execute(
+        owned(SquareInvoice, user).where(
+            SquareInvoice.due_date >= start, SquareInvoice.due_date <= end
+        )
+    ).scalars():
+        title = f'Invoice {inv.number}' + (f' · {inv.customer}' if inv.customer else '')
+        status = 'overdue' if inv.due_date < today else 'scheduled'
+        out.append(Event(inv.due_date, 'pay', title, inv.amount_due_cents, status, None))
     loans = db.execute(owned(Loan, user)).scalars().all()
     balances = ledger.balances(db, user, today) if loans else {}
     for loan in loans:

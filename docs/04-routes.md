@@ -24,7 +24,7 @@ Rate limited: everything under `/auth/` and `/setup/`, by IP and by username.
 | --- | --- |
 | Dashboard | `/`, `/more` |
 | Accounts | `/accounts`, `/accounts/new`, `/accounts/{id}`, `/accounts/{id}/edit`, `POST /accounts[/{id}]`, `POST /accounts/{id}/delete` |
-| Import | `/import`, `POST /import`, `/import/{id}` (mapping or preview), `POST /import/{id}/mapping`, `/account`, `/commit`, `/undo`, `/discard`, `POST /share-target` |
+| Import (a tab under Transactions) | `/import`, `POST /import` (CSV or PDF), `/import/{id}` (mapping or preview), `POST /import/{id}/mapping`, `/account`, `/commit`, `/undo`, `/discard`, `POST /share-target` |
 | Transactions | `/transactions`, `POST /transactions`, `POST /transactions/{id}/category`, `/delete`, `/transactions/export.csv` |
 | Categories and rules | `/categories`, `POST /categories[/{id}]`, `/delete`, `POST /rules[/{id}]`, `/delete`, `POST /rules/rerun`, `/recategorise`, `POST /recategorise/bulk` |
 | Bills | `/bills`, `/bills/new`, `/bills/{id}`, `/edit`, `POST /bills[/{id}]`, `/delete`, `/my-share`, `POST /bills/rematch`, `/bills/{id}/occurrence/{date}`, `POST .../paid`, `POST .../unpaid` |
@@ -35,6 +35,7 @@ Rate limited: everything under `/auth/` and `/setup/`, by IP and by username.
 | Budget | `/budget?month=YYYY-MM`, `POST /budget`, `/budget/template.csv`, `POST /budget/import`, `/budget/import/{file}?sheet=`, `POST .../apply` |
 | Bill import | `/bills/import`, `POST /bills/import`, `/bills/template.csv`, `/bills/template.json`, `/bills/import/{file}`, `POST .../apply`; `/housing` redirects to `/bills` |
 | Tax | `/tax` |
+| Square | `/square`, `POST /square`, `/square/sync`, `/square/disconnect` |
 | Settings | `/settings`, `POST /settings/passkeys/options`, `/verify`, `/{id}/rename`, `/{id}/revoke`, `POST /settings/password`, `/password/clear`, `POST /settings/forecast`, `POST /settings/ntfy`, `/ntfy/test`, `/ntfy/clear-token` |
 | Sign out | `POST /auth/logout` |
 

@@ -73,10 +73,17 @@ def manifest() -> Response:
             'action': '/share-target',
             'method': 'POST',
             'enctype': 'multipart/form-data',
-            'params': {'files': [{'name': 'file', 'accept': ['text/csv', '.csv', 'text/plain']}]},
+            'params': {
+                'files': [
+                    {
+                        'name': 'file',
+                        'accept': ['text/csv', '.csv', 'text/plain', 'application/pdf', '.pdf'],
+                    }
+                ]
+            },
         },
         'shortcuts': [
-            {'name': 'Import CSV', 'url': '/import'},
+            {'name': 'Import statement', 'url': '/import'},
             {'name': 'Calendar', 'url': '/calendar'},
         ],
     }

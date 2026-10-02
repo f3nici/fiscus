@@ -10,9 +10,9 @@
           <li>
             <span class="grow">
               <span class="title">{{ s.name }}</span>
-              <span class="text-xs muted">{{ s.frequency | capitalize }} · next {{ next[s.id] | d if next[s.id] else 'none' }}{% if s.end_date %} · ends {{ s.end_date | d }}{% endif %}</span>
+              <span class="text-xs muted">{{ s.frequency | capitalize }} · next {{ next[s.id] | d if next[s.id] else 'none' }}{% if s.end_date %} · ends {{ s.end_date | d }}{% endif %}{% if s.varies %} · varies, {{ 'recent average' if expected[s.id] != s.net_cents else 'your estimate until pays arrive' }}{% endif %}</span>
             </span>
-            <span class="num pos">{{ s.net_cents | money }}</span>
+            <span class="num pos">{% if s.varies %}~{% endif %}{{ expected[s.id] | money }}</span>
             <a class="btn btn-sm" href="/pay?edit={{ s.id }}">Edit</a>
           </li>
         {% else %}
@@ -29,13 +29,17 @@
             <select class="input" id="ps-freq" name="frequency">{% for f in freqs %}<option value="{{ f }}" {{ 'selected' if (e and e.frequency == f) or (not e and f == 'fortnightly') else '' }}>{{ f | capitalize }}</option>{% endfor %}</select>
           </div>
           <div class="field"><label class="label" for="ps-anchor">A payday</label><input class="input" type="date" id="ps-anchor" name="anchor_date" required value="{{ e.anchor_date.isoformat() if e else today.isoformat() }}"></div>
-          <div class="field"><label class="label" for="ps-net">Net pay</label><input class="input" id="ps-net" name="net" inputmode="decimal" required value="{{ e.net_cents | money_plain if e else '' }}"></div>
+          <div class="field"><label class="label" for="ps-net">Net pay (a typical pay, if it varies)</label><input class="input" id="ps-net" name="net" inputmode="decimal" required value="{{ e.net_cents | money_plain if e else '' }}"></div>
           <div class="field"><label class="label" for="ps-gross">Gross pay (optional, for tax)</label><input class="input" id="ps-gross" name="gross" inputmode="decimal" value="{{ e.gross_cents | money_plain if e and e.gross_cents is not none else '' }}"></div>
           <div class="field"><label class="label" for="ps-tax">Tax withheld (optional)</label><input class="input" id="ps-tax" name="tax_withheld" inputmode="decimal" value="{{ e.tax_withheld_cents | money_plain if e and e.tax_withheld_cents is not none else '' }}"></div>
           <div class="field"><label class="label" for="ps-account">Paid into</label>
             <select class="input" id="ps-account" name="account_id"><option value="0">My spending account</option>{% for a in accounts %}<option value="{{ a.id }}" {{ 'selected' if e and e.account_id == a.id else '' }}>{{ a.name }}</option>{% endfor %}</select>
           </div>
           <div class="field"><label class="label" for="ps-end">Ends (optional)</label><input class="input" type="date" id="ps-end" name="end_date" value="{{ e.end_date.isoformat() if e and e.end_date else '' }}"></div>
+          <label class="check full"><input type="checkbox" name="varies" {{ 'checked' if e and e.varies else '' }}> The amount varies (casual or shift work)</label>
+          <div class="field full"><label class="label" for="ps-match">Its deposits contain (if it varies)</label><input class="input" id="ps-match" name="match_text" maxlength="120" placeholder="e.g. PAY/SALARY CAFE CO" value="{{ e.match_text if e else '' }}">
+            <small>Fiscus expects the average paid per payday over the last 13 weeks, counting paydays with nothing paid, from imported deposits whose description contains this. Your typical pay is used until some arrive.</small>
+          </div>
         </div>
         <div class="row">
           <button class="btn btn-primary" type="submit">Save</button>

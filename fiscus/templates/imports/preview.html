@@ -2,8 +2,9 @@
 {% from "_macros.html" import money_cell %}
 {% block title %}Preview import{% endblock %}
 {% block content %}
+  {% include "transactions/_tabs.html" %}
   <h1>Preview</h1>
-  <p class="muted">{{ imp.file_name }} · {{ 'ANZ format' if fmt == 'anz' else 'saved column mapping' }}{% if fmt != 'anz' %} · <a href="/import/{{ imp.id }}?remap=1">change mapping</a>{% endif %}</p>
+  <p class="muted">{{ imp.file_name }} · {{ {'anz': 'ANZ format', 'pdf': 'PDF statement'}.get(fmt, 'saved column mapping') }}{% if fmt != 'anz' %} · <a href="/import/{{ imp.id }}?remap=1">change mapping</a>{% endif %}</p>
 
   <div class="grid grid-3">
     <div class="card stat"><div class="label">New</div><div class="value pos">{{ pv.new_count }}</div></div>

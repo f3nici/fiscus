@@ -10,7 +10,7 @@ from fiscus.domain import recurrence
 from fiscus.domain.tax import fy_bounds
 from fiscus.forms import FormError, choice, money, opt_date, opt_money, req_date, text
 from fiscus.models import PAY_FREQUENCIES, Account, PaySchedule, Payslip, User
-from fiscus.services import ledger
+from fiscus.services import ledger, pay
 from fiscus.services.access import get_owned, maybe_owned, owned
 from fiscus.web import ctx, current_user, get_db, redirect, render
 
@@ -23,7 +23,8 @@ def pay_page(
 ) -> Response:
     c = ctx(request)
     today = c.clock.today()
-    schedules = db.execute(owned(PaySchedule, user).order_by(PaySchedule.name)).scalars().all()
+    expected = pay.schedules(db, user, today)
+    schedules = [ps for ps, _net in expected]
     nxt = {s.id: recurrence.next_on_or_after(s.anchor_date, s.frequency, today) for s in schedules}
     for s in schedules:
         d = nxt[s.id]
@@ -37,6 +38,7 @@ def pay_page(
         'pay/index.html',
         {
             'schedules': schedules,
+            'expected': {ps.id: net for ps, net in expected},
             'next': nxt,
             'slips': slips,
             'freqs': PAY_FREQUENCIES,
@@ -66,6 +68,8 @@ def save_schedule(
     tax_withheld: str = Form(''),
     end_date: str = Form(''),
     account_id: int = Form(0),
+    varies: str = Form(''),
+    match_text: str = Form(''),
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> Response:
@@ -79,7 +83,11 @@ def save_schedule(
             gross_cents=opt_money(gross, 'Gross pay'),
             tax_withheld_cents=opt_money(tax_withheld, 'Tax withheld'),
             end_date=opt_date(end_date, 'End date'),
+            varies=varies == 'on',
+            match_text=' '.join(match_text.split())[:120],
         )
+        if values['varies'] and not values['match_text']:
+            raise FormError('For pay that varies, say what its deposits are called')
     except FormError as exc:
         return redirect('/pay', flash=str(exc), request=request)
     acct = maybe_owned(db, Account, account_id, user)

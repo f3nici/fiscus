@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Import{% endblock %}
 {% block content %}
-  <h1>Import a bank CSV</h1>
+  {% include "transactions/_tabs.html" %}
+  <h1>Import a CSV or PDF statement</h1>
   {% if not accounts %}
     <div class="alert alert-info">Add an account first, then import into it. <a href="/accounts/new">Add account</a></div>
   {% else %}
@@ -15,9 +16,9 @@
         </select>
       </div>
       <div class="field">
-        <label class="label" for="file">CSV file</label>
-        <input class="input" type="file" id="file" name="file" accept=".csv,text/csv,text/plain" required>
-        <small>ANZ exports (date, amount, description, no header row) are recognised automatically. Other banks get a one-off column mapping, remembered for that account.</small>
+        <label class="label" for="file">CSV or PDF statement</label>
+        <input class="input" type="file" id="file" name="file" accept=".csv,text/csv,text/plain,.pdf,application/pdf" required>
+        <small>ANZ exports (date, amount, description, no header row) are recognised automatically. Other banks get a one-off column mapping, remembered for that account. PDF statements are read from their transaction table; a scanned statement has no text to read.</small>
       </div>
       <button class="btn btn-primary" type="submit">Upload and preview</button>
     </form>

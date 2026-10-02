@@ -1,12 +1,14 @@
-"""CSV import: upload, map, preview, commit, undo."""
+"""Bank CSV and PDF statement import: upload, map, preview, commit, undo."""
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from fiscus.domain.csvimport import DATE_FORMATS, MAX_BYTES, ImportError_, Mapping
+from fiscus.domain.pdfstatement import pdf_mapping
 from fiscus.models import Account, Import, User
 from fiscus.services import imports as svc
 from fiscus.services import ledger
@@ -17,11 +19,11 @@ from fiscus.web import ctx, current_user, get_db, optional_user, redirect, rende
 router = APIRouter()
 
 
-async def _read(upload: UploadFile) -> bytes:
+async def _read(upload: UploadFile, request: Request) -> tuple[bytes, str]:
     data = await upload.read(MAX_BYTES + 1)
     if len(data) > MAX_BYTES:
         raise ImportError_('That file is larger than 10 MB')
-    return data
+    return await run_in_threadpool(svc.read_upload, data, ctx(request).clock.today())
 
 
 @router.get('/import')
@@ -66,8 +68,10 @@ async def upload(
     c = ctx(request)
     acct = get_owned(db, Account, account_id, user)
     try:
-        data = await _read(file)
-        imp = svc.stage(db, c.settings, c.clock, user, acct, file.filename or 'upload.csv', data)
+        data, suffix = await _read(file, request)
+        imp = svc.stage(
+            db, c.settings, c.clock, user, acct, file.filename or 'upload.csv', data, suffix
+        )
     except ImportError_ as exc:
         return redirect(f'/import?account_id={acct.id}', flash=str(exc), request=request)
     return redirect(f'/import/{imp.id}', request=request)
@@ -90,9 +94,10 @@ async def share_target(
     accts = ledger.accounts(db, user)
     target = spending_account(db, user, accts)
     if file is None or target is None:
-        return redirect('/import', flash='Choose a CSV to import')
+        return redirect('/import', flash='Choose a CSV or PDF statement to import')
     c = ctx(request)
     try:
+        data, suffix = await _read(file, request)
         imp = svc.stage(
             db,
             c.settings,
@@ -100,7 +105,8 @@ async def share_target(
             user,
             db.get(Account, target),  # type: ignore[arg-type]
             file.filename or 'shared.csv',
-            await _read(file),
+            data,
+            suffix,
         )
     except ImportError_ as exc:
         return redirect('/import', flash=str(exc))
@@ -128,15 +134,24 @@ def review(
         mapping, fmt = svc.mapping_for(db, c.settings, imp)
         if mapping is None or remap:
             width = max((len(r) for r in rows[:20]), default=0)
+            pdf = svc.is_pdf(imp)
+            names = [f'Column {i + 1}' for i in range(width)]
+            if pdf and rows:
+                names = [rows[0][i] if i < len(rows[0]) else n for i, n in enumerate(names)]
+            default = (
+                pdf_mapping(amount_col=None) if pdf else Mapping(has_header=True, amount_col=None)
+            )
             return render(
                 request,
                 'imports/mapping.html',
                 {
                     'imp': imp,
-                    'sample': rows[:8],
+                    'sample': rows[1:9] if pdf else rows[:8],
                     'width': width,
+                    'names': names,
+                    'pdf': pdf,
                     'formats': list(DATE_FORMATS),
-                    'mapping': mapping or Mapping(has_header=True, amount_col=None),
+                    'mapping': mapping or default,
                     'accounts': ledger.accounts(db, user),
                 },
             )
@@ -149,6 +164,8 @@ def review(
                 'imp': imp,
                 'sample': [],
                 'width': 0,
+                'names': [],
+                'pdf': svc.is_pdf(imp),
                 'formats': list(DATE_FORMATS),
                 'mapping': Mapping(),
                 'error': str(exc),
@@ -219,7 +236,7 @@ async def save_mapping(
         svc.preview(db, ctx(request).settings, imp, mapping)
     except (ImportError_, ValueError) as exc:
         return redirect(f'/import/{imp.id}?remap=1', flash=str(exc), request=request)
-    svc.save_mapping(db, user, imp.account_id, mapping)
+    svc.save_mapping(db, user, imp, mapping)
     return redirect(f'/import/{imp.id}', request=request)
 
 

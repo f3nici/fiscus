@@ -22,7 +22,7 @@ and is used mostly from phones as an installed PWA.
 | Area | What it does |
 | --- | --- |
 | Accounts | Transaction, offset, savings and credit card accounts with opening balances. One can be the tax set-aside account; offsets link to a loan. |
-| Import | ANZ CSV detected automatically; any other bank through a column mapping saved per account. Preview before commit, dedup across overlapping exports, an import log and undo. Upload from the phone's file picker, or Android's share sheet. |
+| Import | A tab under Transactions. ANZ CSV detected automatically; any other bank through a column mapping saved per account. PDF statements read from their transaction table (amount columns by position and header, yearless dates from the statement period), with their own saved mapping when the header is unclear. Preview before commit, dedup across overlapping exports, an import log and undo. Upload from the phone's file picker, or Android's share sheet. |
 | Categories and rules | Per-user categories flagged income, business, deductible or transfer. "Contains" or regex rules with priorities, applied on import and re-runnable. A one-tap recategorise screen for phones. |
 | Bills | Weekly to yearly or one-off, with an end date. Shared with other users by equal, percentage or fixed split. Matched automatically to imported payments (amount tolerance, date window, description hint), or by hand. Paid, due soon, upcoming and overdue states. Rates, insurance and other housing costs are bills too. Imported from CSV or JSON (templates, mapping, a preview and a diff on re-import). |
 | Pay | Pay schedules (net, optional gross and withholding) and payslips. A payslip dated after today, such as a bonus, is one-off income in the forecast, calendar and tax projection. |
@@ -34,6 +34,7 @@ and is used mostly from phones as an installed PWA.
 | Dashboard | Balances, spending this month, the next 14 days, budget status, tax position, offset savings and a 3-month sparkline with any low-balance warning. |
 | PWA | Installable on iOS, Android and desktop. The service worker caches the app shell only; offline shows an offline screen. Bottom navigation when installed. Update prompt. |
 | Reminders | Optional ntfy pushes for bills due soon, overdue bills and low balances. |
+| Square | Optional, per person. Payments, fees, refunds and payouts from a Square seller account synced into an account every six hours, categorised as chosen; unpaid invoices listed and shown on the calendar. |
 | Ops | One container, a named volume, health and ready checks, nightly backups with retention, admin download, CLI restore, CSV export. |
 
 ## Out of scope for v1

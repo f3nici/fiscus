@@ -53,6 +53,8 @@ OWNED_TABLES = [
     'scenario_adjustments',
     'recurring_transfers',
     'user_settings',
+    'square_connections',
+    'square_invoices',
 ]
 
 
@@ -257,6 +259,8 @@ WRITES: list[tuple[str, dict[str, Any]]] = [
     ('/scenarios/{scenario}/adjustments/{adjustment}/delete', {}),
     ('/transfers/{transfer}/delete', {}),
     ('/budget', {'category_id': '{category}', 'amount': '1'}),
+    ('/square', {'account_id': '{account}', 'start_date': '2026-10-01'}),
+    ('/square', {'fee_category_id': '{category}', 'start_date': '2026-10-01'}),
 ]
 
 
@@ -305,6 +309,7 @@ def test_b_lists_show_none_of_a(seeded: tuple[CsrfClient, CsrfClient, Ids, User,
         '/tax',
         '/import',
         '/recategorise',
+        '/square',
     ]
     markers = [
         'Everyday',
