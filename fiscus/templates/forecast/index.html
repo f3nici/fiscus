@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% from "_macros.html" import money_cell, estimate %}
+{% block title %}Forecast{% endblock %}
+{% block content %}
+  <div class="page-head">
+    <h1>Forecast {{ estimate() }}</h1>
+    <form class="row" method="get" action="/forecast">
+      <label class="label mb-0" for="months">Months</label>
+      <select class="input w-auto" id="months" name="months" data-autosubmit>
+        {% for m in [1, 3, 6, 12, 18, 24] %}<option value="{{ m }}" {{ 'selected' if m == months else '' }}>{{ m }}</option>{% endfor %}
+      </select>
+      <select class="input w-auto" name="scenario_id" aria-label="Compare with a scenario" data-autosubmit>
+        <option value="0">No scenario</option>
+        {% for s in scenarios %}<option value="{{ s.id }}" {{ 'selected' if sc and sc.id == s.id else '' }}>{{ s.name }}</option>{% endfor %}
+      </select>
+      <a class="btn btn-sm" href="/scenarios">Scenarios</a>
+    </form>
+  </div>
+
+  {% if base.low_balance %}
+    <div class="alert alert-warn">
+      <strong>{{ base.low_balance.account }}</strong> is projected to fall to {{ base.low_balance.balance | money }} on {{ base.low_balance.date | d('long') }}, below your threshold of {{ prefs.low_balance_cents | money }}.
+    </div>
+  {% else %}
+    <div class="alert alert-ok">No account is projected to fall below {{ prefs.low_balance_cents | money }} in the next {{ months }} months.</div>
+  {% endif %}
+  {% if sc_result and sc_result.low_balance and not base.low_balance %}
+    <div class="alert alert-warn">With "{{ sc.name }}", {{ sc_result.low_balance.account }} would fall to {{ sc_result.low_balance.balance | money }} on {{ sc_result.low_balance.date | d }}.</div>
+  {% endif %}
+
+  <div class="card">
+    <script type="application/json" id="forecast-data">{{ chart | safe }}</script>
+    <div class="chart" data-forecast-chart data-source="forecast-data" data-threshold="{{ prefs.low_balance_cents }}"></div>
+    <p class="text-xs muted mt-sm">Dots along the bottom: green for paydays, red for bills of {{ prefs.large_bill_cents | money }} or more. The dashed red line is your low-balance threshold. Change both in <a href="/settings">Settings</a>.</p>
+  </div>
+
+  <div class="grid grid-2 mt">
+    <div class="card">
+      <h2>Month-end balances</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Month end</th>{% for aid, name in names.items() %}<th class="num">{{ name }}</th>{% endfor %}<th class="num">All</th>{% if sc_result %}<th class="num">{{ sc.name }}</th>{% endif %}</tr></thead>
+          <tbody>
+            {% for m in month_end %}
+              <tr>
+                <td>{{ m.date | d }}</td>
+                {% for aid in names %}<td class="num">{{ money_cell(m.accounts.get(aid | string, 0)) }}</td>{% endfor %}
+                <td class="num"><strong>{{ money_cell(m.combined) }}</strong></td>
+                {% if sc_result %}<td class="num">{{ money_cell(sc_month_end.get(m.date, 0)) }}</td>{% endif %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Day-to-day spending assumed</h2>
+      <p class="muted text-sm">Your average over the last 3 months, excluding bills (which are forecast from their schedule). Tick "use in forecast" on a <a href="/budget">budget</a> line to use that amount instead.</p>
+      <ul class="list">
+        {% for e in estimates %}
+          <li><span>{{ e.name }} <span class="pill">{{ 'budget' if e.source == 'budget' else '3-month average' }}</span></span>{{ money_cell(e.monthly_cents) }}</li>
+        {% else %}
+          <li class="muted">No spending history yet.</li>
+        {% endfor %}
+      </ul>
+      <p class="text-sm mt">Total per month: {{ money_cell(estimates | sum(attribute='monthly_cents')) }}</p>
+
+      <h2 class="mt">Planned transfers</h2>
+      <p class="muted text-sm">Regular moves between your own accounts, such as setting money aside for tax.</p>
+      <ul class="list">
+        {% for t in transfers %}
+          <li>
+            <span class="grow"><span class="title">{{ t.name }}{% if t.is_tax_set_aside %} <span class="pill">Tax set-aside</span>{% endif %}</span>
+            <span class="text-xs muted">{{ t.amount_cents | money }} {{ t.frequency }} from {{ names.get(t.from_account_id, '?') }} to {{ names.get(t.to_account_id, '?') }}</span></span>
+            <form class="inline" method="post" action="/transfers/{{ t.id }}/delete">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button class="btn btn-sm" type="submit" aria-label="Remove">✕</button>
+            </form>
+          </li>
+        {% endfor %}
+      </ul>
+      {% if accounts | length > 1 %}
+        <details class="mt">
+          <summary>Add a planned transfer</summary>
+          <form class="mt" method="post" action="/transfers">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="form-grid">
+              <div class="field"><label class="label" for="t-name">Name</label><input class="input" id="t-name" name="name" required value="Tax set-aside"></div>
+              <div class="field"><label class="label" for="t-amount">Amount</label><input class="input" id="t-amount" name="amount" inputmode="decimal" required></div>
+              <div class="field"><label class="label" for="t-from">From</label><select class="input" id="t-from" name="from_account_id">{% for a in accounts %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}</select></div>
+              <div class="field"><label class="label" for="t-to">To</label><select class="input" id="t-to" name="to_account_id">{% for a in accounts %}<option value="{{ a.id }}" {{ 'selected' if a.is_set_aside else '' }}>{{ a.name }}</option>{% endfor %}</select></div>
+              <div class="field"><label class="label" for="t-freq">How often</label><select class="input" id="t-freq" name="frequency">{% for f in freqs %}<option value="{{ f }}" {{ 'selected' if f == 'monthly' else '' }}>{{ f | replace('_', '-') | capitalize }}</option>{% endfor %}</select></div>
+              <div class="field"><label class="label" for="t-anchor">First transfer</label><input class="input" type="date" id="t-anchor" name="anchor_date" required value="{{ today.isoformat() }}"></div>
+              <div class="field"><label class="label" for="t-end">Ends (optional)</label><input class="input" type="date" id="t-end" name="end_date"></div>
+              <div class="field"><label class="check"><input type="checkbox" name="is_tax_set_aside" value="true" checked> This is tax set-aside</label></div>
+            </div>
+            <button class="btn btn-primary" type="submit">Save</button>
+          </form>
+        </details>
+      {% endif %}
+    </div>
+  </div>
+  <p class="muted text-xs mt">Forecasts project your current balances forward using your pay schedules, bills (your share), loan repayments with offset interest, planned transfers and average spending. They are estimates, not financial advice.</p>
+{% endblock %}

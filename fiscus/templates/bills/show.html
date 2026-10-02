@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% from "_macros.html" import money_cell, status_pill %}
+{% block title %}{{ bill.name }}{% endblock %}
+{% block content %}
+  <div class="page-head">
+    <div>
+      <h1>{{ bill.name }}</h1>
+      <span class="muted text-sm">{{ freq[bill.frequency] }} · {{ bill.amount_cents | money }}{% if not bill.active %} · inactive{% endif %}</span>
+    </div>
+    {% if is_owner %}
+      <div class="row">
+        <a class="btn" href="/bills/{{ bill.id }}/edit">Edit</a>
+        {% if not bill.housing_item_id %}
+          <form method="post" action="/bills/{{ bill.id }}/delete" data-confirm="Delete {{ bill.name }} for everyone sharing it?">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="btn btn-danger" type="submit">Delete</button>
+          </form>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+  <div class="grid grid-2">
+    <div class="card">
+      <h2>Who pays</h2>
+      <ul class="list">
+        {% for s in bill.shares %}
+          <li><span>{{ people[s.user_id].display_name }}{% if s.user_id == bill.owner_id %} <span class="pill">Owner</span>{% endif %}</span><span class="num">{{ amounts[s.user_id] | money }}</span></li>
+        {% endfor %}
+      </ul>
+      {% if bill.housing_item_id %}<p class="muted text-sm mt">From a housing cost item. Change it on the <a href="/housing">Housing</a> page.</p>{% endif %}
+    </div>
+    {% if not is_owner %}
+      <form class="card" method="post" action="/bills/{{ bill.id }}/my-share">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <h2>Your share</h2>
+        <div class="field"><label class="label" for="account_id">Paid from</label>
+          <select class="input" id="account_id" name="account_id"><option value="0">My spending account</option>
+            {% for a in accounts %}<option value="{{ a.id }}" {{ 'selected' if share.account_id == a.id else '' }}>{{ a.name }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="field"><label class="label" for="category_id">Category</label>
+          <select class="input" id="category_id" name="category_id"><option value="0">None</option>
+            {% for c in cats %}<option value="{{ c.id }}" {{ 'selected' if share.category_id == c.id else '' }}>{{ c.name }}</option>{% endfor %}
+          </select>
+        </div>
+        <button class="btn btn-primary" type="submit">Save</button>
+      </form>
+    {% endif %}
+  </div>
+  <div class="card mt">
+    <h2>Occurrences</h2>
+    <ul class="list">
+      {% for o in occ %}
+        <li>
+          <span class="grow"><span class="title">{{ o.due | d('long') }}</span>{% if o.payment %}<span class="text-xs muted">paid {{ o.payment.paid_on | d }}{{ ' (matched)' if o.payment.transaction_id else ' (by hand)' }}</span>{% endif %}</span>
+          {{ status_pill(o.status) }}
+          <button class="btn btn-sm" type="button" data-sheet="/bills/{{ bill.id }}/occurrence/{{ o.due.isoformat() }}">Details</button>
+        </li>
+      {% else %}
+        <li class="muted">No occurrences in the last or next 200 days.</li>
+      {% endfor %}
+    </ul>
+  </div>
+{% endblock %}

@@ -1,0 +1,16 @@
+**/__pycache__
+**/*.pyc
+.venv
+.git
+.github
+.mypy_cache
+.ruff_cache
+.pytest_cache
+docs
+tests
+scripts
+*.lock
+!requirements.lock
+.env
+.env.*
+data

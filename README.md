@@ -1,0 +1,371 @@
+# Fiscus
+
+Self-hosted personal finance for an Australian household. Each person's
+accounts, budget, forecast and tax stay their own; bills can be shared. Runs
+as one Docker container on your homelab, signs in with passkeys, and installs
+on your phone as an app. Nothing leaves your network.
+
+- Import ANZ CSVs (other banks by column mapping), with dedup and undo
+- Categories and rules, and a fast recategorise screen for the phone
+- Bills, shared and split, matched to payments automatically
+- A calendar of bills and paydays with your projected balance on every day
+- Home loan with offset: interest saved and payoff date
+- Forecast 1 to 24 months ahead, with what-if scenarios
+- Budget, housing costs, and an Australian tax estimate against your set-aside
+- Optional reminders through your own ntfy server
+
+Every forecast and tax figure is an estimate from your own data, not
+financial or tax advice.
+
+## Contents
+
+- [Setup](#setup)
+- [First run: the bootstrap link](#first-run-the-bootstrap-link)
+- [Adding people and passkeys](#adding-people-and-passkeys)
+- [Installing the app on iOS and Android](#installing-the-app-on-ios-and-android)
+- [Exporting a CSV from ANZ](#exporting-a-csv-from-anz)
+- [Housing costs import](#housing-costs-import)
+- [Reminders with ntfy](#reminders-with-ntfy)
+- [Backup and restore](#backup-and-restore)
+- [Configuration](#configuration)
+- [Tax tables](#tax-tables)
+- [Developing](#developing)
+- [Licence](#licence)
+
+## Setup
+
+You need Docker, a domain or subdomain (for example `fiscus.home.example.com`)
+and a reverse proxy that serves it over HTTPS. **HTTPS is not optional:**
+browsers only allow passkeys and service workers on HTTPS (or `localhost`), and
+Fiscus refuses to start a passkey ceremony otherwise.
+
+### With Dockge
+
+1. Create a new stack called `fiscus`.
+2. Paste the contents of [`docker-compose.yml`](docker-compose.yml).
+3. In the stack's `.env`, set at least:
+
+   ```env
+   FISCUS_SECRET_KEY=<output of: openssl rand -hex 32>
+   FISCUS_BASE_URL=https://fiscus.home.example.com
+   ```
+
+   See [`.env.example`](.env.example) for the rest.
+4. Deploy.
+
+### With plain Docker Compose
+
+```bash
+mkdir fiscus && cd fiscus
+curl -O https://raw.githubusercontent.com/f3nici/fiscus/main/docker-compose.yml
+curl -o .env https://raw.githubusercontent.com/f3nici/fiscus/main/.env.example
+# edit .env: FISCUS_SECRET_KEY and FISCUS_BASE_URL
+docker compose up -d
+```
+
+To build from source instead of pulling the published image:
+
+```bash
+git clone https://github.com/f3nici/fiscus && cd fiscus
+cp .env.example .env   # and edit it
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+```
+
+### Reverse proxy (NPMplus)
+
+Add a proxy host for your domain pointing at the Fiscus container on port
+8000, with an SSL certificate and "Force SSL" on. Websockets are not needed.
+
+Fiscus only believes `X-Forwarded-For` from addresses in
+`FISCUS_TRUSTED_PROXIES` (default `172.16.0.0/12`, the usual Docker
+networks). If NPMplus reaches Fiscus from elsewhere, set it to NPMplus's
+address as Fiscus sees it. That keeps sign-in rate limits and the audit log
+accurate.
+
+Check it is up:
+
+```bash
+curl https://fiscus.home.example.com/readyz
+# {"status":"ready","version":"0.1.0","build":"...","checks":{"database":true,"migrations":true,"data_dir_writable":true}}
+```
+
+## First run: the bootstrap link
+
+On first start, with no users, Fiscus prints a one-time link to its logs:
+
+```
+  No users yet. Register the first admin passkey at:
+
+    https://fiscus.home.example.com/setup/Xa1...
+
+  This bootstrap link expires 2026-10-03T00:02 UTC and is replaced on every restart
+  until somebody uses it.
+```
+
+Find it with `docker compose logs fiscus` (or the Dockge log view). Open it
+**on the device you want to sign in with** (usually your phone), pick a
+username, and create a passkey. That account is the admin. The link stops
+working as soon as it is used, and a new one is printed on each restart until
+someone does.
+
+If you lose it before using it, restart the container or run:
+
+```bash
+docker compose exec fiscus python -m fiscus.cli bootstrap
+```
+
+## Adding people and passkeys
+
+**Add a person** (admin): Admin, Users, "Add a user". Fiscus shows a one-time
+setup link, valid for 48 hours. Send it to them privately; they open it on
+their phone and create their passkey. Their finances are separate from yours.
+
+**Add another device** (anyone): Settings, Passkeys, "Add a passkey on this
+device", on the device you are signed in on. Name each one (phone, laptop,
+security key) so you can tell them apart; Settings shows when each was last
+used. To add a device you are not holding, sign in on that device with a
+recovery link from the admin.
+
+**Revoke a passkey**: Settings, Passkeys, Manage, Revoke. You cannot revoke
+your last one unless you also have a password set.
+
+**Lost every passkey**: the admin presses "Recovery link" next to your name
+and sends it to you. Open it on your new device, create a passkey, then
+revoke the lost ones in Settings. If the admin is the one locked out:
+
+```bash
+docker compose exec fiscus python -m fiscus.cli recovery-link <username>
+```
+
+**Password fallback**: off for everyone by default. An admin can allow it per
+person (Admin, Users, Password); that person then sets one in Settings.
+
+**Disable a person**: Admin, Users, Disable. They are signed out everywhere
+and any pending link stops working. Nothing of theirs is deleted.
+
+## Installing the app on iOS and Android
+
+Fiscus is a Progressive Web App: install it from the browser and it opens
+full-screen with a bottom navigation bar, like a native app. The app shell is
+cached; your figures never are. Offline, it shows an offline screen rather
+than old numbers.
+
+**iPhone and iPad (Safari)**
+
+1. Open your Fiscus address in **Safari** and sign in.
+2. Tap the Share button, then **Add to Home Screen**, then **Add**.
+3. Open Fiscus from the home screen. Your passkey works inside the app
+   (Face ID or Touch ID). iOS 16 or later is needed for passkeys.
+
+iOS has no share target, so import CSVs with the file picker on the Import
+screen (it opens the Files app, including iCloud Drive and Downloads).
+
+**Android (Chrome)**
+
+1. Open your Fiscus address in **Chrome** and sign in.
+2. Tap the menu (three dots), then **Install app** (or **Add to Home
+   screen**).
+3. Open Fiscus from the home screen or app drawer.
+
+When installed, Fiscus appears in Android's **share sheet** for CSV files:
+share a downloaded bank CSV to Fiscus and it opens the import screen with the
+file ready. Nothing is imported until you choose the account and press
+Import.
+
+**Desktop (Chrome, Edge)**: the install icon in the address bar.
+
+**Updates**: when a new version is deployed the app shows "A new version of
+Fiscus is ready" with a Reload button.
+
+## Exporting a CSV from ANZ
+
+From **ANZ Internet Banking** in a browser (the ANZ App does not export
+CSVs):
+
+1. Log on and open the account.
+2. Choose **Transactions** (or **Search transactions**) and set the date
+   range. Overlapping a previous export is fine: duplicates are skipped.
+3. Choose **Download** / **Export**, format **CSV**, and save.
+
+In Fiscus: Import, choose the account, pick the file, Upload and preview.
+ANZ's headerless `date, amount, description` format is recognised
+automatically. Check the preview (new rows, duplicates, unreadable rows), then
+Import. Every import is in the log on the Import page and can be undone.
+
+**Other banks**: upload the CSV and Fiscus asks which column is the date (and
+its format), the amount (or debit and credit columns) and the description.
+The mapping is saved for that account, so next time it goes straight to the
+preview. If your bank shows spending as positive, tick "flip the sign".
+
+If ANZ changes its export format or you use ANZ Plus and the file is not
+recognised, the mapping screen handles it the same way.
+
+## Housing costs import
+
+Housing costs (rates, insurance, strata, water and so on) can be typed in on
+the Housing page or imported from a file. Each item becomes:
+
+- a budget line for its category, normalised to a month (weekly x 52 / 12,
+  quarterly / 3 and so on, at your share), and
+- a recurring bill on the calendar and in the forecast, shared if you said so.
+
+Download a template from the Housing page in either format.
+
+**CSV**
+
+```csv
+name,amount,frequency,category,due_date,shared_with,split_percent
+Council rates,520.00,quarterly,Housing,2026-11-15,,
+Home insurance,1850.00,yearly,Insurance,2027-03-01,partner,50
+Water,310.00,quarterly,Utilities,,partner,50
+```
+
+**JSON**
+
+```json
+{
+  "items": [
+    {"name": "Council rates", "amount": "520.00", "frequency": "quarterly", "category": "Housing", "due_date": "2026-11-15"},
+    {"name": "Home insurance", "amount": "1850.00", "frequency": "yearly", "category": "Insurance", "due_date": "2027-03-01", "shared_with": "partner", "split_percent": 50}
+  ]
+}
+```
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| name | yes | Unique per person; it is how a re-import matches items |
+| amount | yes | The whole amount each time it is due |
+| frequency | yes | weekly, fortnightly, monthly, quarterly, yearly or one-off |
+| category | no | Created if it does not exist; default Housing |
+| due_date | no (yes for one-off) | YYYY-MM-DD, the next time it is due |
+| shared_with | no | Another Fiscus user's username |
+| split_percent | no | Their share, default 50 |
+
+A CSV with other column names gets a mapping step. Every import shows a
+preview first. **Re-importing** shows what will be added, changed and removed
+(items no longer in the file are only removed if you tick the box). Items stay
+editable afterwards.
+
+## Reminders with ntfy
+
+Fiscus can push reminders to your phone through your own
+[ntfy](https://docs.ntfy.sh) server. Off by default, set per person, and no
+third-party push service is involved.
+
+1. Run ntfy on your homelab (for example `binwiederhier/ntfy` in Dockge) and
+   install the ntfy app on your phone, pointed at your server.
+2. Subscribe the app to a topic, for example `fiscus-alex`. Use an access
+   token if your server requires one.
+3. In Fiscus: Settings, Reminders. Tick "Send me reminders", enter the server
+   (`http://192.168.1.20:8080` or `https://ntfy.home.example.com`), the topic
+   and the token, choose what to hear about, Save, then "Send a test".
+
+You get one push per bill due within your chosen number of days, one per
+overdue bill, and one per low-balance warning, each once, at the hour you
+choose. Messages contain the bill name, date and amount only. Private LAN
+addresses are allowed; the container's own loopback and link-local addresses
+are not.
+
+## Backup and restore
+
+The whole database is copied to `/data/backups` every night at 02:00 (local
+time, `FISCUS_BACKUP_HOUR`) and kept for 14 days
+(`FISCUS_BACKUP_RETENTION_DAYS`). The copy uses SQLite's online backup, so it
+is consistent while Fiscus runs.
+
+**Download one** (admin): Admin, Backups, "Download a backup now". Keep a copy
+off the homelab: it holds every user's finances, so store it like you would
+a bank statement.
+
+**Back up the volume** with your usual tool if you prefer; `/data` is
+everything (`fiscus.db`, `backups/`, `uploads/`).
+
+**Restore**:
+
+```bash
+docker compose stop fiscus
+# copy the file you want into the volume if it is not already in /data/backups
+docker compose run --rm fiscus python -m fiscus.cli restore /data/backups/fiscus-20261001-020000.db
+docker compose start fiscus
+```
+
+Restore checks the file is a sound Fiscus database, keeps a copy of the
+current one in `/data/backups` (`fiscus-pre-restore-...`), then replaces it.
+Migrations run on the next start.
+
+## Configuration
+
+All configuration is environment variables (set in `.env`):
+
+| Variable | Default | |
+| --- | --- | --- |
+| `FISCUS_SECRET_KEY` | required | `openssl rand -hex 32` |
+| `FISCUS_BASE_URL` | required | Your HTTPS address. Setup links use it. |
+| `FISCUS_ORIGIN` | from base URL | The origin browsers see, for WebAuthn |
+| `FISCUS_RP_ID` | origin's host | WebAuthn relying party ID (your domain) |
+| `FISCUS_TRUSTED_PROXIES` | `172.16.0.0/12` in compose | Who may set forwarded headers |
+| `FISCUS_TIMEZONE` | `Australia/Perth` | Decides what "today" is |
+| `FISCUS_BACKUP_HOUR` | `2` | Local hour for the nightly backup |
+| `FISCUS_BACKUP_RETENTION_DAYS` | `14` | |
+| `FISCUS_SETUP_LINK_HOURS` | `48` | Onboarding and recovery links |
+| `FISCUS_BOOTSTRAP_HOURS` | `24` | The first-run link |
+| `FISCUS_SESSION_IDLE_DAYS` | `30` | Sliding |
+| `FISCUS_SESSION_ABSOLUTE_DAYS` | `90` | |
+| `FISCUS_LOG_LEVEL` | `info` | |
+| `FISCUS_HOST_PORT` | `8000` | Host port in compose |
+
+Health: `/healthz` (liveness, used by the container healthcheck) and
+`/readyz` (database, migrations, writable volume).
+
+## Tax tables
+
+Tax rates live in `config/tax/<financial year>.yaml`, one file per year (1
+July to 30 June). The current year is 2026-27. **Check the file against the
+ATO's published resident rates every July**; each file links to the pages.
+To add a year without rebuilding, mount a directory over `/app/config/tax`
+in the container.
+
+## Developing
+
+```bash
+uv venv -p 3.12 .venv && . .venv/bin/activate
+uv pip install --require-hashes -r requirements-dev.lock
+FISCUS_DATA_DIR=./data FISCUS_BASE_URL=http://localhost:8000 python -m fiscus
+```
+
+Checks, as CI runs them:
+
+```bash
+ruff format --check fiscus tests scripts
+mypy
+ruff check fiscus tests scripts
+djlint fiscus/templates --lint
+pytest                     # includes a real Chromium test of passkeys and the service worker
+docker build -t fiscus:local . && scripts/smoke.sh fiscus:local
+```
+
+Dependencies are pinned exactly in `pyproject.toml` and locked with hashes in
+`requirements.lock` and `requirements-dev.lock`; regenerate with
+`uv pip compile pyproject.toml --generate-hashes -o requirements.lock` (add
+`--extra dev` for the dev lock). Frontend libraries are vendored in
+`fiscus/static/vendor` (see its README).
+
+Read [`CLAUDE.md`](CLAUDE.md) and [`docs/`](docs) before changing anything:
+the rules there (ownership on every query, money in cents, no data in the
+service worker cache) are tested.
+
+### CI and releases
+
+Every push runs the checks, builds the image and smoke tests it. With
+`DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` set as repository secrets, branch
+builds are also pushed as `f3nici/fiscus:<branch>` and `:sha-<commit>`, and
+`main` as `:latest`. The **Release** workflow publishes a named tag (for
+example `v1.0.0`) to pin in `.env`.
+
+## Licence
+
+Source-available under the [PolyForm Noncommercial License 1.0.0](LICENSE),
+copyright Fenici. Free for noncommercial use, including running it for your
+own household.
+
+Vendored: htmx (0BSD), uPlot (MIT), vue-cal's stylesheet (MIT), Inter (OFL).

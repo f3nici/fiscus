@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Scenarios{% endblock %}
+{% block content %}
+  <h1>Scenarios</h1>
+  <p class="muted">A scenario is a set of what-ifs laid over your forecast. It never changes your real data. Compare one against the base on the <a href="/forecast">Forecast</a> page.</p>
+  <div class="card">
+    <ul class="list">
+      {% for s in scenarios %}
+        <li>
+          <a class="title" href="/scenarios/{{ s.id }}">{{ s.name }}</a>
+          <span class="text-xs muted">{{ s.adjustments | length }} change{{ '' if s.adjustments | length == 1 else 's' }}</span>
+          <a class="btn btn-sm" href="/forecast?scenario_id={{ s.id }}">Compare</a>
+        </li>
+      {% else %}
+        <li class="muted">No scenarios yet.</li>
+      {% endfor %}
+    </ul>
+    <form class="row mt" method="post" action="/scenarios">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input class="input grow" name="name" required maxlength="80" placeholder="e.g. Rate goes up 0.5%" aria-label="Name">
+      <button class="btn btn-primary" type="submit">New scenario</button>
+    </form>
+  </div>
+{% endblock %}

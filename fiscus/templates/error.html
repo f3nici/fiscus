@@ -1,0 +1,16 @@
+{% extends "auth_base.html" if not user else "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block auth %}
+  <div class="card">
+    <h1>{{ title }}</h1>
+    <p>{{ message }}</p>
+    <a class="btn" href="/">Go to Fiscus</a>
+  </div>
+{% endblock %}
+{% block content %}
+  <div class="card">
+    <h1>{{ title }}</h1>
+    <p>{{ message }}</p>
+    <a class="btn" href="/">Back to the dashboard</a>
+  </div>
+{% endblock %}

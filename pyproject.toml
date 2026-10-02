@@ -1,0 +1,91 @@
+[project]
+name = "fiscus"
+version = "0.1.0"
+description = "Self-hosted, multi-user personal finance tracker for an Australian household"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.12,<3.13"
+# Exact pins. The lockfile (requirements.lock) pins the transitive set with
+# hashes; regenerate both with `make lock`.
+dependencies = [
+  "alembic==1.20.0",
+  "argon2-cffi==25.1.0",
+  "fastapi==0.142.2",
+  "httpx==0.28.1",
+  "jinja2==3.1.6",
+  "python-multipart==0.0.32",
+  "pyyaml==6.0.3",
+  "sqlalchemy==2.1.1",
+  "uvicorn[standard]==0.54.0",
+  "webauthn==3.0.1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "djlint==1.46.4",
+  "mypy==2.4.0",
+  "playwright==1.63.0",
+  "pytest==9.1.1",
+  "ruff==0.16.10",
+  "types-pyyaml==6.0.12.20260906",
+]
+
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["fiscus*"]
+
+[tool.setuptools.package-data]
+fiscus = ["templates/**/*", "static/**/*", "migrations/**/*", "py.typed"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["fiscus/migrations/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "SIM", "RUF", "DTZ", "PTH", "C4"]
+ignore = [
+  "S101",   # assert is how pytest works
+  "B008",   # FastAPI's Depends() in defaults is the documented pattern
+  "RUF001", # Australian English uses typographic characters in strings
+  "RUF012",
+  "C408",   # dict(key=value) reads better for column sets
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S105", "S106", "S311", "DTZ"]
+
+[tool.ruff.format]
+quote-style = "single"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["fiscus", "tests"]
+plugins = []
+warn_unreachable = true
+
+[[tool.mypy.overrides]]
+module = ["cbor2.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+markers = ["browser: drives a real Chromium through Playwright"]
+filterwarnings = [
+  "error::sqlalchemy.exc.SAWarning",
+  "error::sqlalchemy.exc.SADeprecationWarning",
+  "ignore:Using `httpx` with `starlette.testclient`",
+]
+
+[tool.djlint]
+profile = "jinja"
+indent = 2
+max_line_length = 120
+# J004/J018 want url_for() for every link; Fiscus uses plain paths on purpose.
+# H015/H020: headings beside links and empty flex spacers are deliberate.
+ignore = "H006,H013,H015,H020,H021,H023,H030,H031,J004,J018,T003,T028"

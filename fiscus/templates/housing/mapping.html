@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Map housing columns{% endblock %}
+{% block content %}
+  <h1>Map the columns</h1>
+  <p class="muted">This file's headings do not match the template. Point each field at a column. Name, amount and frequency are required.</p>
+  <div class="card">
+    <div class="table-wrap">
+      <table>
+        <thead><tr>{% for h in header %}<th>{{ loop.index }}. {{ h }}</th>{% endfor %}</tr></thead>
+        <tbody>{% for r in sample %}<tr>{% for c in r %}<td>{{ c }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+      </table>
+    </div>
+  </div>
+  <form class="card mt" method="get" action="/housing/import/{{ name }}">
+    <div class="form-grid">
+      {% for f in fields %}
+        <div class="field">
+          <label class="label" for="map_{{ f }}">{{ f | replace('_', ' ') }}{{ ' (required)' if f in required else '' }}</label>
+          <select class="input" id="map_{{ f }}" name="map_{{ f }}">
+            <option value="">Not in this file</option>
+            {% for h in header %}<option value="{{ loop.index0 }}" {{ 'selected' if mapping.get(f) == loop.index0 else '' }}>{{ loop.index }}. {{ h }}</option>{% endfor %}
+          </select>
+        </div>
+      {% endfor %}
+    </div>
+    <button class="btn btn-primary" type="submit">Preview</button>
+    <a class="btn" href="/housing">Cancel</a>
+  </form>
+{% endblock %}

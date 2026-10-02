@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+  <h1>Settings</h1>
+  {% if recovered %}
+    <div class="alert alert-ok">You are back in. If you lost a device, revoke its passkey below so it can no longer sign in.</div>
+  {% endif %}
+  {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
+
+  <div class="grid grid-2">
+    <div class="card" data-passkey-register data-start="/settings/passkeys/options" data-finish="/settings/passkeys/verify">
+      <h2>Passkeys</h2>
+      <ul class="list">
+        {% for c in creds %}
+          <li>
+            <span class="grow">
+              <span class="title">{{ c.name }}{% if c.backed_up %} <span class="pill">Synced</span>{% endif %}</span>
+              <span class="text-xs muted">Added {{ c.created_at.strftime('%d %b %Y') }} · {{ 'last used ' ~ c.last_used_at.strftime('%d %b %Y') if c.last_used_at else 'not used yet' }}</span>
+            </span>
+            <details>
+              <summary class="text-sm">Manage</summary>
+              <form class="mt-sm" method="post" action="/settings/passkeys/{{ c.id }}/rename">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input class="input" name="name" value="{{ c.name }}" maxlength="80" aria-label="Name">
+                <button class="btn btn-sm mt-sm" type="submit">Rename</button>
+              </form>
+              {% if creds | length > 1 or can_revoke_last %}
+                <form class="mt-sm" method="post" action="/settings/passkeys/{{ c.id }}/revoke" data-confirm="Revoke {{ c.name }}? That device will no longer sign in.">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <button class="btn btn-sm btn-danger" type="submit">Revoke</button>
+                </form>
+              {% else %}
+                <p class="text-xs muted mt-sm">Your only way to sign in, so it cannot be revoked.</p>
+              {% endif %}
+            </details>
+          </li>
+        {% else %}
+          <li class="muted">No passkeys.</li>
+        {% endfor %}
+      </ul>
+      <h3 class="mt">Add a passkey on this device</h3>
+      <div class="field"><label class="label" for="passkey_name">Name</label><input class="input" id="passkey_name" name="passkey_name" maxlength="80"></div>
+      <div data-passkey-status class="hidden"></div>
+      <button class="btn btn-primary" type="button" data-passkey-go {{ 'disabled' if not passkeys_allowed }}>Add passkey</button>
+      <p class="muted text-xs mt">To add a phone or a security key you are not holding right now, sign in on it once with a setup link from your admin, or add it from that device.</p>
+    </div>
+
+    <div class="card">
+      <h2>Forecast and warnings</h2>
+      <form method="post" action="/settings/forecast">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="form-grid">
+          <div class="field"><label class="label" for="low_balance">Warn below</label><input class="input" id="low_balance" name="low_balance" inputmode="decimal" value="{{ prefs.low_balance_cents | money_plain }}"></div>
+          <div class="field"><label class="label" for="forecast_months">Default horizon (months)</label><input class="input" type="number" id="forecast_months" name="forecast_months" min="1" max="24" value="{{ prefs.forecast_months }}"></div>
+          <div class="field"><label class="label" for="large_bill">Mark bills from</label><input class="input" id="large_bill" name="large_bill" inputmode="decimal" value="{{ prefs.large_bill_cents | money_plain }}"></div>
+          <div class="field"><label class="label" for="spending_account_id">Everyday spending account</label>
+            <select class="input" id="spending_account_id" name="spending_account_id"><option value="0">First transaction account</option>{% for a in accounts %}<option value="{{ a.id }}" {{ 'selected' if prefs.spending_account_id == a.id else '' }}>{{ a.name }}</option>{% endfor %}</select>
+          </div>
+        </div>
+        <button class="btn btn-primary" type="submit">Save</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Reminders (ntfy)</h2>
+      <p class="muted text-sm">Optional pushes from your own ntfy server. Off until you turn them on. No third-party push service is used.</p>
+      {% if ntfy_error %}<div class="alert alert-error">{{ ntfy_error }}</div>{% endif %}
+      <form method="post" action="/settings/ntfy">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label class="check"><input type="checkbox" name="enabled" value="true" {{ 'checked' if prefs.ntfy_enabled }}> Send me reminders</label>
+        <div class="form-grid">
+          <div class="field"><label class="label" for="ntfy-url">Server</label><input class="input" id="ntfy-url" name="url" placeholder="https://ntfy.home.lan" value="{{ prefs.ntfy_url }}"></div>
+          <div class="field"><label class="label" for="ntfy-topic">Topic</label><input class="input" id="ntfy-topic" name="topic" maxlength="64" value="{{ prefs.ntfy_topic }}"></div>
+          <div class="field"><label class="label" for="ntfy-token">Access token (optional)</label><input class="input" id="ntfy-token" name="token" type="password" autocomplete="off" placeholder="{{ 'saved, leave blank to keep' if prefs.ntfy_token else '' }}"></div>
+          <div class="field"><label class="label" for="ntfy-hour">Send at (hour, 0-23)</label><input class="input" type="number" id="ntfy-hour" name="hour" min="0" max="23" value="{{ prefs.ntfy_hour }}"></div>
+          <div class="field"><label class="label" for="ntfy-days">Bills due within (days)</label><input class="input" type="number" id="ntfy-days" name="bill_days" min="0" max="30" value="{{ prefs.ntfy_bill_days }}"></div>
+        </div>
+        <label class="check"><input type="checkbox" name="bills_due" value="true" {{ 'checked' if prefs.ntfy_bills_due }}> Bills coming up</label>
+        <label class="check"><input type="checkbox" name="overdue" value="true" {{ 'checked' if prefs.ntfy_overdue }}> Overdue bills</label>
+        <label class="check"><input type="checkbox" name="low_balance" value="true" {{ 'checked' if prefs.ntfy_low_balance }}> Low-balance warnings</label>
+        <div class="row">
+          <button class="btn btn-primary" type="submit">Save</button>
+        </div>
+      </form>
+      <div class="row mt">
+        <form method="post" action="/settings/ntfy/test">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn btn-sm" type="submit">Send a test</button>
+        </form>
+        {% if prefs.ntfy_token %}
+          <form method="post" action="/settings/ntfy/clear-token">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="btn btn-sm" type="submit">Forget token</button>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Password</h2>
+      {% if pw_error %}<div class="alert alert-error">{{ pw_error }}</div>{% endif %}
+      {% if not user.password_enabled %}
+        <p class="muted text-sm">Password sign-in is off for your account. Passkeys are the way in. An admin can turn a password fallback on for you.</p>
+      {% else %}
+        <p class="muted text-sm">{{ 'You have a password set.' if user.password_hash else 'Your admin allows a password for you, but you have not set one.' }}</p>
+        <form method="post" action="/settings/password">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="text" name="username" value="{{ user.username }}" autocomplete="username" class="hidden" aria-hidden="true" tabindex="-1">
+          <div class="field"><label class="label" for="password">New password (12 characters or more)</label><input class="input" type="password" id="password" name="password" autocomplete="new-password" minlength="12" required></div>
+          <div class="field"><label class="label" for="confirm">Again</label><input class="input" type="password" id="confirm" name="confirm" autocomplete="new-password" minlength="12" required></div>
+          <button class="btn btn-primary" type="submit">Save password</button>
+        </form>
+        {% if user.password_hash %}
+          <form class="mt" method="post" action="/settings/password/clear">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="btn btn-sm" type="submit">Remove my password</button>
+          </form>
+        {% endif %}
+      {% endif %}
+    </div>
+  </div>
+{% endblock %}

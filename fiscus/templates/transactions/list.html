@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% from "_macros.html" import money_cell %}
+{% block title %}Transactions{% endblock %}
+{% block content %}
+  <div class="page-head">
+    <h1>Transactions</h1>
+    <div class="row">
+      <a class="btn" href="/recategorise">Recategorise</a>
+      <a class="btn" href="/transactions/export.csv" hx-boost="false">Export CSV</a>
+    </div>
+  </div>
+  <form class="card row" method="get" action="/transactions">
+    <input class="input grow" type="search" name="q" value="{{ q }}" placeholder="Search descriptions" aria-label="Search">
+    <select class="input grow" name="account_id" aria-label="Account" data-autosubmit>
+      <option value="0">All accounts</option>
+      {% for a in accounts.values() %}<option value="{{ a.id }}" {{ 'selected' if a.id == account_id else '' }}>{{ a.name }}</option>{% endfor %}
+    </select>
+    <select class="input grow" name="category_id" aria-label="Category" data-autosubmit>
+      <option value="">All categories</option>
+      <option value="none" {{ 'selected' if category_id == 'none' else '' }}>Uncategorised</option>
+      {% for c in cats %}<option value="{{ c.id }}" {{ 'selected' if category_id == c.id | string else '' }}>{{ c.name }}</option>{% endfor %}
+    </select>
+    <button class="btn" type="submit">Filter</button>
+  </form>
+  <div class="card mt">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Date</th><th>Description</th><th>Account</th><th>Category</th><th class="num">Amount</th></tr></thead>
+        <tbody>
+          {% for t in txns %}
+            <tr>
+              <td class="num">{{ t.date | d }}</td>
+              <td>{{ t.description }}</td>
+              <td>{{ accounts[t.account_id].name if t.account_id in accounts else '' }}</td>
+              <td>
+                <form method="post" action="/transactions/{{ t.id }}/category" hx-post="/transactions/{{ t.id }}/category" hx-trigger="change" hx-target="next .saved-slot" hx-swap="innerHTML">
+                  <select class="input" name="category_id" aria-label="Category">
+                    <option value="0">Uncategorised</option>
+                    {% for c in cats %}<option value="{{ c.id }}" {{ 'selected' if c.id == t.category_id else '' }}>{{ c.name }}</option>{% endfor %}
+                  </select>
+                </form>
+                <span class="saved-slot"></span>
+              </td>
+              <td class="num">{{ money_cell(t.amount_cents) }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="5" class="muted">No transactions match.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="row between mt">
+      {% if page > 1 %}<a class="btn btn-sm" href="?q={{ q | urlencode }}&account_id={{ account_id }}&category_id={{ category_id }}&page={{ page - 1 }}">Newer</a>{% else %}<span></span>{% endif %}
+      {% if more %}<a class="btn btn-sm" href="?q={{ q | urlencode }}&account_id={{ account_id }}&category_id={{ category_id }}&page={{ page + 1 }}">Older</a>{% endif %}
+    </div>
+  </div>
+{% endblock %}

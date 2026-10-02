@@ -1,0 +1,34 @@
+{% extends "auth_base.html" %}
+{% block title %}Set up a passkey{% endblock %}
+{% block auth %}
+  <div class="card" data-passkey-register data-start="/setup/{{ token }}/options" data-finish="/setup/{{ token }}/verify">
+    {% if link.purpose == 'bootstrap' %}
+      <h1>Welcome to Fiscus</h1>
+      <p>Create the first account. It will be the admin, and it signs in with a passkey on this device.</p>
+      <div class="field">
+        <label class="label" for="username">Username</label>
+        <input class="input" id="username" name="username" data-extra autocomplete="username" autocapitalize="none" spellcheck="false" required>
+      </div>
+      <div class="field">
+        <label class="label" for="display_name">Your name</label>
+        <input class="input" id="display_name" name="display_name" data-extra autocomplete="name">
+      </div>
+    {% elif link.purpose == 'recovery' %}
+      <h1>Recover your account</h1>
+      <p>Hi {{ target.display_name }}. Register a new passkey on this device. Afterwards you can revoke the ones you lost from Settings.</p>
+    {% else %}
+      <h1>Hi {{ target.display_name }}</h1>
+      <p>Your Fiscus account is <strong>{{ target.username }}</strong>. Register a passkey on this device to sign in. You can add more devices later.</p>
+    {% endif %}
+    {% if not passkeys_allowed %}
+      <div class="alert alert-error">Passkeys need HTTPS. Ask your admin to check FISCUS_ORIGIN.</div>
+    {% endif %}
+    <div class="field">
+      <label class="label" for="passkey_name">Name this passkey</label>
+      <input class="input" id="passkey_name" name="passkey_name" maxlength="80">
+    </div>
+    <div data-passkey-status class="hidden"></div>
+    <button class="btn btn-primary" type="button" data-passkey-go>Create passkey</button>
+    <p class="muted text-xs mt">This link works once and expires {{ link.expires_at.strftime('%d %b %Y %H:%M') }} UTC.</p>
+  </div>
+{% endblock %}

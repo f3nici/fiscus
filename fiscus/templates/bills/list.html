@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% from "_macros.html" import money_cell, status_pill %}
+{% block title %}Bills{% endblock %}
+{% block content %}
+  <div class="page-head">
+    <h1>Bills</h1>
+    <div class="row">
+      <form method="post" action="/bills/rematch">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="btn" type="submit">Match payments</button>
+      </form>
+      <a class="btn btn-primary" href="/bills/new">Add bill</a>
+    </div>
+  </div>
+  {% if overdue %}
+    <div class="card alert-error">
+      <h2>Overdue</h2>
+      <ul class="list">
+        {% for o in overdue %}
+          <li>
+            <span class="grow"><a class="title" href="/bills/{{ o.bill.id }}">{{ o.bill.name }}</a><span class="text-xs muted">was due {{ o.due | d }}</span></span>
+            {{ money_cell(-o.share_cents) }}
+            <form class="inline" method="post" action="/bills/{{ o.bill.id }}/occurrence/{{ o.due.isoformat() }}/paid">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="back" value="/bills">
+              <button class="btn btn-sm" type="submit">Mark paid</button>
+            </form>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+  <div class="card mt">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Bill</th><th>How often</th><th class="num">Your share</th><th>Next due</th><th></th></tr></thead>
+        <tbody>
+          {% for s in shares %}
+            {% set b = s.bill %}
+            {% set n = next.get(b.id) %}
+            <tr class="{{ 'muted' if not b.active else '' }}">
+              <td>
+                <a href="/bills/{{ b.id }}">{{ b.name }}</a>
+                {% if b.shares | length > 1 %}<span class="pill pill-shared">Shared{% if b.owner_id != user.id %} by {{ owners[b.owner_id].display_name }}{% endif %}</span>{% endif %}
+                {% if not b.active %}<span class="pill">Inactive</span>{% endif %}
+              </td>
+              <td>{{ freq[b.frequency] }}</td>
+              <td class="num">{{ amounts[b.id] | money }}{% if b.shares | length > 1 %}<span class="muted text-xs"> of {{ b.amount_cents | money }}</span>{% endif %}</td>
+              <td>{% if n %}{{ n.due | d }}{% endif %}</td>
+              <td>{% if n %}{{ status_pill(n.status) }}{% endif %}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="5" class="muted">No bills yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endblock %}

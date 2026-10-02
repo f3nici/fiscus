@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Audit log{% endblock %}
+{% block content %}
+  <div class="page-head"><h1>Admin</h1>{% include "admin/_nav.html" %}</div>
+  <div class="card">
+    <h2>Audit log</h2>
+    <p class="muted text-sm">Sign-ins, credential changes and admin actions. Append-only.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>When (UTC)</th><th>Action</th><th>By</th><th>For</th><th>IP</th><th>Detail</th></tr></thead>
+        <tbody>
+          {% for r in rows %}
+            <tr>
+              <td class="num">{{ r.at.strftime('%d %b %Y %H:%M:%S') }}</td>
+              <td><code>{{ r.action }}</code></td>
+              <td>{{ names.get(r.actor_id, '') }}</td>
+              <td>{{ names.get(r.subject_id, '') if r.subject_id != r.actor_id else '' }}</td>
+              <td class="mono">{{ r.ip }}</td>
+              <td class="text-xs">{% for k, v in r.detail.items() %}{{ k }}={{ v }} {% endfor %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="row between mt">
+      {% if page > 1 %}<a class="btn btn-sm" href="?page={{ page - 1 }}">Newer</a>{% else %}<span></span>{% endif %}
+      {% if more %}<a class="btn btn-sm" href="?page={{ page + 1 }}">Older</a>{% endif %}
+    </div>
+  </div>
+{% endblock %}

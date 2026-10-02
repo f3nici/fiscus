@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit loan' if loan else 'New loan' }}{% endblock %}
+{% block content %}
+  <h1>{{ 'Edit ' ~ loan.name if loan else 'New loan' }}</h1>
+  {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
+  <form class="card" method="post" action="{{ '/loans/' ~ loan.id if loan else '/loans' }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="form-grid">
+      <div class="field"><label class="label" for="name">Name</label><input class="input" id="name" name="name" required maxlength="80" value="{{ loan.name if loan else 'Home loan' }}"></div>
+      <div class="field"><label class="label" for="principal">Amount borrowed</label><input class="input" id="principal" name="principal" inputmode="decimal" required value="{{ loan.principal_cents | money_plain if loan else '' }}"></div>
+      <div class="field"><label class="label" for="start_date">Start date</label><input class="input" type="date" id="start_date" name="start_date" required value="{{ loan.start_date.isoformat() if loan else '' }}"></div>
+      <div class="field"><label class="label" for="term_years">Term (years)</label><input class="input" type="number" id="term_years" name="term_years" min="1" max="40" value="{{ (loan.term_months // 12) if loan else 30 }}"></div>
+      <div class="field"><label class="label" for="repayment_frequency">Repayments</label>
+        <select class="input" id="repayment_frequency" name="repayment_frequency">{% for f in freqs %}<option value="{{ f }}" {{ 'selected' if loan and loan.repayment_frequency == f else '' }}>{{ f | capitalize }}</option>{% endfor %}</select>
+      </div>
+      {% if not loan %}
+        <div class="field"><label class="label" for="initial_rate">Interest rate (% a year)</label><input class="input" id="initial_rate" name="initial_rate" inputmode="decimal" required placeholder="6.24"></div>
+      {% endif %}
+      <div class="field"><label class="label" for="balance">Balance owing now</label><input class="input" id="balance" name="balance" inputmode="decimal" required value="{{ loan.balance_cents | money_plain if loan else '' }}"><small>From your latest statement or the banking app.</small></div>
+      <div class="field"><label class="label" for="balance_date">Balance as at</label><input class="input" type="date" id="balance_date" name="balance_date" required value="{{ loan.balance_date.isoformat() if loan else today.isoformat() }}"></div>
+      <div class="field"><label class="label" for="repayment_override">Repayment amount (optional)</label><input class="input" id="repayment_override" name="repayment_override" inputmode="decimal" value="{{ loan.repayment_override_cents | money_plain if loan and loan.repayment_override_cents else '' }}"><small>Leave blank to calculate it. Fill in if you pay more than the minimum.</small></div>
+      <div class="field"><label class="label" for="repayment_account_id">Repayments come from</label>
+        <select class="input" id="repayment_account_id" name="repayment_account_id"><option value="0">Not tracked</option>{% for a in accounts %}<option value="{{ a.id }}" {{ 'selected' if loan and loan.repayment_account_id == a.id else '' }}>{{ a.name }}</option>{% endfor %}</select>
+      </div>
+    </div>
+    <div class="row">
+      <button class="btn btn-primary" type="submit">Save</button>
+      <a class="btn" href="{{ '/loans/' ~ loan.id if loan else '/loans' }}">Cancel</a>
+    </div>
+  </form>
+{% endblock %}

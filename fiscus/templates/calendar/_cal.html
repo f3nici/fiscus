@@ -1,0 +1,86 @@
+{#
+  vue-cal 4 markup, as CareLane's RosterPage renders it (month view by default,
+  short events), so the vendored vuecal.css lays it out the same way.
+#}
+{% set g = grid %}
+{% macro url(view, d) %}/calendar?view={{ view }}&date={{ d.isoformat() }}{% endmacro %}
+{% macro event_button(e, long=false) -%}
+  {%- if e.bill_id -%}
+    <button type="button" class="vuecal__event {{ e.css }}" data-sheet="/bills/{{ e.bill_id }}/occurrence/{{ e.date.isoformat() }}" title="{{ e.title }} {{ e.amount_cents | money }}">
+  {%- else -%}
+    <div class="vuecal__event {{ e.css }}" title="{{ e.title }} {{ e.amount_cents | money }}">
+  {%- endif -%}
+    <div class="vuecal__event-title">{{ e.title }}{% if not long %} {{ (e.amount_cents | money).split('.')[0] }}{% endif %}</div>
+    {%- if long %}<span class="num">{{ e.amount_cents | money }}</span>{% endif -%}
+  {%- if e.bill_id %}</button>{% else %}</div>{% endif -%}
+{%- endmacro %}
+<div id="cal" hx-boost="false" class="vuecal__flex vuecal fiscus-cal vuecal--{{ g.view if g.view in ('month', 'week', 'day') else 'day' }}-view vuecal--no-time vuecal--events-on-month-view vuecal--short-events vuecal--click-to-navigate"
+     data-view="{{ g.view }}" data-focus="{{ g.focus.isoformat() }}" data-view-given="{{ '1' if view_given else '0' }}" column>
+  <div class="vuecal__header">
+    <ul class="vuecal__flex vuecal__menu" role="tablist" aria-label="Calendar views">
+      {% for v in views %}
+        <li><a class="vuecal__view-btn {{ 'vuecal__view-btn--active' if v == g.view else '' }}" role="tab" aria-selected="{{ 'true' if v == g.view else 'false' }}" href="{{ url(v, g.focus) }}" data-cal-nav>{{ v | capitalize }}</a></li>
+      {% endfor %}
+    </ul>
+    <div class="vuecal__title-bar">
+      <a class="vuecal__arrow vuecal__arrow--prev" href="{{ url(g.view, g.prev) }}" data-cal-nav aria-label="Previous"><i class="angle"></i></a>
+      <div class="vuecal__flex vuecal__title" grow>
+        {% if g.view in ('week', 'day') %}
+          <a href="{{ url('month', g.focus) }}" data-cal-nav>{{ g.title }}</a>
+        {% else %}
+          <span>{{ g.title }}</span>
+        {% endif %}
+      </div>
+      <a class="vuecal__today-btn" href="{{ url(g.view, today) }}" data-cal-nav><span class="default">Today</span></a>
+      <a class="vuecal__arrow vuecal__arrow--next" href="{{ url(g.view, g.next) }}" data-cal-nav aria-label="Next"><i class="angle"></i></a>
+    </div>
+    {% if g.view in ('month', 'week') %}
+      <div class="vuecal__flex vuecal__weekdays-headings">
+        {% for full, small, xs in [('Monday','Mon','M'),('Tuesday','Tue','T'),('Wednesday','Wed','W'),('Thursday','Thu','T'),('Friday','Fri','F'),('Saturday','Sat','S'),('Sunday','Sun','S')] %}
+          <div class="vuecal__flex vuecal__heading">
+            <span class="weekday-label">
+              <span class="full">{{ full }}</span><span class="small">{{ small }}</span><span class="xsmall">{{ xs }}</span>
+              {% if g.view == 'week' %}&nbsp;{{ g.days[loop.index0].date.day }}{% endif %}
+            </span>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="vuecal__flex vuecal__body" grow>
+    {% if g.view in ('month', 'week') %}
+      <div class="vuecal__bg" grow>
+        <div class="vuecal__flex vuecal__cells {{ g.view }}-view" grow wrap>
+          {% for day in g.days %}
+            {% set low = day.balance is not none and day.balance < 0 %}
+            <div class="vuecal__cell {{ 'vuecal__cell--today' if day.is_today else '' }} {{ 'vuecal__cell--out-of-scope' if not day.in_scope else '' }} {{ 'vuecal__cell--has-events' if day.events else '' }}" data-new-date="{{ day.date.isoformat() }}">
+              <div class="vuecal__flex vuecal__cell-content" column>
+                <div class="vuecal__cell-date">{{ day.date.day }}</div>
+                <div class="vuecal__cell-events">
+                  {% for e in day.events %}{{ event_button(e) }}{% endfor %}
+                </div>
+                {% if day.events %}<a class="vuecal__cell-events-count" href="{{ url('day', day.date) }}" data-cal-nav>{{ day.events | length }}</a>{% endif %}
+              </div>
+              {% if day.balance is not none %}<span class="cell-balance {{ 'low' if low else '' }}">{{ (day.balance | money).split('.')[0] }}</span>{% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    {% else %}
+      <ul class="cal-list">
+        {% for day in g.days %}
+          <li class="cal-day">
+            <div class="cal-day-head {{ 'today' if day.is_today else '' }}">
+              <span>{{ day.date | d('long') }}{% if day.is_today %} · today{% endif %}</span>
+              {% if day.balance is not none %}<span class="num {{ 'neg' if day.balance < 0 else '' }}">{{ day.balance | money }}</span>{% endif %}
+            </div>
+            {% for e in day.events %}{{ event_button(e, true) }}{% else %}<div class="vuecal__no-event text-sm">Nothing on this day.</div>{% endfor %}
+          </li>
+        {% else %}
+          <li class="empty">Nothing scheduled in this period.</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  </div>
+</div>

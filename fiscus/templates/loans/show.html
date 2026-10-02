@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% from "_macros.html" import estimate %}
+{% block title %}{{ loan.name }}{% endblock %}
+{% block content %}
+  <div class="page-head">
+    <div>
+      <h1>{{ loan.name }}</h1>
+      <span class="muted text-sm">{{ loan.balance_cents | money }} owing as at {{ loan.balance_date | d }} · {{ s.rate }}% · {{ (loan.term_months // 12) }} years from {{ loan.start_date | d }}</span>
+    </div>
+    <a class="btn" href="/loans/{{ loan.id }}/edit">Edit</a>
+  </div>
+  <div class="grid grid-2 grid-4">
+    <div class="card stat"><div class="label">Repayment</div><div class="value">{{ s.repayment_cents | money }}</div><span class="text-sm muted">{{ loan.repayment_frequency }}{{ ' (set by you)' if loan.repayment_override_cents else '' }}</span></div>
+    <div class="card stat"><div class="label">Offset balance</div><div class="value">{{ s.offset_balance_cents | money }}</div><span class="text-sm muted">{{ offsets | length }} account{{ '' if offsets | length == 1 else 's' }}</span></div>
+    <div class="card stat"><div class="label">Saved this month {{ estimate() }}</div><div class="value pos">{{ s.saved_month_cents | money }}</div></div>
+    <div class="card stat"><div class="label">Saved this financial year {{ estimate() }}</div><div class="value pos">{{ s.saved_year_cents | money }}</div></div>
+  </div>
+
+  <div class="card mt">
+    <h2>Over the life of the loan {{ estimate() }}</h2>
+    <p class="muted text-sm">Assumes today's rate and today's offset balance stay as they are.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th></th><th>Paid off</th><th class="num">Interest from today</th></tr></thead>
+        <tbody>
+          <tr><td>With the offset</td><td>{{ s.with_offset.paid_off | d if s.with_offset.paid_off else 'Not within 50 years' }}</td><td class="num">{{ s.with_offset.total_interest | money }}</td></tr>
+          <tr><td>Without the offset</td><td>{{ s.without_offset.paid_off | d if s.without_offset.paid_off else 'Not within 50 years' }}</td><td class="num">{{ s.without_offset.total_interest | money }}</td></tr>
+        </tbody>
+        <tfoot><tr><th>Offset saves</th><th>{% if s.months_sooner is not none %}{{ s.months_sooner }} months sooner{% endif %}</th><th class="num pos">{{ s.lifetime_saving_cents | money }}</th></tr></tfoot>
+      </table>
+    </div>
+  </div>
+
+  <div class="grid grid-2 mt">
+    <div class="card">
+      <h2>Rate history</h2>
+      <ul class="list">
+        {% for r in loan.rates | reverse %}
+          <li>
+            <span>{{ r.rate }}% from {{ r.effective_date | d }}</span>
+            {% if loan.rates | length > 1 %}
+              <form class="inline" method="post" action="/loans/{{ loan.id }}/rates/{{ r.id }}/delete">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button class="btn btn-sm" type="submit" aria-label="Remove">✕</button>
+              </form>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+      <form class="row mt" method="post" action="/loans/{{ loan.id }}/rates">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input class="input grow" type="date" name="effective_date" value="{{ today.isoformat() }}" required aria-label="From">
+        <input class="input grow" name="new_rate" inputmode="decimal" placeholder="New rate %" required aria-label="New rate">
+        <button class="btn btn-primary" type="submit">Add rate change</button>
+      </form>
+    </div>
+    <div class="card">
+      <h2>Offset accounts</h2>
+      <ul class="list">
+        {% for a in offsets %}
+          <li>
+            <a href="/accounts/{{ a.id }}">{{ a.name }}</a>
+            <form class="inline" method="post" action="/loans/{{ loan.id }}/offsets/{{ a.id }}/unlink">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button class="btn btn-sm" type="submit">Unlink</button>
+            </form>
+          </li>
+        {% else %}
+          <li class="muted">No offset account linked.</li>
+        {% endfor %}
+      </ul>
+      {% if candidates %}
+        <form class="row mt" method="post" action="/loans/{{ loan.id }}/offsets">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <select class="input grow" name="account_id" aria-label="Account">{% for a in candidates %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}</select>
+          <button class="btn" type="submit">Link</button>
+        </form>
+      {% else %}
+        <p class="muted text-sm mt">To link one, <a href="/accounts/new">add an account</a> of type Offset.</p>
+      {% endif %}
+    </div>
+  </div>
+  <form class="mt" method="post" action="/loans/{{ loan.id }}/delete" data-confirm="Delete {{ loan.name }}?">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button class="btn btn-danger" type="submit">Delete loan</button>
+  </form>
+{% endblock %}

@@ -1,0 +1,186 @@
+"""End to end in a real Chromium: passkeys through the browser's WebAuthn,
+the service worker's cache, the offline screen, and a clean console.
+
+Uses Chrome's virtual authenticator (DevTools protocol), so the page runs the
+same navigator.credentials code a phone does. Skipped when no Chromium is
+available; CI installs one.
+"""
+
+from __future__ import annotations
+
+import os
+import shutil
+import socket
+import threading
+import time
+from collections.abc import Iterator
+from pathlib import Path
+from typing import Any
+
+import pytest
+import uvicorn
+
+from fiscus.app import create_app
+from fiscus.services import auth as auth_service
+from tests.conftest import settings_for
+
+pytestmark = pytest.mark.browser
+
+playwright_api = pytest.importorskip('playwright.sync_api')
+
+
+def free_port() -> int:
+    with socket.socket() as s:
+        s.bind(('127.0.0.1', 0))
+        return int(s.getsockname()[1])
+
+
+@pytest.fixture
+def server(tmp_path: Path, migrated_template: Path) -> Iterator[tuple[str, Any]]:
+    port = free_port()
+    base = f'http://localhost:{port}'
+    data = tmp_path / 'data'
+    data.mkdir()
+    shutil.copy(migrated_template, data / 'fiscus.db')
+    settings = settings_for(
+        data, FISCUS_ORIGIN=base, FISCUS_BASE_URL=base, FISCUS_RP_ID='localhost'
+    )
+    app = create_app(settings, migrate=False)
+    config = uvicorn.Config(app, host='127.0.0.1', port=port, log_level='warning')
+    srv = uvicorn.Server(config)
+    thread = threading.Thread(target=srv.run, daemon=True)
+    thread.start()
+    for _ in range(100):
+        if srv.started:
+            break
+        time.sleep(0.05)
+    yield base, app.state.ctx
+    srv.should_exit = True
+    thread.join(timeout=5)
+
+
+@pytest.fixture
+def browser() -> Iterator[Any]:
+    exe = os.environ.get('CHROMIUM_PATH')
+    if exe is None:
+        default = Path('/opt/pw-browsers/chromium-1194/chrome-linux/chrome')
+        exe = str(default) if default.exists() else None
+    with playwright_api.sync_playwright() as p:
+        try:
+            b = p.chromium.launch(executable_path=exe) if exe else p.chromium.launch()
+        except Exception as exc:  # pragma: no cover - environment without a browser
+            pytest.skip(f'no Chromium: {exc}')
+        yield b
+        b.close()
+
+
+def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any) -> None:
+    base, ctx = server
+    with ctx.sessions() as db:
+        link = auth_service.ensure_bootstrap(db, ctx.settings, ctx.clock)
+        db.commit()
+    assert link is not None
+
+    context = browser.new_context(viewport={'width': 390, 'height': 844})
+    page = context.new_page()
+    errors: list[str] = []
+    page.on('console', lambda m: errors.append(m.text) if m.type == 'error' else None)
+    page.on('pageerror', lambda e: errors.append(str(e)))
+
+    cdp = context.new_cdp_session(page)
+    cdp.send('WebAuthn.enable')
+    cdp.send(
+        'WebAuthn.addVirtualAuthenticator',
+        {
+            'options': {
+                'protocol': 'ctap2',
+                'transport': 'internal',
+                'hasResidentKey': True,
+                'hasUserVerification': True,
+                'isUserVerified': True,
+                'automaticPresenceSimulation': True,
+            }
+        },
+    )
+
+    # Register the first admin through the real page.
+    page.goto(f'{base}/setup/{link.token}')
+    page.fill('#username', 'alex')
+    page.fill('#display_name', 'Alex')
+    page.click('[data-passkey-go]')
+    page.wait_for_url(f'{base}/')
+    assert "G'day, Alex" in page.content()
+
+    # Sign out and back in, usernameless. The login page starts a conditional
+    # (autofill) request on load, and the virtual authenticator answers it
+    # without a click, which is the whole flow working end to end.
+    page.goto(f'{base}/more')
+    page.click('main form[action="/auth/logout"] button')
+    page.wait_for_url(f'{base}/')
+    assert "G'day, Alex" in page.content()
+
+    # Add an account and walk the main screens.
+    page.goto(f'{base}/accounts/new')
+    page.fill('#name', 'Everyday')
+    page.fill('#opening_balance', '2500')
+    page.click('main button[type=submit]')
+    page.wait_for_url(f'{base}/accounts/*')
+    for path in [
+        '/calendar',
+        '/forecast',
+        '/budget',
+        '/bills/new',
+        '/settings',
+        '/tax',
+        '/housing',
+    ]:
+        page.goto(f'{base}{path}')
+        page.wait_for_load_state('networkidle')
+    # Narrow screen: the calendar opens on the agenda.
+    page.goto(f'{base}/calendar')
+    page.wait_for_function(
+        "document.querySelector('#cal') && document.querySelector('#cal').dataset.view === 'agenda'"
+    )
+    # The forecast chart drew.
+    page.goto(f'{base}/forecast')
+    page.wait_for_selector('.uplot')
+
+    # The service worker is active and has cached the shell and nothing else.
+    page.goto(f'{base}/')
+    page.evaluate('navigator.serviceWorker.ready.then(() => true)')
+    page.wait_for_function('navigator.serviceWorker.controller !== null', timeout=10000)
+    cached = page.evaluate("""async () => {
+        const out = [];
+        for (const name of await caches.keys()) {
+            const c = await caches.open(name);
+            for (const req of await c.keys()) out.push(new URL(req.url).pathname);
+        }
+        return out;
+    }""")
+    assert cached, 'the service worker cached nothing'
+    assert all(p == '/offline' or p.startswith('/static/') for p in cached), cached
+
+    # Browse a few data pages, then check again: still nothing but the shell.
+    for path in ['/accounts', '/calendar', '/forecast']:
+        page.goto(f'{base}{path}')
+    cached_after = page.evaluate("""async () => {
+        const out = [];
+        for (const name of await caches.keys()) {
+            const c = await caches.open(name);
+            for (const req of await c.keys()) out.push(new URL(req.url).pathname);
+        }
+        return out;
+    }""")
+    assert sorted(cached_after) == sorted(cached)
+
+    # Offline: the offline screen, never yesterday's figures.
+    context.set_offline(True)
+    page.goto(f'{base}/accounts')
+    assert page.locator('#offline-screen').is_visible()
+    assert 'Everyday' not in page.content() and '2,500' not in page.content()
+    context.set_offline(False)
+
+    benign = ('favicon', 'Failed to load resource: net::ERR_INTERNET_DISCONNECTED')
+    real = [e for e in errors if not any(b in e for b in benign)]
+    assert real == [], real
+    context.close()

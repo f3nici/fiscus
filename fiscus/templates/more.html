@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Menu{% endblock %}
+{% block content %}
+  <h1>Menu</h1>
+  <div class="more-menu mt">
+    <a href="/accounts">Accounts</a>
+    <a href="/transactions">Transactions</a>
+    <a href="/recategorise">Recategorise</a>
+    <a href="/pay">Pay and payslips</a>
+    <a href="/budget">Budget</a>
+    <a href="/forecast">Forecast</a>
+    <a href="/scenarios">Scenarios</a>
+    <a href="/loans">Home loan</a>
+    <a href="/housing">Housing costs</a>
+    <a href="/tax">Tax</a>
+    <a href="/categories">Categories and rules</a>
+    <a href="/settings">Settings</a>
+    {% if user.is_admin %}<a href="/admin/users">Admin</a>{% endif %}
+  </div>
+  <form class="mt" method="post" action="/auth/logout" hx-boost="false">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button class="btn w-full" type="submit">Sign out</button>
+  </form>
+  <p class="muted text-xs center mt">Fiscus {{ version }}</p>
+{% endblock %}

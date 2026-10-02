@@ -1,0 +1,38 @@
+{% from "_macros.html" import money_cell, status_pill %}
+<h2>{{ o.bill.name }}</h2>
+<p class="muted">{{ o.due | d('long') }} · {{ status_pill(o.status) }}</p>
+<ul class="list">
+  <li><span>Your share</span><span class="num">{{ o.share_cents | money }}</span></li>
+  {% if o.shared %}<li><span>Whole bill</span><span class="num">{{ o.bill.amount_cents | money }}</span></li>{% endif %}
+  <li><span>Matches a payment of</span><span class="num">{{ expected | money }}</span></li>
+</ul>
+{% set back = request.headers.get('hx-current-url', '/calendar') %}
+{% if o.payment %}
+  <p class="mt">Paid {{ o.payment.paid_on | d }}{% if txn %}: {{ txn.description }} ({{ txn.amount_cents | money }}){% else %}, marked by hand{% endif %}.</p>
+  <form method="post" action="/bills/{{ o.bill.id }}/occurrence/{{ o.due.isoformat() }}/unpaid" hx-boost="false">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="back" value="/calendar">
+    <button class="btn" type="submit">{{ 'Unmatch' if txn else 'Mark unpaid' }}</button>
+  </form>
+{% else %}
+  <div class="row mt">
+    <form method="post" action="/bills/{{ o.bill.id }}/occurrence/{{ o.due.isoformat() }}/paid" hx-boost="false">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="back" value="/calendar">
+      <button class="btn btn-primary" type="submit">Mark paid</button>
+    </form>
+    {% if is_owner %}<a class="btn" href="/bills/{{ o.bill.id }}/edit">Edit bill</a>{% endif %}
+    <a class="btn" href="/bills/{{ o.bill.id }}">Open bill</a>
+  </div>
+  {% if candidates %}
+    <h3 class="mt">Or match a transaction</h3>
+    <form method="post" action="/bills/{{ o.bill.id }}/occurrence/{{ o.due.isoformat() }}/paid" hx-boost="false">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="back" value="/calendar">
+      <select class="input" name="transaction_id" aria-label="Transaction">
+        {% for t in candidates %}<option value="{{ t.id }}">{{ t.date | d('dm') }} · {{ t.amount_cents | money }} · {{ t.description[:50] }}</option>{% endfor %}
+      </select>
+      <button class="btn mt-sm" type="submit">Match</button>
+    </form>
+  {% endif %}
+{% endif %}

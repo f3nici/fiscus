@@ -1,0 +1,56 @@
+{% macro icon(name) -%}
+  {%- set paths = {
+    'home': 'M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10',
+    'calendar': 'M4 6h16v14H4zM4 10h16M8 3v4M16 3v4',
+    'wallet': 'M3 7h18v12H3zM3 7l3-3h12M16 13h2',
+    'list': 'M8 6h13M8 12h13M8 18h13M3 6h1M3 12h1M3 18h1',
+    'upload': 'M12 16V4M7 9l5-5 5 5M4 20h16',
+    'receipt': 'M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6',
+    'cash': 'M3 7h18v10H3zM12 9a3 3 0 100 6 3 3 0 000-6z',
+    'pie': 'M12 3v9h9a9 9 0 11-9-9zM15 3a6 6 0 016 6h-6z',
+    'chart': 'M3 20h18M5 16l4-5 4 3 6-8',
+    'house': 'M3 11l9-7 9 7v9H3zM9 20v-6h6v6',
+    'key': 'M14 10a4 4 0 11-8 0 4 4 0 018 0zM13 12l8 8M17 16l2-2',
+    'percent': 'M19 5L5 19M7 7h.01M17 17h.01',
+    'tag': 'M3 3h8l10 10-8 8L3 11zM7 7h.01',
+    'cog': 'M12 15a3 3 0 100-6 3 3 0 000 6zM19 12l2-1-1-3-2 .5-1.5-1.5.5-2-3-1-1 2h-2l-1-2-3 1 .5 2L6 9.5 4 9l-1 3 2 1v2l-2 1 1 3 2-.5 1.5 1.5-.5 2 3 1 1-2h2l1 2 3-1-.5-2 1.5-1.5 2 .5 1-3-2-1z',
+    'shield': 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z',
+    'menu': 'M4 6h16M4 12h16M4 18h16',
+  } -%}
+  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="{{ paths.get(name, '') }}"/></svg>
+{%- endmacro %}
+
+{% macro csrf() -%}
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+{%- endmacro %}
+
+{% macro money_cell(cents) -%}
+  <span class="num {{ 'neg' if cents < 0 else '' }}">{{ cents | money }}</span>
+{%- endmacro %}
+
+{% macro status_pill(status) -%}
+  {%- set labels = {'paid': 'Paid', 'overdue': 'Overdue', 'due_soon': 'Due soon', 'upcoming': 'Upcoming', 'scheduled': 'Scheduled'} -%}
+  <span class="pill pill-{{ status }}">{{ labels.get(status, status) }}</span>
+{%- endmacro %}
+
+{% macro estimate() -%}
+  <span class="pill pill-estimate" title="An estimate from your data, not tax or financial advice">Estimate</span>
+{%- endmacro %}
+
+{% macro select_accounts(name, accounts, selected, blank='') -%}
+  <select class="input" name="{{ name }}" id="{{ name }}">
+    {% if blank %}<option value="0">{{ blank }}</option>{% endif %}
+    {% for a in accounts %}
+      <option value="{{ a.id }}" {{ 'selected' if a.id == selected else '' }}>{{ a.name }}</option>
+    {% endfor %}
+  </select>
+{%- endmacro %}
+
+{% macro select_categories(name, cats, selected, blank='Uncategorised') -%}
+  <select class="input" name="{{ name }}" id="{{ name }}">
+    {% if blank %}<option value="0">{{ blank }}</option>{% endif %}
+    {% for c in cats %}
+      <option value="{{ c.id }}" {{ 'selected' if c.id == selected else '' }}>{{ c.name }}</option>
+    {% endfor %}
+  </select>
+{%- endmacro %}

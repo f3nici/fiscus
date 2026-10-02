@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% from "_macros.html" import money_cell %}
+{% block title %}Accounts{% endblock %}
+{% block content %}
+  <div class="page-head">
+    <h1>Accounts</h1>
+    <div class="row">
+      <a class="btn" href="/transactions/export.csv" hx-boost="false">Export CSV</a>
+      <a class="btn btn-primary" href="/accounts/new">Add account</a>
+    </div>
+  </div>
+  <div class="card">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Name</th><th>Type</th><th class="num">Balance</th></tr></thead>
+        <tbody>
+          {% for a in accounts %}
+            <tr>
+              <td>
+                <a href="/accounts/{{ a.id }}">{{ a.name }}</a>
+                {% if a.is_set_aside %}<span class="pill">Tax set-aside</span>{% endif %}
+                {% if a.loan_id and loans.get(a.loan_id) %}<span class="pill pill-shared">Offsets {{ loans[a.loan_id].name }}</span>{% endif %}
+                {% if a.archived %}<span class="pill">Archived</span>{% endif %}
+              </td>
+              <td>{{ labels[a.type] }}</td>
+              <td class="num">{{ money_cell(balances.get(a.id, 0)) }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="3" class="muted">No accounts yet.</td></tr>
+          {% endfor %}
+        </tbody>
+        {% if accounts %}
+          <tfoot><tr><th colspan="2">Total (active)</th><th class="num">{{ total | money }}</th></tr></tfoot>
+        {% endif %}
+      </table>
+    </div>
+  </div>
+{% endblock %}

@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Pay and payslips{% endblock %}
+{% block content %}
+  <h1>Pay and payslips</h1>
+  <div class="grid grid-2">
+    <div class="card">
+      <h2>Pay schedules</h2>
+      <ul class="list">
+        {% for s in schedules %}
+          <li>
+            <span class="grow">
+              <span class="title">{{ s.name }}</span>
+              <span class="text-xs muted">{{ s.frequency | capitalize }} · next {{ next[s.id] | d if next[s.id] else 'none' }}{% if s.end_date %} · ends {{ s.end_date | d }}{% endif %}</span>
+            </span>
+            <span class="num pos">{{ s.net_cents | money }}</span>
+            <a class="btn btn-sm" href="/pay?edit={{ s.id }}">Edit</a>
+          </li>
+        {% else %}
+          <li class="muted">No pay schedules yet.</li>
+        {% endfor %}
+      </ul>
+      {% set e = edit %}
+      <h3 class="mt">{{ 'Edit ' ~ e.name if e else 'Add a pay schedule' }}</h3>
+      <form method="post" action="{{ '/pay/schedules/' ~ e.id if e else '/pay/schedules' }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="form-grid">
+          <div class="field"><label class="label" for="ps-name">Name</label><input class="input" id="ps-name" name="name" required maxlength="80" value="{{ e.name if e else 'Salary' }}"></div>
+          <div class="field"><label class="label" for="ps-freq">How often</label>
+            <select class="input" id="ps-freq" name="frequency">{% for f in freqs %}<option value="{{ f }}" {{ 'selected' if (e and e.frequency == f) or (not e and f == 'fortnightly') else '' }}>{{ f | capitalize }}</option>{% endfor %}</select>
+          </div>
+          <div class="field"><label class="label" for="ps-anchor">A payday</label><input class="input" type="date" id="ps-anchor" name="anchor_date" required value="{{ e.anchor_date.isoformat() if e else today.isoformat() }}"></div>
+          <div class="field"><label class="label" for="ps-net">Net pay</label><input class="input" id="ps-net" name="net" inputmode="decimal" required value="{{ e.net_cents | money_plain if e else '' }}"></div>
+          <div class="field"><label class="label" for="ps-gross">Gross pay (optional, for tax)</label><input class="input" id="ps-gross" name="gross" inputmode="decimal" value="{{ e.gross_cents | money_plain if e and e.gross_cents is not none else '' }}"></div>
+          <div class="field"><label class="label" for="ps-tax">Tax withheld (optional)</label><input class="input" id="ps-tax" name="tax_withheld" inputmode="decimal" value="{{ e.tax_withheld_cents | money_plain if e and e.tax_withheld_cents is not none else '' }}"></div>
+          <div class="field"><label class="label" for="ps-account">Paid into</label>
+            <select class="input" id="ps-account" name="account_id"><option value="0">My spending account</option>{% for a in accounts %}<option value="{{ a.id }}" {{ 'selected' if e and e.account_id == a.id else '' }}>{{ a.name }}</option>{% endfor %}</select>
+          </div>
+          <div class="field"><label class="label" for="ps-end">Ends (optional)</label><input class="input" type="date" id="ps-end" name="end_date" value="{{ e.end_date.isoformat() if e and e.end_date else '' }}"></div>
+        </div>
+        <div class="row">
+          <button class="btn btn-primary" type="submit">Save</button>
+          {% if e %}<a class="btn" href="/pay">Cancel</a>{% endif %}
+        </div>
+      </form>
+      {% if e %}
+        <form class="mt" method="post" action="/pay/schedules/{{ e.id }}/delete" data-confirm="Delete {{ e.name }}?">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn btn-danger btn-sm" type="submit">Delete schedule</button>
+        </form>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h2>Payslips</h2>
+      <p class="muted text-sm">This financial year: gross {{ ytd.gross | money }}, tax withheld {{ ytd.tax | money }}, net {{ ytd.net | money }}.</p>
+      <form method="post" action="/payslips">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="form-grid">
+          <div class="field"><label class="label" for="slip-date">Pay date</label><input class="input" type="date" id="slip-date" name="date" required value="{{ today.isoformat() }}"></div>
+          <div class="field"><label class="label" for="slip-source">Employer</label><input class="input" id="slip-source" name="source" maxlength="120"></div>
+          <div class="field"><label class="label" for="slip-gross">Gross</label><input class="input" id="slip-gross" name="gross" inputmode="decimal" required></div>
+          <div class="field"><label class="label" for="slip-tax">Tax withheld</label><input class="input" id="slip-tax" name="tax_withheld" inputmode="decimal" required></div>
+          <div class="field"><label class="label" for="slip-net">Net</label><input class="input" id="slip-net" name="net" inputmode="decimal" required></div>
+        </div>
+        <button class="btn btn-primary" type="submit">Add payslip</button>
+      </form>
+      <div class="table-wrap mt">
+        <table>
+          <thead><tr><th>Date</th><th>From</th><th class="num">Gross</th><th class="num">Tax</th><th class="num">Net</th><th></th></tr></thead>
+          <tbody>
+            {% for p in slips %}
+              <tr>
+                <td class="num">{{ p.date | d }}</td><td>{{ p.source }}</td>
+                <td class="num">{{ p.gross_cents | money }}</td><td class="num">{{ p.tax_withheld_cents | money }}</td><td class="num">{{ p.net_cents | money }}</td>
+                <td>
+                  <form class="inline" method="post" action="/payslips/{{ p.id }}/delete" data-confirm="Delete this payslip?">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button class="btn btn-sm" type="submit" aria-label="Delete">✕</button>
+                  </form>
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="6" class="muted">No payslips yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+{% endblock %}

@@ -1,0 +1,5 @@
+<div class="row mt-sm">
+  <a class="btn btn-sm {{ 'btn-primary' if path.startswith('/admin/users') else '' }}" href="/admin/users">Users</a>
+  <a class="btn btn-sm {{ 'btn-primary' if path.startswith('/admin/audit') else '' }}" href="/admin/audit">Audit log</a>
+  <a class="btn btn-sm {{ 'btn-primary' if path.startswith('/admin/backups') else '' }}" href="/admin/backups">Backups</a>
+</div>

@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit account' if account else 'New account' }}{% endblock %}
+{% block content %}
+  <h1>{{ 'Edit ' ~ account.name if account else 'New account' }}</h1>
+  {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
+  <form class="card" method="post" action="{{ '/accounts/' ~ account.id if account else '/accounts' }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="form-grid">
+      <div class="field">
+        <label class="label" for="name">Name</label>
+        <input class="input" id="name" name="name" required maxlength="80" value="{{ account.name if account else '' }}">
+      </div>
+      <div class="field">
+        <label class="label" for="type">Type</label>
+        <select class="input" id="type" name="type">
+          {% for t in types %}<option value="{{ t }}" {{ 'selected' if account and account.type == t else '' }}>{{ labels[t] }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label class="label" for="opening_balance">Opening balance</label>
+        <input class="input" id="opening_balance" name="opening_balance" inputmode="decimal" value="{{ account.opening_balance_cents | money_plain if account else '0.00' }}">
+        <small>The balance before the first transaction you will import. Credit cards owing money are negative.</small>
+      </div>
+      <div class="field">
+        <label class="label" for="loan_id">Offsets a loan</label>
+        <select class="input" id="loan_id" name="loan_id">
+          <option value="0">No</option>
+          {% for l in loans %}<option value="{{ l.id }}" {{ 'selected' if account and account.loan_id == l.id else '' }}>{{ l.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="full">
+        <label class="check"><input type="checkbox" name="is_set_aside" value="true" {{ 'checked' if account and account.is_set_aside else '' }}> This is where I set aside money for tax</label>
+        {% if account %}<label class="check"><input type="checkbox" name="archived" value="true" {{ 'checked' if account.archived else '' }}> Archived (hidden from forecasts and lists)</label>{% endif %}
+      </div>
+    </div>
+    <div class="row">
+      <button class="btn btn-primary" type="submit">Save</button>
+      <a class="btn" href="{{ '/accounts/' ~ account.id if account else '/accounts' }}">Cancel</a>
+    </div>
+  </form>
+  {% if account %}
+    <form class="mt" method="post" action="/accounts/{{ account.id }}/delete" data-confirm="Delete {{ account.name }} and every transaction in it? This cannot be undone.">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn btn-danger" type="submit">Delete account</button>
+    </form>
+  {% endif %}
+{% endblock %}

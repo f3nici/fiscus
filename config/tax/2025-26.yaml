@@ -1,0 +1,38 @@
+# Australian resident individual income tax, 2025-26 financial year.
+#
+# VERIFY against the ATO:
+#   https://www.ato.gov.au/tax-rates-and-codes/tax-rates-australian-residents
+#
+# Kept so a figure for the year just finished can still be estimated. Fiscus
+# estimates. It is not tax advice.
+
+financial_year: "2025-26"
+start: 2025-07-01
+end: 2026-06-30
+verified: "Not yet checked against ato.gov.au by a person. Check every July."
+
+brackets:
+  - over: 0
+    rate: "0"
+  - over: 18200
+    rate: "0.16"
+  - over: 45000
+    rate: "0.30"
+  - over: 135000
+    rate: "0.37"
+  - over: 190000
+    rate: "0.45"
+
+medicare:
+  rate: "0.02"
+  lower: 27222
+  upper: 34027
+  phase_in_rate: "0.10"
+
+lito:
+  max: 700
+  full_to: 37500
+  first_taper_to: 45000
+  first_taper_rate: "0.05"
+  second_taper_to: 66667
+  second_taper_rate: "0.015"

@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Budget{% endblock %}
+{% block content %}
+  <div class="page-head">
+    <h1>Budget</h1>
+    <div class="row">
+      <a class="btn btn-sm" href="/budget?month={{ prev.strftime('%Y-%m') }}" aria-label="Previous month">‹</a>
+      <strong>{{ month | d('month') }}</strong>
+      <a class="btn btn-sm" href="/budget?month={{ next.strftime('%Y-%m') }}" aria-label="Next month">›</a>
+    </div>
+  </div>
+  <div class="grid grid-3">
+    <div class="card stat"><div class="label">Budgeted spending</div><div class="value">{{ totals.budget | money }}</div></div>
+    <div class="card stat"><div class="label">Actual spending</div><div class="value {{ 'neg' if totals.actual > totals.budget and totals.budget else '' }}">{{ totals.actual | money }}</div></div>
+    <div class="card stat"><div class="label">Categories over</div><div class="value {{ 'neg' if totals.over else '' }}">{{ totals.over }}</div></div>
+  </div>
+  <div class="card mt">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Category</th><th class="num">Budget</th><th class="num">Actual</th><th class="num">Bills due</th><th>Progress</th><th class="num">Left</th><th></th></tr></thead>
+        <tbody>
+          {% for r in rows %}
+            <tr>
+              <td>{{ r.category.name }}{% if r.category.is_income %} <span class="pill pill-ok">Income</span>{% endif %}{% if r.budget and r.budget.use_in_forecast %} <span class="pill">In forecast</span>{% endif %}</td>
+              <td class="num">{{ r.budget_cents | money if r.budget else '-' }}</td>
+              <td class="num">{{ r.actual_cents | money }}</td>
+              <td class="num">{{ r.bills_cents | money if r.bills_cents else '' }}</td>
+              <td>{% if r.budget %}<meter min="0" max="{{ r.budget_cents }}" low="{{ (r.budget_cents * 0.9) | int }}" high="{{ r.budget_cents }}" optimum="0" value="{{ [r.actual_cents, r.budget_cents] | min }}">{{ r.pct }}%</meter>{% endif %}</td>
+              <td class="num {{ 'neg' if r.state == 'over' else '' }}">{{ r.remaining_cents | money if r.budget else '' }}</td>
+              <td>
+                <details>
+                  <summary class="text-sm">Set</summary>
+                  <form method="post" action="/budget" class="mt-sm">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input type="hidden" name="category_id" value="{{ r.category.id }}">
+                    <input type="hidden" name="back" value="/budget?month={{ month.strftime('%Y-%m') }}">
+                    <input class="input" name="amount" inputmode="decimal" value="{{ r.budget_cents | money_plain if r.budget else '' }}" aria-label="Monthly budget">
+                    <label class="check mt-sm"><input type="checkbox" name="use_in_forecast" value="true" {{ 'checked' if r.budget and r.budget.use_in_forecast }}> Use in forecast</label>
+                    <button class="btn btn-sm btn-primary" type="submit">Save</button>
+                  </form>
+                </details>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="7" class="muted">No budget lines or spending this month.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% if unbudgeted %}
+    <form class="card mt row" method="post" action="/budget">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="back" value="/budget?month={{ month.strftime('%Y-%m') }}">
+      <select class="input grow" name="category_id" aria-label="Category">{% for c in unbudgeted %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select>
+      <input class="input grow" name="amount" inputmode="decimal" placeholder="Monthly amount" required aria-label="Monthly amount">
+      <label class="check"><input type="checkbox" name="use_in_forecast" value="true"> Use in forecast</label>
+      <button class="btn btn-primary" type="submit">Add budget line</button>
+    </form>
+  {% endif %}
+  <p class="muted text-sm mt">Budgets for categories holding <a href="/housing">housing costs</a> are kept equal to the monthly total of those items.</p>
+{% endblock %}

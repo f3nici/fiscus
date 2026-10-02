@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% from "_macros.html" import money_cell, status_pill, estimate %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+  <div class="page-head">
+    <h1>G'day, {{ user.display_name }}</h1>
+    <span class="muted text-sm">{{ today | d('long') }}</span>
+  </div>
+
+  {% if not has_any %}
+    <div class="card">
+      <h2>Getting started</h2>
+      <ol>
+        <li><a href="/accounts/new">Add your accounts</a>: transaction, offset, savings, credit card.</li>
+        <li><a href="/import">Import a CSV</a> from your bank (ANZ is detected automatically).</li>
+        <li><a href="/pay">Set up your pay schedule</a> and <a href="/bills/new">add your bills</a>.</li>
+        <li>Optional: your <a href="/loans/new">home loan</a> and <a href="/housing">housing costs</a>.</li>
+      </ol>
+    </div>
+  {% endif %}
+
+  {% if forecast.low_balance %}
+    <div class="alert alert-warn">
+      Low balance ahead: <strong>{{ forecast.low_balance.account }}</strong> is projected to reach
+      <strong>{{ forecast.low_balance.balance | money }}</strong> on {{ forecast.low_balance.date | d('long') }}.
+      <a href="/forecast">See the forecast</a>.
+    </div>
+  {% endif %}
+
+  <div class="grid grid-2 grid-4">
+    <div class="card stat">
+      <div class="label">All accounts</div>
+      <div class="value">{{ total | money }}</div>
+      <a class="text-sm" href="/accounts">{{ accounts | length }} account{{ '' if accounts | length == 1 else 's' }}</a>
+    </div>
+    <div class="card stat">
+      <div class="label">Spent this month</div>
+      <div class="value">{{ spend_total | money }}</div>
+      <span class="text-sm muted">{% if budget.budget %}of {{ budget.budget | money }} budgeted{% else %}<a href="/budget">Set a budget</a>{% endif %}</span>
+    </div>
+    <div class="card stat">
+      <div class="label">Tax set aside {{ estimate() }}</div>
+      {% if tax %}
+        <div class="value {{ 'neg' if tax.set_aside_gap_cents < 0 else '' }}">{{ tax.set_aside_actual_cents | money }}</div>
+        <span class="text-sm muted">should be {{ tax.should_set_aside_cents | money }} · <a href="/tax">Tax</a></span>
+      {% else %}
+        <div class="value">-</div><span class="text-sm muted">No tax table for this year</span>
+      {% endif %}
+    </div>
+    <div class="card stat">
+      <div class="label">Offset saved this month {{ estimate() }}</div>
+      {% if loans %}
+        <div class="value pos">{{ loans | sum(attribute='saved_month_cents') | money }}</div>
+        <span class="text-sm muted">{{ loans | sum(attribute='saved_year_cents') | money }} this financial year</span>
+      {% else %}
+        <div class="value">-</div><a class="text-sm" href="/loans/new">Add your home loan</a>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="grid grid-2 mt">
+    <div class="card">
+      <div class="row between"><h2 class="mb-0">Next 3 months</h2><a class="text-sm" href="/forecast">Forecast</a></div>
+      <svg class="spark mt" viewBox="0 0 {{ spark.width }} {{ spark.height }}" preserveAspectRatio="none" role="img" aria-label="Projected combined balance over the next three months">
+        {% if spark.zero %}<line x1="0" x2="{{ spark.width }}" y1="{{ spark.zero }}" y2="{{ spark.zero }}"></line>{% endif %}
+        <polyline points="{{ spark.points }}"></polyline>
+      </svg>
+      <div class="row between text-sm muted">
+        <span>Today {{ forecast.combined[0] | money }}</span>
+        <span>{{ forecast.dates[-1] | d('dm') }}: {{ forecast.combined[-1] | money }}</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row between"><h2 class="mb-0">Next 14 days</h2><a class="text-sm" href="/calendar">Calendar</a></div>
+      <ul class="list">
+        {% for day in upcoming %}
+          {% for e in day.events %}
+            <li>
+              <span class="grow">
+                <span class="title"><span class="legend-dot dot-{{ e.kind }}"></span>{{ e.title }}</span>
+                <span class="text-xs muted">{{ e.date | d('dm') }}</span>
+              </span>
+              {{ money_cell(e.amount_cents) }}
+              {% if e.kind in ('bill', 'shared') %}{{ status_pill(e.status) }}{% endif %}
+            </li>
+          {% endfor %}
+        {% else %}
+          <li class="muted">Nothing due in the next fortnight.</li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <div class="card">
+      <div class="row between"><h2 class="mb-0">Accounts</h2><a class="text-sm" href="/accounts">All</a></div>
+      <ul class="list">
+        {% for a in accounts %}
+          <li><a class="title" href="/accounts/{{ a.id }}">{{ a.name }}</a>{{ money_cell(balances.get(a.id, 0)) }}</li>
+        {% else %}
+          <li class="muted"><a href="/accounts/new">Add an account</a></li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <div class="card">
+      <div class="row between"><h2 class="mb-0">Spending this month</h2><a class="text-sm" href="/budget">Budget</a></div>
+      <ul class="list">
+        {% for name, cents in spending %}
+          <li><span class="title">{{ name }}</span><span class="num">{{ cents | money }}</span></li>
+        {% else %}
+          <li class="muted">No spending recorded this month yet.</li>
+        {% endfor %}
+      </ul>
+      {% if over %}
+        <p class="text-sm neg mt">Over budget: {% for r in over %}{{ r.category.name }}{{ ', ' if not loop.last else '' }}{% endfor %}</p>
+      {% endif %}
+    </div>
+  </div>
+{% endblock %}

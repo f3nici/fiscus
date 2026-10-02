@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% from "_macros.html" import estimate %}
+{% block title %}Home loan{% endblock %}
+{% block content %}
+  <div class="page-head">
+    <h1>Home loan</h1>
+    <a class="btn btn-primary" href="/loans/new">Add loan</a>
+  </div>
+  {% for s in rows %}
+    <a class="card" href="/loans/{{ s.loan.id }}">
+      <div class="row between"><h2 class="mb-0">{{ s.loan.name }}</h2><span class="num">{{ s.loan.balance_cents | money }} owing</span></div>
+      <p class="muted text-sm mt-sm">{{ s.rate }}% · {{ s.repayment_cents | money }} {{ s.loan.repayment_frequency }} · offset {{ s.offset_balance_cents | money }}</p>
+      <p class="text-sm">Offset saved {{ s.saved_month_cents | money }} this month and {{ s.saved_year_cents | money }} this financial year {{ estimate() }}</p>
+    </a>
+  {% else %}
+    <div class="card"><p>No loans yet.</p><a class="btn btn-primary" href="/loans/new">Add your home loan</a></div>
+  {% endfor %}
+{% endblock %}

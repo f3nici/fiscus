@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% from "_macros.html" import money_cell %}
+{% block title %}Recategorise{% endblock %}
+{% block content %}
+  <div class="page-head">
+    <h1>Recategorise</h1>
+    <span class="muted">{{ txns | length }}{{ '+' if txns | length == 200 else '' }} uncategorised</span>
+  </div>
+  {% if not txns %}
+    <div class="card"><p>Everything has a category. Nice.</p><a class="btn" href="/categories">Categories and rules</a></div>
+  {% else %}
+    <p class="muted text-sm">Pick a category on any row to save it straight away, or tick several and move them together.</p>
+    <div class="card">
+      <label class="check"><input type="checkbox" data-select-all> Select all</label>
+      {% for t in txns %}
+        <div class="recat-row">
+          <input type="checkbox" name="txn" value="{{ t.id }}" form="bulk" aria-label="Select {{ t.description }}">
+          <div>
+            <div>{{ t.description }}</div>
+            <div class="meta text-xs muted"><span>{{ t.date | d }} · {{ accounts.get(t.account_id, '') }}</span>{{ money_cell(t.amount_cents) }}</div>
+          </div>
+          <form method="post" action="/transactions/{{ t.id }}/category" class="row"
+                hx-post="/transactions/{{ t.id }}/category" hx-trigger="change" hx-target="find .saved-slot" hx-swap="innerHTML">
+            <select class="input grow" name="category_id" aria-label="Category for {{ t.description }}">
+              <option value="0">Choose…</option>
+              {% for c in cats %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+            </select>
+            <span class="saved-slot"></span>
+          </form>
+        </div>
+      {% endfor %}
+      <form class="sticky-actions row" method="post" action="/recategorise/bulk" id="bulk">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <select class="input grow" name="category_id" aria-label="Move selected to">
+          {% for c in cats %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+        </select>
+        <button class="btn btn-primary" type="submit">Move selected</button>
+      </form>
+    </div>
+  {% endif %}
+{% endblock %}

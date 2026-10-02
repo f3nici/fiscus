@@ -1,0 +1,13 @@
+# Build from source instead of pulling.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+#
+# For contributors and for testing a branch. A deployment does not need this
+# file: it runs the image CI published, which is the artefact that was tested.
+services:
+  fiscus:
+    build:
+      context: .
+      args:
+        BUILD_HASH: ${BUILD_HASH:-local}
+    image: ${IMAGE_PREFIX:-docker.io/f3nici/fiscus}:${TAG:-local}

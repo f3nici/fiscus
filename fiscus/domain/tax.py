@@ -1,0 +1,168 @@
+"""Australian resident income tax estimate.
+
+Rates come from config/tax/<year>.yaml, one file per financial year (1 July to
+30 June). Everything here is an estimate and every screen says so.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import date
+from decimal import ROUND_HALF_UP, Decimal
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+CONFIG_DIR = Path(__file__).resolve().parents[2] / 'config' / 'tax'
+
+
+class TaxConfigError(RuntimeError):
+    pass
+
+
+@dataclass(frozen=True)
+class TaxYear:
+    label: str
+    start: date
+    end: date
+    brackets: tuple[tuple[int, Decimal], ...]  # (over, rate), dollars
+    medicare_rate: Decimal
+    medicare_lower: int
+    medicare_upper: int
+    medicare_phase_in: Decimal
+    lito_max: int
+    lito_full_to: int
+    lito_t1_to: int
+    lito_t1_rate: Decimal
+    lito_t2_to: int
+    lito_t2_rate: Decimal
+    verified: str
+
+
+def fy_label(day: date) -> str:
+    start = day.year if day.month >= 7 else day.year - 1
+    return f'{start}-{str(start + 1)[-2:]}'
+
+
+def fy_bounds(day: date) -> tuple[date, date]:
+    start = day.year if day.month >= 7 else day.year - 1
+    return date(start, 7, 1), date(start + 1, 6, 30)
+
+
+def _dec(v: Any) -> Decimal:
+    return Decimal(str(v))
+
+
+def load_year(label: str, config_dir: Path | None = None) -> TaxYear:
+    path = (config_dir or CONFIG_DIR) / f'{label}.yaml'
+    if not path.exists():
+        raise TaxConfigError(f'No tax table for {label}. Add config/tax/{label}.yaml')
+    raw = yaml.safe_load(path.read_text())
+    try:
+        brackets = tuple(sorted((int(b['over']), _dec(b['rate'])) for b in raw['brackets']))
+        m, lito = raw['medicare'], raw['lito']
+        return TaxYear(
+            label=str(raw['financial_year']),
+            start=_as_date(raw['start']),
+            end=_as_date(raw['end']),
+            brackets=brackets,
+            medicare_rate=_dec(m['rate']),
+            medicare_lower=int(m['lower']),
+            medicare_upper=int(m['upper']),
+            medicare_phase_in=_dec(m['phase_in_rate']),
+            lito_max=int(lito['max']),
+            lito_full_to=int(lito['full_to']),
+            lito_t1_to=int(lito['first_taper_to']),
+            lito_t1_rate=_dec(lito['first_taper_rate']),
+            lito_t2_to=int(lito['second_taper_to']),
+            lito_t2_rate=_dec(lito['second_taper_rate']),
+            verified=str(raw.get('verified', '')),
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise TaxConfigError(f'{path.name} is malformed: {exc}') from exc
+
+
+def _as_date(v: Any) -> date:
+    return v if isinstance(v, date) else date.fromisoformat(str(v))
+
+
+def _cents(dollars: Decimal) -> int:
+    return int((dollars * 100).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
+
+
+def income_tax(year: TaxYear, taxable_cents: int) -> int:
+    """Tax on taxable income before offsets and levy. ATO uses whole dollars."""
+    income = Decimal(max(0, taxable_cents) // 100)
+    tax = Decimal(0)
+    for i, (over, rate) in enumerate(year.brackets):
+        upper = Decimal(year.brackets[i + 1][0]) if i + 1 < len(year.brackets) else None
+        if income <= over:
+            break
+        top = income if upper is None else min(income, upper)
+        tax += (top - Decimal(over)) * rate
+    return _cents(tax)
+
+
+def lito(year: TaxYear, taxable_cents: int) -> int:
+    income = Decimal(max(0, taxable_cents) // 100)
+    offset = Decimal(year.lito_max)
+    if income > year.lito_full_to:
+        offset -= (min(income, Decimal(year.lito_t1_to)) - year.lito_full_to) * year.lito_t1_rate
+    if income > year.lito_t1_to:
+        offset -= (min(income, Decimal(year.lito_t2_to)) - year.lito_t1_to) * year.lito_t2_rate
+    return max(0, _cents(offset))
+
+
+def medicare(year: TaxYear, taxable_cents: int) -> int:
+    income = Decimal(max(0, taxable_cents) // 100)
+    if income <= year.medicare_lower:
+        return 0
+    full = income * year.medicare_rate
+    if income <= year.medicare_upper:
+        return _cents(min(full, (income - year.medicare_lower) * year.medicare_phase_in))
+    return _cents(full)
+
+
+@dataclass(frozen=True)
+class TaxEstimate:
+    taxable_cents: int
+    income_tax_cents: int
+    lito_cents: int
+    medicare_cents: int
+    total_cents: int
+
+
+def estimate(year: TaxYear, taxable_cents: int) -> TaxEstimate:
+    it = income_tax(year, taxable_cents)
+    off = min(lito(year, taxable_cents), it)
+    mc = medicare(year, taxable_cents)
+    return TaxEstimate(taxable_cents, it, off, mc, it - off + mc)
+
+
+@dataclass(frozen=True)
+class Position:
+    salary_gross_cents: int
+    withheld_cents: int
+    business_income_cents: int
+    business_expenses_cents: int
+    total: TaxEstimate
+
+    @property
+    def business_profit_cents(self) -> int:
+        return self.business_income_cents - self.business_expenses_cents
+
+    @property
+    def owing_cents(self) -> int:
+        """Estimated tax still to pay: total on combined income less what was withheld."""
+        return self.total.total_cents - self.withheld_cents
+
+
+def position(
+    year: TaxYear, salary_gross: int, withheld: int, business_income: int, business_expenses: int
+) -> Position:
+    profit = business_income - business_expenses
+    taxable = salary_gross + profit
+    return Position(
+        salary_gross, withheld, business_income, business_expenses, estimate(year, taxable)
+    )

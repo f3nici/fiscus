@@ -1,0 +1,50 @@
+# Australian resident individual income tax, 2026-27 financial year.
+#
+# VERIFY EACH JULY against the ATO before relying on any figure:
+#   https://www.ato.gov.au/tax-rates-and-codes/tax-rates-australian-residents
+#   https://www.ato.gov.au/individuals-and-families/medicare-and-private-health-insurance/medicare-levy
+#
+# Source: the resident rates as legislated for 2026-27. The 16 % rate from
+# 2024-25 is cut to 15 % from 1 July 2026 (Treasury Laws Amendment (Cost of
+# Living Tax Cuts) legislation, 2025 Budget). The low income tax offset and the
+# Medicare levy low-income thresholds below are the 2025-26 values; the ATO
+# usually confirms the new thresholds after the Budget, so check them in July.
+#
+# Fiscus estimates. It is not tax advice. HELP / study loan repayments, the
+# Medicare levy surcharge, private health rebates and every other offset are
+# not modelled.
+
+financial_year: "2026-27"
+start: 2026-07-01
+end: 2027-06-30
+verified: "Not yet checked against ato.gov.au by a person. Check every July."
+
+# Each bracket: income above `over` is taxed at `rate` per dollar.
+brackets:
+  - over: 0
+    rate: "0"
+  - over: 18200
+    rate: "0.15"
+  - over: 45000
+    rate: "0.30"
+  - over: 135000
+    rate: "0.37"
+  - over: 190000
+    rate: "0.45"
+
+medicare:
+  rate: "0.02"
+  # Singles: no levy at or below `lower`, phased in at `phase_in_rate` of the
+  # excess up to `upper`, then the full rate.
+  lower: 27222
+  upper: 34027
+  phase_in_rate: "0.10"
+
+lito:
+  # Low income tax offset.
+  max: 700
+  full_to: 37500
+  first_taper_to: 45000
+  first_taper_rate: "0.05"
+  second_taper_to: 66667
+  second_taper_rate: "0.015"

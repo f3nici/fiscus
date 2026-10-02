@@ -1,0 +1,39 @@
+{% extends "auth_base.html" %}
+{% block title %}Sign in{% endblock %}
+{% block auth %}
+  <div class="card" data-passkey-login data-next="{{ next }}">
+    <h1>Sign in</h1>
+    {% if not passkeys_allowed %}
+      <div class="alert alert-error">
+        Passkeys are switched off because Fiscus is not being served over HTTPS. Set FISCUS_ORIGIN to your https:// address.
+      </div>
+    {% endif %}
+    <div data-passkey-status class="hidden"></div>
+    {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
+    <button class="btn btn-primary w-full" type="button" data-passkey-go>Sign in with a passkey</button>
+    <div class="divider">or enter your username</div>
+    <div class="field">
+      <label class="label" for="username">Username</label>
+      <input class="input" id="username" name="username" autocomplete="username webauthn" autocapitalize="none" spellcheck="false">
+    </div>
+    <button class="btn" type="button" data-passkey-go data-with-username>Continue with passkey</button>
+    <details class="text-sm mt" {{ "open" if show_password else "" }}>
+      <summary>Use a password instead</summary>
+      <p class="muted text-xs mt-sm">Only if your admin has turned password sign-in on for you.</p>
+      <form method="post" action="/auth/password" hx-boost="false">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="next" value="{{ next }}">
+        <div class="field">
+          <label class="label" for="pw-username">Username</label>
+          <input class="input" id="pw-username" name="username" autocomplete="username" autocapitalize="none" required>
+        </div>
+        <div class="field">
+          <label class="label" for="password">Password</label>
+          <input class="input" id="password" name="password" type="password" autocomplete="current-password" required>
+        </div>
+        <button class="btn" type="submit">Sign in</button>
+      </form>
+    </details>
+  </div>
+  <p class="muted text-sm center mt">Lost your passkeys? Ask your Fiscus admin for a recovery link.</p>
+{% endblock %}

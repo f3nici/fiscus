@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Users{% endblock %}
+{% block content %}
+  <div class="page-head"><h1>Admin</h1>{% include "admin/_nav.html" %}</div>
+  {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
+  {% if issued %}
+    <div class="card alert-ok">
+      <h2>Setup link for {{ issued_for.display_name }}</h2>
+      <p>Send this to {{ issued_for.display_name }} privately. It works once and expires {{ issued.expires_at.strftime('%d %b %Y %H:%M') }} UTC. It is shown only now.</p>
+      <div class="copy-box mono" id="issued-link">{{ issued.url }}</div>
+      <button class="btn btn-sm mt-sm" type="button" data-copy="issued-link">Copy link</button>
+    </div>
+  {% endif %}
+
+  <div class="card mt">
+    <h2>Users</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>User</th><th>Passkeys</th><th>Password</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>
+          {% for r in rows %}
+            {% set u = r.user %}
+            <tr>
+              <td>{{ u.display_name }}<br><span class="text-xs muted">{{ u.username }}{{ ' · admin' if u.is_admin }}</span></td>
+              <td>{{ r.passkeys }}{% if r.pending %}<br><span class="text-xs muted">link pending until {{ r.pending.expires_at.strftime('%d %b %H:%M') }}</span>{% endif %}</td>
+              <td>
+                <form method="post" action="/admin/users/{{ u.id }}/password">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <input type="hidden" name="enabled" value="{{ 'false' if u.password_enabled else 'true' }}">
+                  <button class="btn btn-sm" type="submit">{{ 'Allowed: turn off' if u.password_enabled else 'Off: allow' }}</button>
+                </form>
+                {% if u.password_enabled %}<span class="text-xs muted">{{ 'set' if u.password_hash else 'not set yet' }}</span>{% endif %}
+              </td>
+              <td>{% if u.is_active %}<span class="pill pill-ok">Active</span>{% else %}<span class="pill pill-overdue">Disabled</span>{% endif %}</td>
+              <td>
+                <div class="row">
+                  {% if u.is_active %}
+                    <form method="post" action="/admin/users/{{ u.id }}/invite">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                      <button class="btn btn-sm" type="submit">{{ 'Recovery link' if r.passkeys else 'Setup link' }}</button>
+                    </form>
+                  {% endif %}
+                  {% if r.pending %}
+                    <form method="post" action="/admin/users/{{ u.id }}/revoke-link">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                      <button class="btn btn-sm" type="submit">Revoke link</button>
+                    </form>
+                  {% endif %}
+                  <form method="post" action="/admin/users/{{ u.id }}/active" data-confirm="{{ 'Disable ' ~ u.username ~ '? They are signed out everywhere.' if u.is_active else 'Enable ' ~ u.username ~ '?' }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input type="hidden" name="active" value="{{ 'false' if u.is_active else 'true' }}">
+                    <button class="btn btn-sm {{ 'btn-danger' if u.is_active }}" type="submit">{{ 'Disable' if u.is_active else 'Enable' }}</button>
+                  </form>
+                  {% if u.id != user.id %}
+                    <form method="post" action="/admin/users/{{ u.id }}/admin">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                      <input type="hidden" name="is_admin" value="{{ 'false' if u.is_admin else 'true' }}">
+                      <button class="btn btn-sm" type="submit">{{ 'Remove admin' if u.is_admin else 'Make admin' }}</button>
+                    </form>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <form class="card mt" method="post" action="/admin/users">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <h2>Add a user</h2>
+    <p class="muted text-sm">They get a one-time setup link to register their first passkey. Their finances are separate from yours; only bills you choose to share are visible to both.</p>
+    <div class="form-grid">
+      <div class="field"><label class="label" for="new-username">Username</label><input class="input" id="new-username" name="username" required autocapitalize="none" spellcheck="false" maxlength="32"></div>
+      <div class="field"><label class="label" for="new-display">Name</label><input class="input" id="new-display" name="display_name" maxlength="120"></div>
+    </div>
+    <label class="check"><input type="checkbox" name="is_admin" value="true"> Admin</label>
+    <button class="btn btn-primary" type="submit">Create and get link</button>
+  </form>
+{% endblock %}

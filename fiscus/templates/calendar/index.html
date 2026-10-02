@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_pill %}
+{% block title %}Calendar{% endblock %}
+{% block content %}
+  <div class="page-head">
+    <h1>Calendar</h1>
+    <a class="btn btn-primary" href="/bills/new">+ Add bill</a>
+  </div>
+  <div class="grid cal-layout">
+    <div class="card tight">
+      {% include "calendar/_cal.html" %}
+    </div>
+    <div class="card">
+      <h3>Next 14 days</h3>
+      {% set any = namespace(found=false) %}
+      <ul class="list">
+        {% for day in upcoming %}
+          {% for e in day.events %}
+            {% set any.found = true %}
+            <li>
+              {% if e.bill_id %}
+                <button class="btn-link grow text-sm" type="button" data-sheet="/bills/{{ e.bill_id }}/occurrence/{{ e.date.isoformat() }}">
+                  <span class="title"><span class="legend-dot dot-{{ e.kind }}"></span>{{ e.title }}</span>
+                  <span class="text-xs muted">{{ e.date | d('dm') }}</span>
+                </button>
+              {% else %}
+                <span class="grow text-sm"><span class="title"><span class="legend-dot dot-{{ e.kind }}"></span>{{ e.title }}</span><span class="text-xs muted">{{ e.date | d('dm') }}</span></span>
+              {% endif %}
+              <span class="num text-sm {{ 'pos' if e.amount_cents > 0 else '' }}">{{ e.amount_cents | money }}</span>
+              {% if e.bill_id %}{{ status_pill(e.status) }}{% endif %}
+            </li>
+          {% endfor %}
+        {% endfor %}
+        {% if not any.found %}<li class="muted text-sm">Nothing scheduled. Click a day to add a bill.</li>{% endif %}
+      </ul>
+      <div class="mt text-xs muted">
+        <div><span class="legend-dot dot-bill"></span>Bill</div>
+        <div><span class="legend-dot dot-shared"></span>Shared bill (your share)</div>
+        <div><span class="legend-dot dot-pay"></span>Payday</div>
+        <div><span class="legend-dot dot-loan"></span>Loan repayment</div>
+        <div><span class="legend-dot dot-overdue"></span>Overdue</div>
+        <p class="mt-sm">The figure at the foot of each future day is your projected combined balance.</p>
+      </div>
+    </div>
+  </div>
+{% endblock %}

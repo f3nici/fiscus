@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% from "_macros.html" import estimate %}
+{% block title %}Housing costs{% endblock %}
+{% block content %}
+  <div class="page-head">
+    <h1>Housing costs</h1>
+    <span class="muted">Your share: <strong class="num">{{ total | money }}</strong> a month</span>
+  </div>
+  <div class="card">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Item</th><th>Category</th><th>How often</th><th class="num">Amount</th><th class="num">Your share / month</th><th>Shared</th><th></th></tr></thead>
+        <tbody>
+          {% for i in items %}
+            <tr>
+              <td>{{ i.name }}{% if i.due_date %}<span class="text-xs muted"> · next {{ i.due_date | d }}</span>{% endif %}</td>
+              <td>{{ cats.get(i.category_id, '') }}</td>
+              <td>{{ i.frequency | replace('_', '-') | capitalize }}</td>
+              <td class="num">{{ i.amount_cents | money }}</td>
+              <td class="num">{{ monthly[i.id] | money }}</td>
+              <td>{% if i.shared_with_id %}{{ people[i.shared_with_id].display_name if i.shared_with_id in people else 'someone' }} pays {{ '%g' % (i.shared_split_bp / 100) }}%{% endif %}</td>
+              <td class="row">
+                <a class="btn btn-sm" href="/housing?edit={{ i.id }}">Edit</a>
+                <form class="inline" method="post" action="/housing/{{ i.id }}/delete" data-confirm="Remove {{ i.name }}? Its bill stops and its budget is recalculated.">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <button class="btn btn-sm" type="submit" aria-label="Remove">✕</button>
+                </form>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="7" class="muted">No housing costs yet. Add them below or import a file.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="muted text-xs mt">Each item becomes a budget line (normalised to a month) and a recurring bill on your calendar and forecast.</p>
+  </div>
+
+  <div class="grid grid-2 mt">
+    {% set e = edit %}
+    <form class="card" method="post" action="{{ '/housing/' ~ e.id if e else '/housing' }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <h2>{{ 'Edit ' ~ e.name if e else 'Add an item' }}</h2>
+      <div class="form-grid">
+        <div class="field"><label class="label" for="h-name">Name</label><input class="input" id="h-name" name="name" required maxlength="120" value="{{ e.name if e else '' }}" placeholder="Council rates"></div>
+        <div class="field"><label class="label" for="h-amount">Amount</label><input class="input" id="h-amount" name="amount" inputmode="decimal" required value="{{ e.amount_cents | money_plain if e else '' }}"></div>
+        <div class="field"><label class="label" for="h-freq">How often</label>
+          <select class="input" id="h-freq" name="frequency">{% for f in freqs %}<option value="{{ f }}" {{ 'selected' if (e and e.frequency == f) or (not e and f == 'quarterly') else '' }}>{{ f | replace('_', '-') | capitalize }}</option>{% endfor %}</select>
+        </div>
+        <div class="field"><label class="label" for="h-cat">Category</label><input class="input" id="h-cat" name="category" maxlength="80" value="{{ edit_cat or 'Housing' }}" list="h-cats"></div>
+        <datalist id="h-cats">{% for c in cats.values() %}<option value="{{ c }}"></option>{% endfor %}</datalist>
+        <div class="field"><label class="label" for="h-due">Next due (optional)</label><input class="input" type="date" id="h-due" name="due_date" value="{{ e.due_date.isoformat() if e and e.due_date else '' }}"></div>
+        <div class="field"><label class="label" for="h-account">Paid from</label>
+          <select class="input" id="h-account" name="account_id"><option value="0">My spending account</option>{% for a in accounts %}<option value="{{ a.id }}" {{ 'selected' if e and e.account_id == a.id else '' }}>{{ a.name }}</option>{% endfor %}</select>
+        </div>
+        <div class="field"><label class="label" for="h-share">Shared with</label>
+          <select class="input" id="h-share" name="shared_with"><option value="">Nobody</option>{% for o in others %}<option value="{{ o.username }}" {{ 'selected' if e and e.shared_with_id == o.id else '' }}>{{ o.display_name }}</option>{% endfor %}</select>
+        </div>
+        <div class="field"><label class="label" for="h-split">Their share %</label><input class="input" id="h-split" name="split_percent" inputmode="decimal" value="{{ '%g' % (e.shared_split_bp / 100) if e and e.shared_with_id else '50' }}"></div>
+      </div>
+      <div class="row">
+        <button class="btn btn-primary" type="submit">Save</button>
+        {% if e %}<a class="btn" href="/housing">Cancel</a>{% endif %}
+      </div>
+    </form>
+
+    <div class="card">
+      <h2>Import a file</h2>
+      <p class="muted text-sm">CSV or JSON with name, amount, frequency, category, due_date, shared_with and split_percent. Start from a template:</p>
+      <div class="row">
+        <a class="btn btn-sm" href="/housing/template.csv" hx-boost="false">CSV template</a>
+        <a class="btn btn-sm" href="/housing/template.json" hx-boost="false">JSON template</a>
+      </div>
+      <form class="mt" method="post" action="/housing/import" enctype="multipart/form-data" hx-boost="false">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input class="input" type="file" name="file" accept=".csv,.json,text/csv,application/json" required aria-label="File">
+        <button class="btn btn-primary mt-sm" type="submit">Upload and preview</button>
+      </form>
+      <p class="muted text-xs mt">Importing again shows what will be added, changed and removed before anything is applied.</p>
+    </div>
+  </div>
+
+  <div class="card mt">
+    <h2>Home loan</h2>
+    {% for s in loans %}
+      <p><a href="/loans/{{ s.loan.id }}">{{ s.loan.name }}</a>: {{ s.loan.balance_cents | money }} at {{ s.rate }}%, {{ s.repayment_cents | money }} {{ s.loan.repayment_frequency }}. Offset saving {{ s.saved_month_cents | money }} this month {{ estimate() }}.</p>
+    {% else %}
+      <p class="muted">No loan yet. <a href="/loans/new">Add your home loan</a> to include repayments and offset savings.</p>
+    {% endfor %}
+  </div>
+{% endblock %}

@@ -1,0 +1,82 @@
+{% from "_macros.html" import icon with context %}
+<!DOCTYPE html>
+<html lang="en-AU">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>{% block title %}Fiscus{% endblock %}{% if self.title() != 'Fiscus' %} · Fiscus{% endif %}</title>
+    <meta name="theme-color" content="#1a1a1a">
+    <meta name="color-scheme" content="dark">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Fiscus">
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <meta name="htmx-config" content='{"includeIndicatorStyles":false,"historyCacheSize":0,"refreshOnHistoryMiss":true,"selfRequestsOnly":true,"allowScriptTags":false}'>
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="icon" href="/static/icons/icon-192.png" type="image/png">
+    <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+    <link rel="stylesheet" href="/static/vendor/vuecal-4.10.2.css">
+    <link rel="stylesheet" href="/static/vendor/uPlot-1.6.32.min.css">
+    <link rel="stylesheet" href="/static/css/app.css">
+    <link rel="stylesheet" href="/static/css/calendar.css">
+    <script src="/static/vendor/htmx-2.0.11.min.js" defer></script>
+    <script src="/static/vendor/uPlot-1.6.32.iife.min.js" defer></script>
+    <script src="/static/js/app.js" defer></script>
+    <script src="/static/js/webauthn.js" defer></script>
+    <script src="/static/js/calendar.js" defer></script>
+    <script src="/static/js/forecast-chart.js" defer></script>
+    <script src="/static/js/share-receive.js" defer></script>
+  </head>
+  <body hx-boost="true" hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'>
+    {% block body %}
+      {% set nav = [
+        ('/', 'Dashboard', 'home'),
+        ('/calendar', 'Calendar', 'calendar'),
+        ('/accounts', 'Accounts', 'wallet'),
+        ('/transactions', 'Transactions', 'list'),
+        ('/import', 'Import', 'upload'),
+        ('/bills', 'Bills', 'receipt'),
+        ('/pay', 'Pay', 'cash'),
+        ('/budget', 'Budget', 'pie'),
+        ('/forecast', 'Forecast', 'chart'),
+        ('/loans', 'Home loan', 'house'),
+        ('/housing', 'Housing costs', 'key'),
+        ('/tax', 'Tax', 'percent'),
+        ('/categories', 'Categories', 'tag'),
+      ] %}
+      <div class="shell">
+        <nav class="sidebar" aria-label="Main">
+          <a class="brand" href="/"><img src="/static/icons/icon-192.png" alt=""> Fiscus</a>
+          {% for href, label, ic in nav %}
+            <a href="{{ href }}" class="{{ 'active' if (href == '/' and path == '/') or (href != '/' and path.startswith(href)) else '' }}">{{ icon(ic) }} {{ label }}</a>
+          {% endfor %}
+          <div class="section">You</div>
+          <a href="/settings" class="{{ 'active' if path.startswith('/settings') else '' }}">{{ icon('cog') }} Settings</a>
+          {% if user and user.is_admin %}
+            <a href="/admin/users" class="{{ 'active' if path.startswith('/admin') else '' }}">{{ icon('shield') }} Admin</a>
+          {% endif %}
+          <form method="post" action="/auth/logout" hx-boost="false">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="btn btn-link text-sm" type="submit">Sign out {{ user.display_name if user else '' }}</button>
+          </form>
+        </nav>
+        <div class="grow">
+          <header class="topbar">
+            <a class="brand" href="/"><img src="/static/icons/icon-192.png" alt=""> Fiscus</a>
+            <a class="btn btn-sm" href="/more">Menu</a>
+          </header>
+          <main class="main" id="main">
+            {% if flash %}<div data-flash class="hidden">{{ flash }}</div>{% endif %}
+            {% block content %}{% endblock %}
+          </main>
+        </div>
+      </div>
+      <nav class="bottom-nav" aria-label="Quick">
+        {% for href, label, ic in [('/', 'Home', 'home'), ('/calendar', 'Calendar', 'calendar'), ('/import', 'Import', 'upload'), ('/bills', 'Bills', 'receipt'), ('/more', 'More', 'menu')] %}
+          <a href="{{ href }}" class="{{ 'active' if (href == '/' and path == '/') or (href != '/' and path.startswith(href)) else '' }}">{{ icon(ic) }}<span>{{ label }}</span></a>
+        {% endfor %}
+      </nav>
+    {% endblock %}
+  </body>
+</html>
