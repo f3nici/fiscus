@@ -24,6 +24,7 @@ financial or tax advice.
 - [Adding people and passkeys](#adding-people-and-passkeys)
 - [Installing the app on iOS and Android](#installing-the-app-on-ios-and-android)
 - [Exporting a CSV from ANZ](#exporting-a-csv-from-anz)
+- [Budget import from a spreadsheet](#budget-import-from-a-spreadsheet)
 - [Housing costs import](#housing-costs-import)
 - [Reminders with ntfy](#reminders-with-ntfy)
 - [Backup and restore](#backup-and-restore)
@@ -199,6 +200,33 @@ preview. If your bank shows spending as positive, tick "flip the sign".
 
 If ANZ changes its export format or you use ANZ Plus and the file is not
 recognised, the mapping screen handles it the same way.
+
+## Budget import from a spreadsheet
+
+If you already keep a household budget in Excel, bring it in: Budget, **Import
+spreadsheet**, choose the `.xlsx` (or a CSV), Upload and preview.
+
+Fiscus looks for a header row with **Item**, **Amount** and **Frequency**
+columns (Notes is optional) on any sheet, so a workbook with an assumptions tab
+in front of the budget tab is fine. Formulas are read through the values Excel
+last calculated, so save the file in Excel before uploading. Rows of their own
+like `HOME & PROPERTY` are treated as section headings, rows starting with
+"Total" are skipped, and each line is turned into a monthly amount (weekly x 52
+/ 12, annual / 12, daily x 365 / 12).
+
+The preview lists every line. Untick any you do not want, change the category
+a line goes to (lines sharing a category are added together), or adjust its
+monthly figure. Some lines start unticked, with the reason shown:
+
+- one-off costs (stamp duty and other settlement costs), which are not monthly;
+- the mortgage repayment when you have a home loan in Fiscus, which tracks it;
+- lines whose amount or frequency could not be read.
+
+Choose whether imported amounts replace or add to budgets you already have,
+and whether the forecast should use them instead of your 3-month averages.
+Nothing is saved until you press Import. The budget sets monthly targets only;
+put anything that should also appear on the calendar under Housing costs or
+Bills. The Budget page also has a CSV template.
 
 ## Housing costs import
 

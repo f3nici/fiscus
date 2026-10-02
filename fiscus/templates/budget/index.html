@@ -7,6 +7,7 @@
       <a class="btn btn-sm" href="/budget?month={{ prev.strftime('%Y-%m') }}" aria-label="Previous month">‹</a>
       <strong>{{ month | d('month') }}</strong>
       <a class="btn btn-sm" href="/budget?month={{ next.strftime('%Y-%m') }}" aria-label="Next month">›</a>
+      <a class="btn btn-primary btn-sm" href="#import" hx-boost="false">Import spreadsheet</a>
     </div>
   </div>
   <div class="grid grid-3">
@@ -58,5 +59,14 @@
       <button class="btn btn-primary" type="submit">Add budget line</button>
     </form>
   {% endif %}
+  <form class="card mt" id="import" method="post" action="/budget/import" enctype="multipart/form-data" hx-boost="false">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <h2>Import from a spreadsheet</h2>
+    <p class="muted text-sm">An Excel (.xlsx) or CSV budget with Item, Amount and Frequency columns. Section headings and total rows are recognised; you check every line before anything is saved. <a href="/budget/template.csv" hx-boost="false">CSV template</a></p>
+    <div class="row">
+      <input class="input grow" type="file" name="file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" required aria-label="Budget file">
+      <button class="btn btn-primary" type="submit">Upload and preview</button>
+    </div>
+  </form>
   <p class="muted text-sm mt">Budgets for categories holding <a href="/housing">housing costs</a> are kept equal to the monthly total of those items.</p>
 {% endblock %}

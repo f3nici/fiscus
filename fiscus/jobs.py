@@ -40,6 +40,12 @@ def housekeeping(c: AppContext) -> None:
                 (c.settings.upload_dir / imp.stored_path).unlink(missing_ok=True)
             db.delete(imp)
         db.commit()
+    # Budget and housing files staged for a preview nobody finished.
+    cutoff = c.clock.now().timestamp() - 86400
+    for pattern in ('budget-*', 'housing-*'):
+        for f in c.settings.upload_dir.glob(pattern):
+            if f.stat().st_mtime < cutoff:
+                f.unlink(missing_ok=True)
 
 
 def run_reminders(c: AppContext) -> int:

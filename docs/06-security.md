@@ -44,7 +44,10 @@
 - Ownership on every query (`services/access.py`); 404 for others' rows.
 - Uploads are staged under random names in `/data/uploads`, size-capped,
   text-only, and deleted on commit, discard or after a day.
-- Housing import file names embed the owner's id and are checked against it.
+- Housing and budget import file names embed the owner's id and are checked
+  against it; they are deleted on apply or after a day.
+- XLSX files are size-checked before unzipping and parsed through defusedxml
+  (no entity expansion); only cached cell values are read, nothing is executed.
 - CSV exports guard against formula injection.
 - The service worker never stores data responses; offline shows a static
   screen.

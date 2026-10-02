@@ -49,7 +49,9 @@
     </div>
     <div class="card stat">
       <div class="label">Offset saved this month {{ estimate() }}</div>
-      {% if loans %}
+      {% if loans and not (loans | selectattr('started') | list) %}
+        <div class="value">-</div><span class="text-sm muted">Loan starts {{ loans[0].loan.start_date | d }}</span>
+      {% elif loans %}
         <div class="value pos">{{ loans | sum(attribute='saved_month_cents') | money }}</div>
         <span class="text-sm muted">{{ loans | sum(attribute='saved_year_cents') | money }} this financial year</span>
       {% else %}

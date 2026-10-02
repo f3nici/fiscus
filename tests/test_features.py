@@ -497,3 +497,26 @@ def test_dashboard_contents(env: Env) -> None:
     assert 'Next 14 days' in dash and 'Rent' in dash and 'Acme wages' in dash
     assert '<polyline' in dash
     assert 'Tax set aside' in dash and 'Offset saved' in dash
+
+
+def test_loan_list_cards_and_a_loan_not_yet_settled(env: Env) -> None:
+    alex = env.user('alex')
+    a = env.login(alex)
+    resp = a.post(
+        '/loans',
+        data={
+            'name': 'Leda',
+            'principal': '606980',
+            'start_date': '2027-01-04',
+            'term_years': '30',
+            'initial_rate': '6.34',
+            'balance': '606980',
+            'balance_date': '2026-10-01',
+        },
+    )
+    loan = int(resp.headers['location'].rsplit('/', 1)[1])
+    page = a.get('/loans').text
+    assert '<a class="card"' not in page  # an inline link wrapping a card broke the layout
+    assert '$3,772.88' in page and 'Loan starts 4 Jan 2027' in page
+    assert 'Savings count from then' in a.get(f'/loans/{loan}').text
+    assert 'Loan starts 4 Jan 2027' in a.get('/').text

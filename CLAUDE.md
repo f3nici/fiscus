@@ -117,7 +117,8 @@ scripts/      smoke.sh, generate_icons.py, icon.svg
 ## Stack
 
 Python 3.12, FastAPI, SQLAlchemy 2.1 + Alembic on SQLite (WAL), Jinja2 +
-HTMX, py_webauthn, argon2-cffi, httpx (ntfy only). uPlot for the forecast
+HTMX, py_webauthn, argon2-cffi, httpx (ntfy only), openpyxl + defusedxml
+(budget XLSX import). uPlot for the forecast
 chart, vue-cal's stylesheet for the calendar. pytest, ruff, mypy --strict,
 djlint, Playwright.
 

@@ -25,6 +25,8 @@ class LoanSummary:
     saved_year_cents: int
     with_offset: loan_math.Payoff
     without_offset: loan_math.Payoff
+    # False until settlement: there is no interest, so nothing saved yet.
+    started: bool = True
 
     @property
     def lifetime_saving_cents(self) -> int:
@@ -72,4 +74,5 @@ def summarise(db: Session, user: User, loan: Loan, today: date) -> LoanSummary:
         saved_year_cents=saved_since(fy_start),
         with_offset=with_offset,
         without_offset=without,
+        started=loan.start_date <= today,
     )

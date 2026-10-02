@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Import budget{% endblock %}
+{% block content %}
+  {% set by_name = {} %}
+  {% for c in cats %}{% set _ = by_name.update({c.name | lower: c.name}) %}{% endfor %}
+  <div class="page-head">
+    <div>
+      <h1>Import budget</h1>
+      <span class="muted text-sm">{{ parsed.lines | selectattr('include') | list | length }} of {{ parsed.lines | length }} lines ticked, {{ included | money }} a month</span>
+    </div>
+    {% if parsed.sheets | length > 1 %}
+      <form class="row" method="get" action="/budget/import/{{ name }}">
+        <label class="label mb-0" for="sheet">Sheet</label>
+        <select class="input w-auto" id="sheet" name="sheet" data-autosubmit>
+          {% for s in parsed.sheets %}<option {{ 'selected' if s == parsed.sheet else '' }}>{{ s }}</option>{% endfor %}
+        </select>
+      </form>
+    {% endif %}
+  </div>
+  <p class="muted">Each ticked line becomes a monthly budget for its category. Lines that share a category are added together. Change a category or a monthly amount before importing; nothing is saved until you press Import.</p>
+
+  <form method="post" action="/budget/import/{{ name }}/apply">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="count" value="{{ parsed.lines | length }}">
+    <datalist id="budget-cats">{% for c in cats %}<option value="{{ c.name }}"></option>{% endfor %}</datalist>
+    <div class="card">
+      <div class="table-wrap">
+        <table class="import-table">
+          <thead>
+            <tr><th></th><th>Line</th><th>In the file</th><th>Category</th><th class="num">Per month</th><th class="num">Budget now</th></tr>
+          </thead>
+          <tbody>
+            {% set ns = namespace(section=None) %}
+            {% for line in parsed.lines %}
+              {% if line.section != ns.section %}
+                {% set ns.section = line.section %}
+                <tr class="section-row"><th colspan="6">{{ line.section or 'Lines' }}</th></tr>
+              {% endif %}
+              <tr class="{{ '' if line.include else 'muted' }}">
+                <td><input type="checkbox" name="include_{{ line.index }}" aria-label="Include {{ line.name }}" {{ 'checked' if line.include else '' }}></td>
+                <td>
+                  {{ line.name }}
+                  <input type="hidden" name="name_{{ line.index }}" value="{{ line.name }}">
+                  {% if line.reason %}<div class="text-xs {{ 'neg' if line.monthly_cents is none and line.frequency not in (none, 'one_off') else 'muted' }}">{{ line.reason }}</div>{% endif %}
+                  {% if line.notes %}<div class="text-xs muted">{{ line.notes[:140] }}{{ '…' if line.notes | length > 140 else '' }}</div>{% endif %}
+                </td>
+                <td class="num">{% if line.amount_cents is not none %}{{ line.amount_cents | money }}{% endif %} {{ line.frequency_label | lower }}</td>
+                <td><input class="input" name="category_{{ line.index }}" list="budget-cats" maxlength="80" value="{{ by_name.get(line.name | lower, line.name) }}" aria-label="Category for {{ line.name }}"></td>
+                <td class="num"><input class="input num w-money" name="monthly_{{ line.index }}" inputmode="decimal" value="{{ line.monthly_cents | money_plain if line.monthly_cents is not none else '' }}" aria-label="Monthly amount for {{ line.name }}"></td>
+                <td class="num muted">{{ current[line.index] | money if current.get(line.index) else '' }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card mt">
+      <fieldset>
+        <legend>When a category already has a budget</legend>
+        <label class="check"><input type="radio" name="mode" value="replace" checked> Replace it with the imported amount</label>
+        <label class="check"><input type="radio" name="mode" value="add"> Add the imported amount to it</label>
+      </fieldset>
+      <label class="check"><input type="checkbox" name="use_in_forecast"> Use these amounts in the forecast instead of my 3-month averages</label>
+      <div class="row">
+        <button class="btn btn-primary" type="submit">Import ticked lines</button>
+        <a class="btn" href="/budget">Cancel</a>
+      </div>
+      <p class="muted text-xs mt">Bills and housing costs that should also appear on the calendar belong on the <a href="/housing">Housing costs</a> or <a href="/bills">Bills</a> pages; the budget only sets monthly targets.</p>
+    </div>
+  </form>
+{% endblock %}

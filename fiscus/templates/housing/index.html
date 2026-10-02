@@ -83,7 +83,7 @@
   <div class="card mt">
     <h2>Home loan</h2>
     {% for s in loans %}
-      <p><a href="/loans/{{ s.loan.id }}">{{ s.loan.name }}</a>: {{ s.loan.balance_cents | money }} at {{ s.rate }}%, {{ s.repayment_cents | money }} {{ s.loan.repayment_frequency }}. Offset saving {{ s.saved_month_cents | money }} this month {{ estimate() }}.</p>
+      <p><a href="/loans/{{ s.loan.id }}">{{ s.loan.name }}</a>: {{ s.loan.balance_cents | money }} at {{ s.rate }}%, {{ s.repayment_cents | money }} {{ s.loan.repayment_frequency }}. {% if s.started %}Offset saving {{ s.saved_month_cents | money }} this month {{ estimate() }}.{% else %}Starts {{ s.loan.start_date | d }}.{% endif %}</p>
     {% else %}
       <p class="muted">No loan yet. <a href="/loans/new">Add your home loan</a> to include repayments and offset savings.</p>
     {% endfor %}
