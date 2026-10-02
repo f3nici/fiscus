@@ -11,7 +11,8 @@ on your phone as an app. Nothing leaves your network.
 - A calendar of bills and paydays with your projected balance on every day
 - Home loan with offset: interest saved and payoff date
 - Forecast 1 to 24 months ahead, with what-if scenarios
-- Budget, housing costs, and an Australian tax estimate against your set-aside
+- A budget that counts your bills for you, and an Australian tax estimate
+  against your set-aside
 - Optional reminders through your own ntfy server
 
 Every forecast and tax figure is an estimate from your own data, not
@@ -25,7 +26,7 @@ financial or tax advice.
 - [Installing the app on iOS and Android](#installing-the-app-on-ios-and-android)
 - [Exporting a CSV from ANZ](#exporting-a-csv-from-anz)
 - [Budget import from a spreadsheet](#budget-import-from-a-spreadsheet)
-- [Housing costs import](#housing-costs-import)
+- [Importing bills from a file](#importing-bills-from-a-file)
 - [Reminders with ntfy](#reminders-with-ntfy)
 - [Backup and restore](#backup-and-restore)
 - [Configuration](#configuration)
@@ -224,20 +225,21 @@ monthly figure. Some lines start unticked, with the reason shown:
 
 Choose whether imported amounts replace or add to budgets you already have,
 and whether the forecast should use them instead of your 3-month averages.
-Nothing is saved until you press Import. The budget sets monthly targets only;
-put anything that should also appear on the calendar under Housing costs or
-Bills. The Budget page also has a CSV template.
+Nothing is saved until you press Import. An imported amount is the
+category's whole budget: bills already in that category count towards it, not
+on top. Anything that should appear on the calendar and in the forecast is a
+bill; add it on the Bills page (or import it, below). The Budget page also has
+a CSV template.
 
-## Housing costs import
+## Importing bills from a file
 
-Housing costs (rates, insurance, strata, water and so on) can be typed in on
-the Housing page or imported from a file. Each item becomes:
+Every recurring cost lives in one place, **Bills**: rent, rates, insurance,
+strata, water, power, subscriptions. Each bill is on the calendar, in the
+forecast, and counts towards its category's budget at a monthly rate (your
+share, weekly x 52 / 12, quarterly / 3 and so on). You never enter a cost twice.
 
-- a budget line for its category, normalised to a month (weekly x 52 / 12,
-  quarterly / 3 and so on, at your share), and
-- a recurring bill on the calendar and in the forecast, shared if you said so.
-
-Download a template from the Housing page in either format.
+Type bills in one at a time, or Bills, **Import**, and upload a CSV or JSON
+file. Download a template from that page in either format.
 
 **CSV**
 
@@ -252,7 +254,7 @@ Water,310.00,quarterly,Utilities,,partner,50
 
 ```json
 {
-  "items": [
+  "bills": [
     {"name": "Council rates", "amount": "520.00", "frequency": "quarterly", "category": "Housing", "due_date": "2026-11-15"},
     {"name": "Home insurance", "amount": "1850.00", "frequency": "yearly", "category": "Insurance", "due_date": "2027-03-01", "shared_with": "partner", "split_percent": 50}
   ]
@@ -261,18 +263,27 @@ Water,310.00,quarterly,Utilities,,partner,50
 
 | Field | Required | Notes |
 | --- | --- | --- |
-| name | yes | Unique per person; it is how a re-import matches items |
-| amount | yes | The whole amount each time it is due |
+| name | yes | How a re-import matches a bill you own |
+| amount | yes | The whole bill each time it is due |
 | frequency | yes | weekly, fortnightly, monthly, quarterly, yearly or one-off |
-| category | no | Created if it does not exist; default Housing |
-| due_date | no (yes for one-off) | YYYY-MM-DD, the next time it is due |
+| category | no | Created if it does not exist |
+| due_date | no (yes for one-off) | YYYY-MM-DD, the next time it is due; left out, an existing bill keeps its own |
 | shared_with | no | Another Fiscus user's username |
 | split_percent | no | Their share, default 50 |
 
 A CSV with other column names gets a mapping step. Every import shows a
-preview first. **Re-importing** shows what will be added, changed and removed
-(items no longer in the file are only removed if you tick the box). Items stay
-editable afterwards.
+preview first, compared with the bills you own by name: what will be added,
+what will change, and what is not in the file. Bills not in the file are left
+alone unless you tick the box, and then they are stopped rather than deleted,
+so their payment history stays. A bill split in a way a file cannot describe
+(fixed amounts, or more than two people) keeps its split. A housing costs file
+from an earlier version imports as it is.
+
+**Upgrading from a version with a Housing costs page**: on first start the
+housing items go and the bills they had already made stay, unchanged. Each
+budget keeps the same total; Fiscus stores only the part above that category's
+bills. To keep a copy from just before, run `python -m fiscus.cli backup`
+first (see [Backup and restore](#backup-and-restore)).
 
 ## Reminders with ntfy
 

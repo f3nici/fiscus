@@ -303,9 +303,6 @@ class Bill(Base):
     match_window_days: Mapped[int] = mapped_column(Integer, default=3)
     description_hint: Mapped[str] = mapped_column(String(120), default='')
     active: Mapped[bool] = mapped_column(Boolean, default=True)
-    housing_item_id: Mapped[int | None] = mapped_column(
-        ForeignKey('housing_items.id', ondelete='SET NULL'), nullable=True
-    )
     created_at: Mapped[datetime] = mapped_column(DateTime)
 
     shares: Mapped[list[BillShare]] = relationship(
@@ -451,30 +448,11 @@ class Budget(Base, Owned):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'), index=True)
     category_id: Mapped[int] = mapped_column(ForeignKey('categories.id', ondelete='CASCADE'))
+    # Set aside on top of this person's bills in the category. The budget shown
+    # is the bills' monthly equivalent plus this.
     monthly_cents: Mapped[int] = mapped_column(Integer)
     # Use this amount instead of the rolling average in the forecast.
     use_in_forecast: Mapped[bool] = mapped_column(Boolean, default=False)
-
-
-class HousingItem(Base, Owned):
-    __tablename__ = 'housing_items'
-    __table_args__ = (UniqueConstraint('user_id', 'name'),)
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'), index=True)
-    name: Mapped[str] = mapped_column(String(120))
-    amount_cents: Mapped[int] = mapped_column(Integer)
-    frequency: Mapped[str] = mapped_column(String(20))
-    category_id: Mapped[int] = mapped_column(ForeignKey('categories.id', ondelete='RESTRICT'))
-    due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    shared_with_id: Mapped[int | None] = mapped_column(
-        ForeignKey('users.id', ondelete='SET NULL'), nullable=True
-    )
-    # The other person's share in basis points (5000 = half).
-    shared_split_bp: Mapped[int] = mapped_column(Integer, default=5000)
-    account_id: Mapped[int | None] = mapped_column(
-        ForeignKey('accounts.id', ondelete='SET NULL'), nullable=True
-    )
 
 
 class Scenario(Base, Owned):

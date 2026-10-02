@@ -1,15 +1,15 @@
-"""Housing cost line items: parsing an import file and diffing it against what exists.
+"""Bills from a file: parsing an import and diffing it against the bills you own.
 
 Fields: name, amount, frequency, category, due_date (optional), shared_with
 (a username, optional), split_percent (the other person's share, optional).
-Items are keyed by name, case-insensitively, so a re-import can say what was
+Bills are keyed by name, case-insensitively, so a re-import can say what was
 added, changed and removed before anything is applied.
 """
 
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
@@ -68,39 +68,26 @@ TEMPLATE_ROWS: list[dict[str, str]] = [
 
 
 @dataclass(frozen=True)
-class ItemSpec:
+class BillSpec:
     name: str
     amount_cents: int
     frequency: str
-    category: str
+    # None: the file has no such column, so an existing bill keeps its own.
+    category: str | None
     due_date: date | None
-    shared_with: str
+    shared_with: str | None
     split_bp: int
+    # An existing bill split in a way a file cannot say (fixed amounts, or more
+    # than two people): an import leaves its shares alone.
+    keep_shares: bool = False
 
     def key(self) -> str:
         return self.name.casefold()
 
-    def as_dict(self) -> dict[str, Any]:
-        d = asdict(self)
-        d['due_date'] = self.due_date.isoformat() if self.due_date else None
-        return d
-
-    @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> ItemSpec:
-        return cls(
-            name=d['name'],
-            amount_cents=int(d['amount_cents']),
-            frequency=d['frequency'],
-            category=d['category'],
-            due_date=date.fromisoformat(d['due_date']) if d.get('due_date') else None,
-            shared_with=d.get('shared_with') or '',
-            split_bp=int(d.get('split_bp') or 0),
-        )
-
 
 @dataclass
-class ParsedItems:
-    items: list[ItemSpec]
+class ParsedBills:
+    items: list[BillSpec]
     errors: list[str]
 
 
@@ -125,10 +112,10 @@ def template_json() -> str:
                 'split_percent': float(row['split_percent']) if row['split_percent'] else None,
             }
         )
-    return json.dumps({'items': rows}, indent=2) + '\n'
+    return json.dumps({'bills': rows}, indent=2) + '\n'
 
 
-def _item(raw: dict[str, Any], where: str) -> ItemSpec:
+def _item(raw: dict[str, Any], where: str) -> BillSpec:
     name = str(raw.get('name') or '').strip()
     if not name:
         raise ValueError(f'{where}: name is required')
@@ -151,8 +138,8 @@ def _item(raw: dict[str, Any], where: str) -> ItemSpec:
         except ValueError as exc:
             raise ValueError(f'{where}: due_date must be YYYY-MM-DD') from exc
     if freq == 'one_off' and due is None:
-        raise ValueError(f'{where}: a one-off item needs a due_date')
-    shared = str(raw.get('shared_with') or '').strip().lower()
+        raise ValueError(f'{where}: a one-off bill needs a due_date')
+    shared = str(raw.get('shared_with') or '').strip().lower() if 'shared_with' in raw else None
     split_raw = raw.get('split_percent')
     split_bp = 0
     if shared:
@@ -163,20 +150,21 @@ def _item(raw: dict[str, Any], where: str) -> ItemSpec:
         if not 0 < pct < 100:
             raise ValueError(f'{where}: split_percent must be between 0 and 100')
         split_bp = round(pct * 100)
-    category = str(raw.get('category') or '').strip() or 'Housing'
-    return ItemSpec(name[:120], amount, freq, category[:80], due, shared, split_bp)
+    category = str(raw.get('category') or '').strip()[:80] if 'category' in raw else None
+    return BillSpec(name[:120], amount, freq, category, due, shared, split_bp)
 
 
-def parse_json(data: bytes) -> ParsedItems:
+def parse_json(data: bytes) -> ParsedBills:
     try:
         doc = json.loads(decode(data))
     except (json.JSONDecodeError, ImportError_) as exc:
         raise ImportError_(f'That is not valid JSON: {exc}') from exc
-    rows = doc.get('items') if isinstance(doc, dict) else doc
+    # "items" is what the housing export used; old files still import.
+    rows = (doc.get('bills') or doc.get('items')) if isinstance(doc, dict) else doc
     if not isinstance(rows, list):
-        raise ImportError_('Expected {"items": [...]} or a list of items')
+        raise ImportError_('Expected {"bills": [...]} or a list of bills')
     return _collect(
-        [(r if isinstance(r, dict) else {}, f'Item {i + 1}') for i, r in enumerate(rows)]
+        [(r if isinstance(r, dict) else {}, f'Bill {i + 1}') for i, r in enumerate(rows)]
     )
 
 
@@ -196,22 +184,21 @@ def mapping_complete(mapping: dict[str, int | None]) -> bool:
     return all(mapping.get(f) is not None for f in REQUIRED)
 
 
-def parse_csv(data: bytes, mapping: dict[str, int | None] | None = None) -> ParsedItems:
+def parse_csv(data: bytes, mapping: dict[str, int | None] | None = None) -> ParsedBills:
     header, body = csv_header(data)
     mapping = mapping or default_mapping(header)
     if not mapping_complete(mapping):
         raise ImportError_('Map the name, amount and frequency columns')
     rows = []
     for i, r in enumerate(body):
-        raw = {
-            f: (r[idx] if idx is not None and idx < len(r) else '') for f, idx in mapping.items()
-        }
+        # A field not mapped is left out, so the bill keeps what it has.
+        raw = {f: (r[idx] if idx < len(r) else '') for f, idx in mapping.items() if idx is not None}
         rows.append((raw, f'Row {i + 2}'))
     return _collect(rows)
 
 
-def _collect(rows: list[tuple[dict[str, Any], str]]) -> ParsedItems:
-    items: list[ItemSpec] = []
+def _collect(rows: list[tuple[dict[str, Any], str]]) -> ParsedBills:
+    items: list[BillSpec] = []
     errors: list[str] = []
     seen: set[str] = set()
     for raw, where in rows:
@@ -225,22 +212,36 @@ def _collect(rows: list[tuple[dict[str, Any], str]]) -> ParsedItems:
             continue
         seen.add(item.key())
         items.append(item)
-    return ParsedItems(items, errors)
+    return ParsedBills(items, errors)
 
 
 @dataclass
 class Diff:
-    added: list[ItemSpec]
-    changed: list[tuple[ItemSpec, ItemSpec]]  # (existing, incoming)
-    removed: list[ItemSpec]
-    unchanged: list[ItemSpec]
+    added: list[BillSpec]
+    changed: list[tuple[BillSpec, BillSpec]]  # (existing, incoming)
+    removed: list[BillSpec]
+    unchanged: list[BillSpec]
 
     @property
     def empty(self) -> bool:
         return not (self.added or self.changed or self.removed)
 
 
-def diff(existing: list[ItemSpec], incoming: list[ItemSpec]) -> Diff:
+def _same(old: BillSpec, new: BillSpec) -> bool:
+    """Whether applying `new` would leave the bill as it is. Anything the file
+    does not say (no column, or no due date) keeps the bill's own."""
+    if (old.amount_cents, old.frequency) != (new.amount_cents, new.frequency):
+        return False
+    if new.category is not None and new.category.casefold() != (old.category or '').casefold():
+        return False
+    if new.due_date is not None and new.due_date != old.due_date:
+        return False
+    if new.shared_with is None or old.keep_shares:
+        return True
+    return (old.shared_with, old.split_bp) == (new.shared_with, new.split_bp)
+
+
+def diff(existing: list[BillSpec], incoming: list[BillSpec]) -> Diff:
     old = {i.key(): i for i in existing}
     new = {i.key(): i for i in incoming}
     added = [i for k, i in new.items() if k not in old]
@@ -249,23 +250,8 @@ def diff(existing: list[ItemSpec], incoming: list[ItemSpec]) -> Diff:
     unchanged = []
     for k, i in new.items():
         if k in old:
-            o = old[k]
-            if (
-                o.amount_cents,
-                o.frequency,
-                o.category.casefold(),
-                o.due_date,
-                o.shared_with,
-                o.split_bp,
-            ) != (
-                i.amount_cents,
-                i.frequency,
-                i.category.casefold(),
-                i.due_date,
-                i.shared_with,
-                i.split_bp,
-            ):
-                changed.append((o, i))
-            else:
+            if _same(old[k], i):
                 unchanged.append(i)
+            else:
+                changed.append((old[k], i))
     return Diff(added, changed, removed, unchanged)

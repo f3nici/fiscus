@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from fiscus.domain import recurrence
 from fiscus.domain.csvimport import MAX_BYTES, ImportError_
 from fiscus.forms import FormError, money
-from fiscus.models import Budget, Category, Loan, User
+from fiscus.models import Category, Loan, User
 from fiscus.money import fmt
 from fiscus.services import budget_import as importer
 from fiscus.services import budgeting, ledger
@@ -37,7 +37,7 @@ def budget_page(
     except ValueError:
         focus = today.replace(day=1)
     rows = budgeting.rows(db, user, focus, today)
-    budgeted = {r.category.id for r in rows if r.budget}
+    budgeted = {r.category.id for r in rows if r.has_budget}
     return render(
         request,
         'budget/index.html',
@@ -72,17 +72,16 @@ def save_budget(
         cents = money(amount, 'Amount', allow_negative=False)
     except FormError as exc:
         return redirect(target, flash=str(exc), request=request)
-    row = db.execute(owned(Budget, user).where(Budget.category_id == cat.id)).scalar_one_or_none()
-    if cents == 0:
-        if row is not None:
-            db.delete(row)
-        return redirect(target, flash=f'Budget for {cat.name} removed', request=request)
-    if row is None:
-        row = Budget(user_id=user.id, category_id=cat.id, monthly_cents=cents)
-        db.add(row)
-    row.monthly_cents = cents
-    row.use_in_forecast = use_in_forecast
-    return redirect(target, flash=f'Budget for {cat.name} saved', request=request)
+    total, from_bills = budgeting.set_total(
+        db, user, cat, cents, ctx(request).clock.today(), use_in_forecast=use_in_forecast
+    )
+    if from_bills and cents < from_bills:
+        msg = f'Your bills in {cat.name} come to {fmt(from_bills)} a month, so that is its budget'
+    elif total == 0:
+        msg = f'Budget for {cat.name} removed'
+    else:
+        msg = f'Budget for {cat.name} saved'
+    return redirect(target, flash=msg, request=request)
 
 
 # ------------------------------------------------------- spreadsheet import
@@ -143,7 +142,8 @@ def budget_preview(
         return redirect('/budget', flash=str(exc), request=request)
     cats = ledger.categories(db, user)
     by_name = {c.name.casefold(): c for c in cats}
-    budgets = {b.category_id: b.monthly_cents for b in db.execute(owned(Budget, user)).scalars()}
+    today = ctx(request).clock.today()
+    budgets = {r.category.id: r.budget_cents for r in budgeting.rows(db, user, today, today)}
     current = {
         line.index: budgets.get(by_name[line.name.casefold()].id)
         for line in parsed.lines
@@ -195,6 +195,7 @@ async def budget_apply(
         db,
         user,
         chosen,
+        ctx(request).clock.today(),
         replace=f('mode') != 'add',
         use_in_forecast=f('use_in_forecast') == 'on',
     )

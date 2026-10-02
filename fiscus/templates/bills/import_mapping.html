@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Map housing columns{% endblock %}
+{% block title %}Map bill columns{% endblock %}
 {% block content %}
   <h1>Map the columns</h1>
   <p class="muted">This file's headings do not match the template. Point each field at a column. Name, amount and frequency are required.</p>
@@ -11,7 +11,7 @@
       </table>
     </div>
   </div>
-  <form class="card mt" method="get" action="/housing/import/{{ name }}">
+  <form class="card mt" method="get" action="/bills/import/{{ name }}">
     <div class="form-grid">
       {% for f in fields %}
         <div class="field">
@@ -24,6 +24,6 @@
       {% endfor %}
     </div>
     <button class="btn btn-primary" type="submit">Preview</button>
-    <a class="btn" href="/housing">Cancel</a>
+    <a class="btn" href="/bills/import">Cancel</a>
   </form>
 {% endblock %}

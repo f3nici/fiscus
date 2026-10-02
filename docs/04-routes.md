@@ -33,7 +33,7 @@ Rate limited: everything under `/auth/` and `/setup/`, by IP and by username.
 | Loans | `/loans`, `/loans/new`, `/loans/{id}`, `/edit`, `POST /loans[/{id}]`, `/rates`, `/rates/{id}/delete`, `/offsets`, `/offsets/{account}/unlink`, `/delete` |
 | Forecast | `/forecast?months=&scenario_id=`, `POST /transfers`, `/transfers/{id}/delete`, `/scenarios`, `POST /scenarios`, `/scenarios/{id}`, `/delete`, `/adjustments`, `/adjustments/{id}/delete` |
 | Budget | `/budget?month=YYYY-MM`, `POST /budget`, `/budget/template.csv`, `POST /budget/import`, `/budget/import/{file}?sheet=`, `POST .../apply` |
-| Housing | `/housing`, `POST /housing[/{id}]`, `/delete`, `/housing/template.csv`, `/housing/template.json`, `POST /housing/import`, `/housing/import/{file}`, `POST .../apply` |
+| Bill import | `/bills/import`, `POST /bills/import`, `/bills/template.csv`, `/bills/template.json`, `/bills/import/{file}`, `POST .../apply`; `/housing` redirects to `/bills` |
 | Tax | `/tax` |
 | Settings | `/settings`, `POST /settings/passkeys/options`, `/verify`, `/{id}/rename`, `/{id}/revoke`, `POST /settings/password`, `/password/clear`, `POST /settings/forecast`, `POST /settings/ntfy`, `/ntfy/test`, `/ntfy/clear-token` |
 | Sign out | `POST /auth/logout` |

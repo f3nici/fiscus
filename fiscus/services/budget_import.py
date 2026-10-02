@@ -5,15 +5,16 @@ from __future__ import annotations
 import io
 import zipfile
 from dataclasses import dataclass
+from datetime import date
 from typing import Any
 
 from sqlalchemy.orm import Session
 
 from fiscus.domain import budget_import as dom
 from fiscus.domain.csvimport import ImportError_, decode, read_rows
-from fiscus.models import Budget, User
-from fiscus.services.access import owned
-from fiscus.services.housing import category_named
+from fiscus.models import Category, User
+from fiscus.services import budgeting
+from fiscus.services.ledger import category_named
 
 MAX_UNZIPPED = 50 * 1024 * 1024
 MAX_ROWS = 5000
@@ -90,31 +91,29 @@ class Chosen:
 
 
 def apply(
-    db: Session, user: User, chosen: list[Chosen], *, replace: bool, use_in_forecast: bool
+    db: Session,
+    user: User,
+    chosen: list[Chosen],
+    today: date,
+    *,
+    replace: bool,
+    use_in_forecast: bool,
 ) -> tuple[int, int]:
-    """Sum the chosen lines per category and set those budgets. Returns (categories, total)."""
-    totals: dict[int, int] = {}
+    """Sum the chosen lines per category and set those budgets. Returns (categories, total).
+
+    An imported amount is the category's whole budget: bills already in the
+    category count towards it rather than on top.
+    """
+    totals: dict[int, tuple[Category, int]] = {}
     for c in chosen:
         cat = category_named(db, user, c.category)
-        totals[cat.id] = totals.get(cat.id, 0) + c.monthly_cents
-    for cat_id, cents in totals.items():
-        row = db.execute(
-            owned(Budget, user).where(Budget.category_id == cat_id)
-        ).scalar_one_or_none()
-        if row is None:
-            db.add(
-                Budget(
-                    user_id=user.id,
-                    category_id=cat_id,
-                    monthly_cents=cents,
-                    use_in_forecast=use_in_forecast,
-                )
-            )
-        else:
-            row.monthly_cents = cents if replace else row.monthly_cents + cents
-            row.use_in_forecast = row.use_in_forecast or use_in_forecast
+        totals[cat.id] = (cat, totals.get(cat.id, (cat, 0))[1] + c.monthly_cents)
+    for cat, cents in totals.values():
+        budgeting.set_total(
+            db, user, cat, cents, today, use_in_forecast=use_in_forecast, add=not replace
+        )
     db.flush()
-    return len(totals), sum(totals.values())
+    return len(totals), sum(cents for _, cents in totals.values())
 
 
 def template_csv() -> str:

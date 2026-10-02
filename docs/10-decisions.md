@@ -24,6 +24,7 @@
 | D18 | PolyForm Noncommercial 1.0.0, copyright Fenici | As Vigilo. |
 | D19 | CI pushes images to Docker Hub only when credentials exist | Forks and PRs still build and smoke test. |
 | D20 | Strict CSP: no inline script or style | uPlot styles through the CSSOM, which CSP allows. |
+| D21 | One home per cost: every recurring cost is a bill; a category's budget is its bills (monthly equivalent of your share) plus what you set aside on top | Housing costs were a third place that made a bill and a budget line; migration 0003 folded them into bills. Only the part beyond the bills is stored and used in the forecast, so bills are never counted twice. |
 
 ## 2. Assumptions
 
