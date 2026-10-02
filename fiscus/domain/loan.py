@@ -91,11 +91,50 @@ class LoanSpec:
                 return n
 
     def scheduled_repayment(self) -> int:
+        """The repayment as at the balance date.
+
+        At settlement's rate on the amount borrowed, unless the rate has changed
+        since: then repriced from the known balance over the remaining term, as
+        the lender would have done when it changed.
+        """
         if self.repayment_override_cents:
             return self.repayment_override_cents
+        changed = any(self.start_date < eff <= self.balance_date for eff, _ in self.rates)
+        if changed:
+            rate = rate_on(self.rates, self.balance_date)
+            remaining = self.periods_between(self.balance_date)
+            return repayment(self.balance_cents, rate, max(remaining, 1), self.per_year)
         rate = rate_on(self.rates, self.start_date)
         periods = self.term_months * self.per_year // 12
         return repayment(self.principal_cents, rate, periods, self.per_year)
+
+
+def repayments(
+    spec: LoanSpec, start: date, end: date, offset_cents: int = 0
+) -> list[tuple[date, int]]:
+    """Scheduled repayments from start to end, repriced at each rate change.
+
+    Stepped from the balance date with the offset held at `offset_cents`. Days
+    before the balance date show the repayment as at that date.
+    """
+    sim = LoanSim(spec)
+    out: list[tuple[date, int]] = []
+    day = start
+    while day <= min(end, spec.balance_date):
+        if is_repayment_day(spec, day) and day <= spec.maturity:
+            out.append((day, sim.payment))
+        day += timedelta(days=1)
+    day = spec.balance_date
+    while day < end:
+        day += timedelta(days=1)
+        paid = sim.repayments_due(day)
+        # The scheduled repayment comes first in what is paid that day.
+        if paid and day >= start and is_repayment_day(spec, day):
+            out.append((day, paid[0][0]))
+        if sim.balance <= 0:
+            break
+        sim.end_of_day(day, offset_cents)
+    return out
 
 
 def is_repayment_day(spec: LoanSpec, day: date) -> bool:

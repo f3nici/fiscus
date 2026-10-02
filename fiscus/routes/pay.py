@@ -112,6 +112,7 @@ def add_payslip(
     tax_withheld: str = Form(...),
     net: str = Form(...),
     source: str = Form(''),
+    account_id: int = Form(0),
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> Response:
@@ -128,7 +129,11 @@ def add_payslip(
         return redirect('/pay', flash=str(exc), request=request)
     if slip.tax_withheld_cents > slip.gross_cents:
         return redirect('/pay', flash='Tax withheld is more than gross pay', request=request)
+    acct = maybe_owned(db, Account, account_id, user)
+    slip.account_id = acct.id if acct else None
     db.add(slip)
+    if slip.date > ctx(request).clock.today():
+        return redirect('/pay', flash='Payslip saved. It is in your forecast.', request=request)
     return redirect('/pay', flash='Payslip saved', request=request)
 
 

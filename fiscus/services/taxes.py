@@ -78,6 +78,11 @@ def view(db: Session, user: User, today: date, tax_dir: Path | None = None) -> T
     ratio_tax = withheld / gross if gross else None
     proj_gross, proj_tax = gross, withheld
     first = today + timedelta(days=1)
+    for p in db.execute(
+        owned(Payslip, user).where(Payslip.date >= first, Payslip.date <= fy_end)
+    ).scalars():
+        proj_gross += p.gross_cents
+        proj_tax += p.tax_withheld_cents
     for ps in db.execute(owned(PaySchedule, user)).scalars():
         for _d in recurrence.occurrences(
             ps.anchor_date, ps.frequency, first, fy_end, until=ps.end_date

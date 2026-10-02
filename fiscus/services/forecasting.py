@@ -21,6 +21,7 @@ from fiscus.models import (
     ForecastCache,
     Loan,
     PaySchedule,
+    Payslip,
     RecurringTransfer,
     Scenario,
     Transaction,
@@ -160,6 +161,16 @@ def build_input(db: Session, user: User, today: date, months: int) -> ForecastIn
             ps.anchor_date, ps.frequency, first, end, until=ps.end_date
         ):
             flows.append(Flow(d, target, ps.net_cents, 'pay', ps.name, ps.id))
+
+    # A payslip dated after today is a one-off pay still to come, such as a bonus.
+    for slip in db.execute(
+        owned(Payslip, user).where(Payslip.date >= first, Payslip.date <= end)
+    ).scalars():
+        target = acct_or_default(slip.account_id)
+        if target is not None:
+            flows.append(
+                Flow(slip.date, target, slip.net_cents, 'pay', slip.source or 'Payslip', slip.id)
+            )
 
     for occ in bills.occurrences(db, user, today - timedelta(days=OVERDUE_CARRY_DAYS), end, today):
         if occ.payment is not None:

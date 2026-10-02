@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import html
 import json
 import re
 from datetime import date
+from decimal import Decimal
+from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
-from fiscus.models import Bill, Budget, Category, ForecastCache, HousingItem, User
-from fiscus.services import forecasting
+from fiscus.domain import loan as L
+from fiscus.models import Bill, Budget, Category, ForecastCache, HousingItem, Payslip, User
+from fiscus.services import forecasting, taxes
 from tests.conftest import CsrfClient, Env
 from tests.test_imports_bills import ANZ_SEPT, create_bill, import_csv, make_account
 
@@ -128,13 +132,51 @@ def test_loan_page_shows_repayment_offset_savings_and_payoff(env: Env) -> None:
     assert '6.35% from 1 Nov 2026' in page and '6% from 10 Jul 2024' in page
 
 
+def test_backdated_rate_change_reprices_the_repayment(env: Env) -> None:
+    a, _alex, acct = setup_household(env)
+    resp = a.post(
+        '/loans',
+        data={
+            'name': 'Mortgage',
+            'principal': '600000',
+            'start_date': '2024-07-10',
+            'term_years': '30',
+            'initial_rate': '6.0',
+            'balance': '560000',
+            'balance_date': '2026-10-01',
+            'repayment_account_id': str(acct),
+        },
+    )
+    loan = int(resp.headers['location'].rsplit('/', 1)[1])
+    assert '$3,597.30' in a.get(f'/loans/{loan}').text
+    assert '-$3,597.30' in a.get('/calendar?view=agenda&date=2026-10-10').text
+    # A cut that took effect last month, before the balance date.
+    a.post(f'/loans/{loan}/rates', data={'effective_date': '2026-09-01', 'new_rate': '5.5'})
+    # 560,000 at 5.5 % over the 334 repayments from 10 Oct 2026 to 10 Jul 2054.
+    expected = L.repayment(560_000_00, Decimal('5.5'), 334, 12)
+    shown = f'${expected / 100:,.2f}'
+    page = a.get(f'/loans/{loan}').text
+    assert shown in page and '$3,597.30' not in page
+    assert f'-{shown}' in a.get('/calendar?view=agenda&date=2026-10-10').text
+    with env.db() as db:
+        r = forecasting.base(db, env.clock, db.get(User, _alex.id), 1)  # type: ignore[arg-type]
+    idx = r.dates.index(date(2026, 10, 10))
+    assert r.accounts[acct][idx - 1] - r.accounts[acct][idx] == expected
+
+
 # ------------------------------------------------------------------ forecast
+
+
+def chart_data(page: str) -> Any:
+    m = re.search(r'data-chart="([^"]*)"', page)
+    assert m is not None
+    return json.loads(html.unescape(m.group(1)))
 
 
 def test_forecast_page_and_cache_invalidation(env: Env) -> None:
     a, alex, acct = setup_household(env)
     page = a.get('/forecast?months=3').text
-    data = json.loads(re.search(r'id="forecast-data">(.*?)</script>', page, re.S).group(1))  # type: ignore[union-attr]
+    data = chart_data(page)
     assert data['dates'][0] == '2026-10-01'
     assert data['combined'][0] == 3000_00
     # +2500 on 2 Oct, -2200 on 5 Oct, +2500 on 16 Oct and 30 Oct.
@@ -149,7 +191,7 @@ def test_forecast_page_and_cache_invalidation(env: Env) -> None:
     # Changing data invalidates.
     create_bill(a, name='Car rego', amount='800', next_due='2026-10-20', account_id=str(acct))
     page = a.get('/forecast?months=3').text
-    data = json.loads(re.search(r'id="forecast-data">(.*?)</script>', page, re.S).group(1))  # type: ignore[union-attr]
+    data = chart_data(page)
     assert (
         data['combined'][data['dates'].index('2026-10-31')]
         == 3000_00 + 3 * 2500_00 - 2200_00 - 800_00
@@ -170,7 +212,7 @@ def test_shared_bill_change_invalidates_participants_forecast(env: Env) -> None:
     with env.db() as db:
         assert db.get(User, sam.id).data_version > before  # type: ignore[union-attr]
     page = s.get('/forecast?months=1').text
-    data = json.loads(re.search(r'id="forecast-data">(.*?)</script>', page, re.S).group(1))  # type: ignore[union-attr]
+    data = chart_data(page)
     assert data['combined'][data['dates'].index('2026-10-12')] == 100_00 - 45_00
 
 
@@ -414,6 +456,49 @@ def test_another_users_staged_housing_file_is_unreachable(env: Env) -> None:
     assert b.get(f'/housing/import/{name}').status_code == 404
     assert b.post(f'/housing/import/{name}/apply').status_code == 404
     assert a.get('/housing/import/../../fiscus.db').status_code == 404
+
+
+def test_future_payslip_is_one_off_income(env: Env) -> None:
+    a, alex, acct = setup_household(env)
+    before = chart_data(a.get('/forecast?months=1').text)
+    # A bonus paid on 20 Oct, and one already paid (in the balance already).
+    a.post(
+        '/payslips',
+        data={
+            'date': '2026-10-20',
+            'source': 'Acme bonus',
+            'gross': '5000',
+            'tax_withheld': '1500',
+            'net': '3500',
+            'account_id': str(acct),
+        },
+    )
+    a.post(
+        '/payslips',
+        data={'date': '2026-09-20', 'gross': '1000', 'tax_withheld': '0', 'net': '1000'},
+    )
+    after = chart_data(a.get('/forecast?months=1').text)
+    i19, i20 = after['dates'].index('2026-10-19'), after['dates'].index('2026-10-20')
+    assert after['combined'][i19] == before['combined'][i19]
+    assert after['combined'][i20] == before['combined'][i20] + 3500_00
+    assert any(m['label'] == 'Acme bonus' and m['kind'] == 'pay' for m in after['markers'])
+    page = a.get('/pay').text
+    assert 'Expected' in page
+    cal = a.get('/calendar?view=agenda&date=2026-10-01').text
+    assert 'Acme bonus' in cal
+    with env.db() as db:
+        user = db.get(User, alex.id)
+        assert user is not None
+        tv = taxes.view(db, user, env.clock.today())
+    # Past payslip only in the year to date; the bonus adds to the projection.
+    assert tv.ytd.salary_gross_cents == 1000_00
+    with env.db() as db:
+        db.execute(delete(Payslip).where(Payslip.source == 'Acme bonus'))
+        db.commit()
+        user = db.get(User, alex.id)
+        assert user is not None
+        without = taxes.view(db, user, env.clock.today())
+    assert tv.projected.salary_gross_cents - without.projected.salary_gross_cents == 5000_00
 
 
 # ----------------------------------------------------------------------- tax

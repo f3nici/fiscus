@@ -356,6 +356,19 @@ def test_b_cannot_add_a_to_their_rows(
     assert (
         b.post('/rules', data={'pattern': 'x', 'category_id': str(ids.category)}).status_code == 404
     )
+    assert (
+        b.post(
+            '/payslips',
+            data={
+                'date': '2026-11-01',
+                'gross': '10',
+                'tax_withheld': '0',
+                'net': '10',
+                'account_id': str(ids.account),
+            },
+        ).status_code
+        == 404
+    )
     with env.db() as db:
         assert db.execute(select(Bill).where(Bill.owner_id == blake.id)).first() is None
 

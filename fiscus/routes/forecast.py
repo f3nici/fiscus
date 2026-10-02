@@ -50,9 +50,8 @@ def chart_payload(
     }
     if scenario is not None:
         data['scenario'] = {'name': scenario_name, 'combined': scenario.combined}
-    # Embedded in a <script type="application/json">: never let a name close the tag.
-    raw = json.dumps(data, separators=(',', ':'))
-    return raw.replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
+    # Goes in a data attribute; Jinja's autoescape quotes it.
+    return json.dumps(data, separators=(',', ':'))
 
 
 @router.get('/forecast')

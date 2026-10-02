@@ -144,6 +144,10 @@ def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any
     # The forecast chart drew.
     page.goto(f'{base}/forecast')
     page.wait_for_selector('.uplot')
+    # And after a boosted (htmx) navigation, which drops <script> tags.
+    page.goto(f'{base}/')
+    page.click('main a[href="/forecast"]')
+    page.wait_for_selector('.uplot')
 
     # The service worker is active and has cached the shell and nothing else.
     page.goto(f'{base}/')

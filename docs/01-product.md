@@ -25,7 +25,7 @@ and is used mostly from phones as an installed PWA.
 | Import | ANZ CSV detected automatically; any other bank through a column mapping saved per account. Preview before commit, dedup across overlapping exports, an import log and undo. Upload from the phone's file picker, or Android's share sheet. |
 | Categories and rules | Per-user categories flagged income, business, deductible or transfer. "Contains" or regex rules with priorities, applied on import and re-runnable. A one-tap recategorise screen for phones. |
 | Bills | Weekly to yearly or one-off, with an end date. Shared with other users by equal, percentage or fixed split. Matched automatically to imported payments (amount tolerance, date window, description hint), or by hand. Paid, due soon, upcoming and overdue states. |
-| Pay | Pay schedules (net, optional gross and withholding) and payslips. |
+| Pay | Pay schedules (net, optional gross and withholding) and payslips. A payslip dated after today, such as a bonus, is one-off income in the forecast, calendar and tax projection. |
 | Calendar | CareLane's calendar: month, week, day and agenda views. Bills at your share, shared bills, paydays and loan repayments, coloured by type and state, with the forecast balance at the foot of every future day. Agenda by default on a phone. |
 | Home loan | Amortised repayment, daily interest on loan less offset charged monthly, rate history, offset savings this month and this financial year, payoff with and without the offset. |
 | Forecast | Day by day for 1 to 24 months per account and combined, with paydays, bills, loan repayments and offset interest, planned transfers and average spending. A low-balance warning. Scenarios layered over it without touching real data. |

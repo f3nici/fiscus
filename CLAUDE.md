@@ -66,8 +66,9 @@ doc 10 wins.
   never an HTTP endpoint without a session.
 - **CSP is strict**: `script-src 'self'`, `style-src 'self'`. No inline
   scripts, no `style=""` attributes (a test fails on one), no `eval` (so no
-  htmx `js:` values). Data for scripts goes in
-  `<script type="application/json">` with `<` escaped.
+  htmx `js:` values). Data for scripts goes in a `data-*` attribute as JSON,
+  autoescaped. Not a `<script type="application/json">`: htmx drops every
+  script tag when it swaps a boosted page.
 - **Everything frontend is vendored** in `fiscus/static/vendor` with its
   licence and a line in its README. Nothing loads from another origin.
 - **No external calls** except the user's own ntfy server, off by default.

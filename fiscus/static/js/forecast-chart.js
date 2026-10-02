@@ -48,9 +48,10 @@
 
   function draw(el) {
     if (el.dataset.drawn || !window.uPlot) return;
-    const src = document.getElementById(el.getAttribute('data-source'));
-    if (!src) return;
-    const data = JSON.parse(src.textContent);
+    // In an attribute, not a <script>: htmx drops script tags when it swaps a
+    // boosted page (allowScriptTags is off), which left the chart blank.
+    if (!el.dataset.chart) return;
+    const data = JSON.parse(el.dataset.chart);
     el.dataset.drawn = '1';
     const xs = data.dates.map((d) => Date.parse(d) / 1000);
     const series = [{}];

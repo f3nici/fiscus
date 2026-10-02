@@ -379,6 +379,10 @@ class Payslip(Base, Owned):
     tax_withheld_cents: Mapped[int] = mapped_column(Integer)
     net_cents: Mapped[int] = mapped_column(Integer)
     source: Mapped[str] = mapped_column(String(120), default='')
+    # Where the net lands. A payslip dated after today is forecast as income.
+    account_id: Mapped[int | None] = mapped_column(
+        ForeignKey('accounts.id', ondelete='SET NULL'), nullable=True
+    )
 
 
 # ------------------------------------------------------------------------ loans

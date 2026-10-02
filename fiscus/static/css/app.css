@@ -214,7 +214,7 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-
 .recat-row form { grid-column: 2; }
 button.btn-link { font: inherit; color: inherit; text-align: left; cursor: pointer; display: block; }
 button.btn-link .title { color: #fff; }
-.w-auto { width: auto; }
+.w-auto, .input.w-auto { width: auto; }
 .import-table td { vertical-align: top; }
 .import-table .section-row th { padding-top: 16px; color: #fff; font-size: 0.8rem; border-bottom: 1px solid var(--line-strong); }
 .w-money { width: 7.5rem; text-align: right; }
