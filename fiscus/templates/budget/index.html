@@ -18,16 +18,16 @@
   <div class="card mt">
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Category</th><th class="num">Budget</th><th class="num">Actual</th><th class="num">Bills due</th><th>Progress</th><th class="num">Left</th><th></th></tr></thead>
+        <thead><tr><th>Category</th><th class="num">Budget</th><th class="num">From bills</th><th class="num">Actual</th><th>Progress</th><th class="num">Left</th><th></th></tr></thead>
         <tbody>
           {% for r in rows %}
             <tr>
               <td>{{ r.category.name }}{% if r.category.is_income %} <span class="pill pill-ok">Income</span>{% endif %}{% if r.budget and r.budget.use_in_forecast %} <span class="pill">In forecast</span>{% endif %}</td>
-              <td class="num">{{ r.budget_cents | money if r.budget else '-' }}</td>
+              <td class="num">{{ r.budget_cents | money if r.has_budget else '-' }}</td>
+              <td class="num">{% if r.bills_cents %}<a href="/bills?category={{ r.category.id }}">{{ r.bills_cents | money }}</a>{% endif %}</td>
               <td class="num">{{ r.actual_cents | money }}</td>
-              <td class="num">{{ r.bills_cents | money if r.bills_cents else '' }}</td>
-              <td>{% if r.budget %}<meter min="0" max="{{ r.budget_cents }}" low="{{ (r.budget_cents * 0.9) | int }}" high="{{ r.budget_cents }}" optimum="0" value="{{ [r.actual_cents, r.budget_cents] | min }}">{{ r.pct }}%</meter>{% endif %}</td>
-              <td class="num {{ 'neg' if r.state == 'over' else '' }}">{{ r.remaining_cents | money if r.budget else '' }}</td>
+              <td>{% if r.has_budget %}<meter min="0" max="{{ r.budget_cents }}" low="{{ (r.budget_cents * 0.9) | int }}" high="{{ r.budget_cents }}" optimum="0" value="{{ [r.actual_cents, r.budget_cents] | min }}">{{ r.pct }}%</meter>{% endif %}</td>
+              <td class="num {{ 'neg' if r.state == 'over' else '' }}">{{ r.remaining_cents | money if r.has_budget else '' }}</td>
               <td>
                 <details>
                   <summary class="text-sm">Set</summary>
@@ -35,7 +35,8 @@
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <input type="hidden" name="category_id" value="{{ r.category.id }}">
                     <input type="hidden" name="back" value="/budget?month={{ month.strftime('%Y-%m') }}">
-                    <input class="input" name="amount" inputmode="decimal" value="{{ r.budget_cents | money_plain if r.budget else '' }}" aria-label="Monthly budget">
+                    <input class="input" name="amount" inputmode="decimal" value="{{ r.budget_cents | money_plain if r.has_budget else '' }}" aria-label="Monthly budget">
+                    {% if r.bills_cents %}<p class="text-xs muted mt-sm">Includes {{ r.bills_cents | money }} of bills.</p>{% endif %}
                     <label class="check mt-sm"><input type="checkbox" name="use_in_forecast" value="true" {{ 'checked' if r.budget and r.budget.use_in_forecast }}> Use in forecast</label>
                     <button class="btn btn-sm btn-primary" type="submit">Save</button>
                   </form>
@@ -68,5 +69,5 @@
       <button class="btn btn-primary" type="submit">Upload and preview</button>
     </div>
   </form>
-  <p class="muted text-sm mt">Budgets for categories holding <a href="/housing">housing costs</a> are kept equal to the monthly total of those items.</p>
+  <p class="muted text-sm mt">Bills count towards their category's budget at a monthly rate, so add a recurring cost once, on the <a href="/bills">Bills</a> page. The budget you set for a category is the whole amount, bills included; "use in forecast" covers the rest of the spending, since bills are forecast from their own dates.</p>
 {% endblock %}

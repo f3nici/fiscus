@@ -35,7 +35,7 @@ browser ─HTTPS─ NPMplus ─HTTP─ uvicorn (proxy headers from trusted IPs o
 
 - `domain/`: pure functions and dataclasses. Recurrence, splits, CSV parsing
   and dedup, rules, bill matching, loan maths, the forecast engine and
-  scenarios, tax, housing parsing and diffs. No database, no clock.
+  scenarios, tax, bill import parsing and diffs. No database, no clock.
 - `services/`: database work for one concern each. Every per-user query goes
   through `access.owned` / `get_owned`.
 - `routes/`: one module per screen. Thin: parse the form, call a service,

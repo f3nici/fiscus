@@ -10,12 +10,10 @@
     {% if is_owner %}
       <div class="row">
         <a class="btn" href="/bills/{{ bill.id }}/edit">Edit</a>
-        {% if not bill.housing_item_id %}
-          <form method="post" action="/bills/{{ bill.id }}/delete" data-confirm="Delete {{ bill.name }} for everyone sharing it?">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button class="btn btn-danger" type="submit">Delete</button>
-          </form>
-        {% endif %}
+        <form method="post" action="/bills/{{ bill.id }}/delete" data-confirm="Delete {{ bill.name }} for everyone sharing it?">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn btn-danger" type="submit">Delete</button>
+        </form>
       </div>
     {% endif %}
   </div>
@@ -27,7 +25,6 @@
           <li><span>{{ people[s.user_id].display_name }}{% if s.user_id == bill.owner_id %} <span class="pill">Owner</span>{% endif %}</span><span class="num">{{ amounts[s.user_id] | money }}</span></li>
         {% endfor %}
       </ul>
-      {% if bill.housing_item_id %}<p class="muted text-sm mt">From a housing cost item. Change it on the <a href="/housing">Housing</a> page.</p>{% endif %}
     </div>
     {% if not is_owner %}
       <form class="card" method="post" action="/bills/{{ bill.id }}/my-share">

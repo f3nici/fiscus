@@ -19,7 +19,6 @@ from fiscus.models import (
     Account,
     Bill,
     Category,
-    HousingItem,
     Import,
     Loan,
     LoanRate,
@@ -50,7 +49,6 @@ OWNED_TABLES = [
     'loans',
     'loan_rates',
     'budgets',
-    'housing_items',
     'scenarios',
     'scenario_adjustments',
     'recurring_transfers',
@@ -81,7 +79,7 @@ class Ids:
     payslip: int
     loan: int
     rate: int
-    housing: int
+    staged: str  # a bill import file, uploaded and not yet applied
     scenario: int
     adjustment: int
     transfer: int
@@ -124,16 +122,24 @@ def seeded(env: Env) -> tuple[CsrfClient, CsrfClient, Ids, User, User]:
         },
     )
     assert resp.status_code == 303
+    rates = (
+        b'name,amount,frequency,category,due_date\n'
+        b'Stirling council rates,520,quarterly,Housing,2026-11-15\n'
+    )
+    resp = a.post('/bills/import', files={'file': ('r.csv', rates, 'text/csv')})
+    staged = resp.headers['location'].rsplit('/', 1)[1]
     a.post(
-        '/housing',
+        f'/bills/import/{staged}/apply',
         data={
-            'name': 'Stirling council rates',
-            'amount': '520',
-            'frequency': 'quarterly',
-            'category': 'Housing',
-            'due_date': '2026-11-15',
+            'map_name': '0',
+            'map_amount': '1',
+            'map_frequency': '2',
+            'map_category': '3',
+            'map_due_date': '4',
         },
     )
+    resp = a.post('/bills/import', files={'file': ('r.csv', rates, 'text/csv')})
+    staged = resp.headers['location'].rsplit('/', 1)[1]
     resp = a.post('/scenarios', data={'name': 'What if'})
     scenario = int(resp.headers['location'].rsplit('/', 1)[1])
     a.post(
@@ -176,7 +182,7 @@ def seeded(env: Env) -> tuple[CsrfClient, CsrfClient, Ids, User, User]:
             payslip=one(Payslip),
             loan=one(Loan),
             rate=one(LoanRate),
-            housing=one(HousingItem),
+            staged=staged,
             scenario=scenario,
             adjustment=one(ScenarioAdjustment),
             transfer=one(RecurringTransfer),
@@ -196,7 +202,7 @@ READS = [
     '/scenarios/{scenario}',
     '/forecast?scenario_id={scenario}',
     '/pay?edit={schedule}',
-    '/housing?edit={housing}',
+    '/bills/import/{staged}',
 ]
 
 WRITES: list[tuple[str, dict[str, Any]]] = [
@@ -245,8 +251,7 @@ WRITES: list[tuple[str, dict[str, Any]]] = [
     ('/loans/{loan}/rates/{rate}/delete', {}),
     ('/loans/{loan}/offsets', {'account_id': '{account}'}),
     ('/loans/{loan}/delete', {}),
-    ('/housing/{housing}', {'name': 'x', 'amount': '1', 'frequency': 'monthly'}),
-    ('/housing/{housing}/delete', {}),
+    ('/bills/import/{staged}/apply', {}),
     ('/scenarios/{scenario}/delete', {}),
     ('/scenarios/{scenario}/adjustments', {'kind': 'one_off'}),
     ('/scenarios/{scenario}/adjustments/{adjustment}/delete', {}),
@@ -284,7 +289,7 @@ def test_b_cannot_write_a(env: Env, seeded: tuple[CsrfClient, CsrfClient, Ids, U
 
 
 def test_b_lists_show_none_of_a(seeded: tuple[CsrfClient, CsrfClient, Ids, User, User]) -> None:
-    a, b, _ids, _alex, _blake = seeded
+    a, b, ids, _alex, _blake = seeded
     pages = [
         '/',
         '/accounts',
@@ -296,7 +301,7 @@ def test_b_lists_show_none_of_a(seeded: tuple[CsrfClient, CsrfClient, Ids, User,
         '/forecast',
         '/scenarios',
         '/budget',
-        '/housing',
+        f'/bills?category={ids.category}',
         '/tax',
         '/import',
         '/recategorise',
@@ -355,6 +360,19 @@ def test_b_cannot_add_a_to_their_rows(
     )
     assert (
         b.post('/rules', data={'pattern': 'x', 'category_id': str(ids.category)}).status_code == 404
+    )
+    assert (
+        b.post(
+            '/payslips',
+            data={
+                'date': '2026-11-01',
+                'gross': '10',
+                'tax_withheld': '0',
+                'net': '10',
+                'account_id': str(ids.account),
+            },
+        ).status_code
+        == 404
     )
     with env.db() as db:
         assert db.execute(select(Bill).where(Bill.owner_id == blake.id)).first() is None

@@ -17,7 +17,7 @@
       </form>
     {% endif %}
   </div>
-  <p class="muted">Each ticked line becomes a monthly budget for its category. Lines that share a category are added together. Change a category or a monthly amount before importing; nothing is saved until you press Import.</p>
+  <p class="muted">Each ticked line becomes a monthly budget for its category. Lines that share a category are added together, and bills already in a category count towards its budget. Change a category or a monthly amount before importing; nothing is saved until you press Import.</p>
 
   <form method="post" action="/budget/import/{{ name }}/apply">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -65,7 +65,7 @@
         <button class="btn btn-primary" type="submit">Import ticked lines</button>
         <a class="btn" href="/budget">Cancel</a>
       </div>
-      <p class="muted text-xs mt">Bills and housing costs that should also appear on the calendar belong on the <a href="/housing">Housing costs</a> or <a href="/bills">Bills</a> pages; the budget only sets monthly targets.</p>
+      <p class="muted text-xs mt">A cost with a due date that should be on the calendar and in the forecast is a bill: add it on the <a href="/bills">Bills</a> page, where it counts towards this budget too.</p>
     </div>
   </form>
 {% endblock %}

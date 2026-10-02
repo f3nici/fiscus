@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Housing import preview{% endblock %}
+{% block title %}Bill import preview{% endblock %}
 {% block content %}
-  {% macro line(i) %}{{ i.name }}: {{ i.amount_cents | money }} {{ i.frequency | replace('_', '-') }}, {{ i.category }}{% if i.due_date %}, due {{ i.due_date | d }}{% endif %}{% if i.shared_with %}, shared with {{ i.shared_with }} ({{ '%g' % (i.split_bp / 100) }}%){% endif %}{% endmacro %}
+  {% macro line(i) %}{{ i.name }}: {{ i.amount_cents | money }} {{ i.frequency | replace('_', '-') }}{% if i.category %}, {{ i.category }}{% endif %}{% if i.due_date %}, due {{ i.due_date | d }}{% endif %}{% if i.keep_shares %}, shared (kept as it is){% elif i.shared_with %}, shared with {{ i.shared_with }} ({{ '%g' % (i.split_bp / 100) }}%){% endif %}{% endmacro %}
   <h1>Preview</h1>
+  <p class="muted">Compared with the bills you own, by name. Nothing changes until you press Apply.</p>
   {% if errors %}
     <div class="alert alert-warn"><strong>{{ errors | length }} row{{ '' if errors | length == 1 else 's' }} skipped:</strong>
       <ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
@@ -11,16 +12,16 @@
   <div class="grid grid-3">
     <div class="card"><h2>Added ({{ diff.added | length }})</h2><ul class="list">{% for i in diff.added %}<li class="pos">{{ line(i) }}</li>{% else %}<li class="muted">None</li>{% endfor %}</ul></div>
     <div class="card"><h2>Changed ({{ diff.changed | length }})</h2><ul class="list">{% for old, new in diff.changed %}<li><span><span class="muted">{{ line(old) }}</span><br>{{ line(new) }}</span></li>{% else %}<li class="muted">None</li>{% endfor %}</ul></div>
-    <div class="card"><h2>Not in the file ({{ diff.removed | length }})</h2><ul class="list">{% for i in diff.removed %}<li class="neg">{{ line(i) }}</li>{% else %}<li class="muted">None</li>{% endfor %}</ul></div>
+    <div class="card"><h2>Not in the file ({{ diff.removed | length }})</h2><ul class="list">{% for i in diff.removed %}<li class="muted">{{ line(i) }}</li>{% else %}<li class="muted">None</li>{% endfor %}</ul></div>
   </div>
-  <form class="card mt" method="post" action="/housing/import/{{ name }}/apply">
+  <form class="card mt" method="post" action="/bills/import/{{ name }}/apply">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     {% for f, idx in mapping.items() %}<input type="hidden" name="map_{{ f }}" value="{{ '' if idx is none else idx }}">{% endfor %}
-    {% if diff.removed %}<label class="check"><input type="checkbox" name="remove_missing"> Also remove the {{ diff.removed | length }} item{{ '' if diff.removed | length == 1 else 's' }} not in the file</label>{% endif %}
+    {% if diff.removed %}<label class="check"><input type="checkbox" name="remove_missing"> Also stop the {{ diff.removed | length }} bill{{ '' if diff.removed | length == 1 else 's' }} not in the file (their history stays)</label>{% endif %}
     {% if diff.empty %}<p class="muted">Nothing would change.</p>{% endif %}
     <div class="row">
       <button class="btn btn-primary" type="submit" {{ 'disabled' if diff.empty and not diff.removed }}>Apply</button>
-      <a class="btn" href="/housing">Cancel</a>
+      <a class="btn" href="/bills">Cancel</a>
     </div>
   </form>
 {% endblock %}

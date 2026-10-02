@@ -86,6 +86,26 @@ def test_rate_change_reprices_over_the_remaining_term() -> None:
     assert sim.payment > 2_997_75
 
 
+def test_rate_change_before_the_balance_date_reprices_from_that_balance() -> None:
+    s = spec(
+        balance_cents=490_000_00,
+        balance_date=date(2026, 9, 20),
+        rates=[(date(2026, 1, 15), Decimal('6')), (date(2026, 8, 1), Decimal('5.5'))],
+    )
+    remaining = s.periods_between(date(2026, 9, 20))
+    assert L.LoanSim(s).payment == L.repayment(490_000_00, Decimal('5.5'), remaining, 12)
+    # Set by hand still wins.
+    assert L.LoanSim(spec(repayment_override_cents=3_500_00)).payment == 3_500_00
+
+
+def test_repayments_list_follows_a_later_rate_change() -> None:
+    s = spec(rates=[(date(2026, 1, 15), Decimal('6')), (date(2026, 4, 1), Decimal('7'))])
+    got = dict(L.repayments(s, date(2026, 2, 1), date(2026, 5, 31)))
+    assert list(got) == [date(2026, m, 15) for m in (2, 3, 4, 5)]
+    assert got[date(2026, 2, 15)] == got[date(2026, 3, 15)] == 2_997_75
+    assert got[date(2026, 4, 15)] == got[date(2026, 5, 15)] > 2_997_75
+
+
 def test_payoff_without_offset_runs_the_full_term_and_offset_shortens_it() -> None:
     s = spec()
     without = L.project_payoff(s, s.start_date, lambda _d: 0)

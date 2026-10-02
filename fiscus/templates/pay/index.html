@@ -61,7 +61,11 @@
           <div class="field"><label class="label" for="slip-gross">Gross</label><input class="input" id="slip-gross" name="gross" inputmode="decimal" required></div>
           <div class="field"><label class="label" for="slip-tax">Tax withheld</label><input class="input" id="slip-tax" name="tax_withheld" inputmode="decimal" required></div>
           <div class="field"><label class="label" for="slip-net">Net</label><input class="input" id="slip-net" name="net" inputmode="decimal" required></div>
+          <div class="field"><label class="label" for="slip-account">Paid into</label>
+            <select class="input" id="slip-account" name="account_id"><option value="0">My spending account</option>{% for a in accounts %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}</select>
+          </div>
         </div>
+        <p class="muted text-xs">For a one-off payment such as a bonus, date it when it will be paid: a payslip dated after today goes into your forecast, calendar and tax estimate. Regular pay belongs in a schedule.</p>
         <button class="btn btn-primary" type="submit">Add payslip</button>
       </form>
       <div class="table-wrap mt">
@@ -70,7 +74,7 @@
           <tbody>
             {% for p in slips %}
               <tr>
-                <td class="num">{{ p.date | d }}</td><td>{{ p.source }}</td>
+                <td class="num">{{ p.date | d }}</td><td>{{ p.source }}{% if p.date > today %} <span class="pill">Expected</span>{% endif %}</td>
                 <td class="num">{{ p.gross_cents | money }}</td><td class="num">{{ p.tax_withheld_cents | money }}</td><td class="num">{{ p.net_cents | money }}</td>
                 <td>
                   <form class="inline" method="post" action="/payslips/{{ p.id }}/delete" data-confirm="Delete this payslip?">

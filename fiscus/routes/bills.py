@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from fiscus.clock import utcnow_naive
-from fiscus.domain import splits
+from fiscus.domain import recurrence, splits
 from fiscus.forms import FormError, choice, money, opt_date, pct_bp, req_date, text
 from fiscus.models import (
     FREQUENCIES,
@@ -41,17 +41,27 @@ FREQ_LABELS = {
 
 @router.get('/bills')
 def list_bills(
-    request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
+    request: Request,
+    category: int = 0,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
 ) -> Response:
     c = ctx(request)
     today = c.clock.today()
     shares = svc.user_shares(db, user, active_only=False)
+    cats = {cat.id: cat.name for cat in ledger.categories(db, user)}
+    if category in cats:
+        shares = [s for s in shares if s.category_id == category]
     upcoming = svc.occurrences(db, user, today, today + timedelta(days=45), today)
     overdue = svc.overdue(db, user, today)
     nxt: dict[int, svc.Occurrence] = {}
     for o in upcoming:
         nxt.setdefault(o.bill.id, o)
     amounts = {s.bill_id: svc.share_amounts(s.bill)[user.id] for s in shares}
+    monthly = {
+        s.bill_id: recurrence.monthly_equivalent(amounts[s.bill_id], s.bill.frequency)
+        for s in shares
+    }
     owners = {u.id: u for u in db.execute(select(User)).scalars()}
     return render(
         request,
@@ -61,6 +71,10 @@ def list_bills(
             'next': nxt,
             'overdue': overdue,
             'amounts': amounts,
+            'monthly': monthly,
+            'monthly_total': sum(monthly[s.bill_id] for s in shares if s.bill.active),
+            'cats': cats,
+            'category': cats.get(category),
             'freq': FREQ_LABELS,
             'owners': owners,
         },
@@ -381,11 +395,5 @@ def delete_bill(
     db: Session = Depends(get_db),
 ) -> Response:
     bill = owned_bill(db, bill_id, user)
-    if bill.housing_item_id:
-        return redirect(
-            f'/bills/{bill.id}',
-            flash='This bill comes from a housing item; remove it on the Housing page',
-            request=request,
-        )
     db.delete(bill)
     return redirect('/bills', flash='Bill deleted', request=request)

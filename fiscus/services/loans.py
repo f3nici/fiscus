@@ -61,6 +61,7 @@ def summarise(db: Session, user: User, loan: Loan, today: date) -> LoanSummary:
     while day < today:
         day += timedelta(days=1)
         sim.repayments_due(day)
+        sim.end_of_day(day, offset_now)
     projected_from = max(today, spec.balance_date)
     with_offset = loan_math.project_payoff(spec, projected_from, lambda _d: offset_now)
     without = loan_math.project_payoff(spec, projected_from, lambda _d: 0)

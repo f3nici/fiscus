@@ -76,6 +76,19 @@ def categories(db: Session, user: User) -> list[Category]:
     return list(db.execute(owned(Category, user).order_by(Category.name)).scalars())
 
 
+def category_named(db: Session, user: User, name: str) -> Category:
+    """This person's category by name, ignoring case; made if missing."""
+    name = name.strip()
+    cat = db.execute(
+        owned(Category, user).where(func.lower(Category.name) == name.lower())
+    ).scalar_one_or_none()
+    if cat is None:
+        cat = Category(user_id=user.id, name=name[:80])
+        db.add(cat)
+        db.flush()
+    return cat
+
+
 def spend_by_category(db: Session, user: User, start: date, end: date) -> dict[int | None, int]:
     """Net movement per category in [start, end], transfers excluded. Spend is negative."""
     transfer_ids = {c.id for c in categories(db, user) if c.is_transfer}

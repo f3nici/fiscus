@@ -1,15 +1,19 @@
-"""Calendar, loans, forecast caching, budget, housing costs, tax and the dashboard."""
+"""Calendar, loans, forecast caching, budget, bill import, tax and the dashboard."""
 
 from __future__ import annotations
 
+import html
 import json
 import re
 from datetime import date
+from decimal import Decimal
+from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
-from fiscus.models import Bill, Budget, Category, ForecastCache, HousingItem, User
-from fiscus.services import forecasting
+from fiscus.domain import loan as L
+from fiscus.models import Bill, Budget, Category, ForecastCache, Payslip, User
+from fiscus.services import forecasting, taxes
 from tests.conftest import CsrfClient, Env
 from tests.test_imports_bills import ANZ_SEPT, create_bill, import_csv, make_account
 
@@ -128,13 +132,51 @@ def test_loan_page_shows_repayment_offset_savings_and_payoff(env: Env) -> None:
     assert '6.35% from 1 Nov 2026' in page and '6% from 10 Jul 2024' in page
 
 
+def test_backdated_rate_change_reprices_the_repayment(env: Env) -> None:
+    a, _alex, acct = setup_household(env)
+    resp = a.post(
+        '/loans',
+        data={
+            'name': 'Mortgage',
+            'principal': '600000',
+            'start_date': '2024-07-10',
+            'term_years': '30',
+            'initial_rate': '6.0',
+            'balance': '560000',
+            'balance_date': '2026-10-01',
+            'repayment_account_id': str(acct),
+        },
+    )
+    loan = int(resp.headers['location'].rsplit('/', 1)[1])
+    assert '$3,597.30' in a.get(f'/loans/{loan}').text
+    assert '-$3,597.30' in a.get('/calendar?view=agenda&date=2026-10-10').text
+    # A cut that took effect last month, before the balance date.
+    a.post(f'/loans/{loan}/rates', data={'effective_date': '2026-09-01', 'new_rate': '5.5'})
+    # 560,000 at 5.5 % over the 334 repayments from 10 Oct 2026 to 10 Jul 2054.
+    expected = L.repayment(560_000_00, Decimal('5.5'), 334, 12)
+    shown = f'${expected / 100:,.2f}'
+    page = a.get(f'/loans/{loan}').text
+    assert shown in page and '$3,597.30' not in page
+    assert f'-{shown}' in a.get('/calendar?view=agenda&date=2026-10-10').text
+    with env.db() as db:
+        r = forecasting.base(db, env.clock, db.get(User, _alex.id), 1)  # type: ignore[arg-type]
+    idx = r.dates.index(date(2026, 10, 10))
+    assert r.accounts[acct][idx - 1] - r.accounts[acct][idx] == expected
+
+
 # ------------------------------------------------------------------ forecast
+
+
+def chart_data(page: str) -> Any:
+    m = re.search(r'data-chart="([^"]*)"', page)
+    assert m is not None
+    return json.loads(html.unescape(m.group(1)))
 
 
 def test_forecast_page_and_cache_invalidation(env: Env) -> None:
     a, alex, acct = setup_household(env)
     page = a.get('/forecast?months=3').text
-    data = json.loads(re.search(r'id="forecast-data">(.*?)</script>', page, re.S).group(1))  # type: ignore[union-attr]
+    data = chart_data(page)
     assert data['dates'][0] == '2026-10-01'
     assert data['combined'][0] == 3000_00
     # +2500 on 2 Oct, -2200 on 5 Oct, +2500 on 16 Oct and 30 Oct.
@@ -149,7 +191,7 @@ def test_forecast_page_and_cache_invalidation(env: Env) -> None:
     # Changing data invalidates.
     create_bill(a, name='Car rego', amount='800', next_due='2026-10-20', account_id=str(acct))
     page = a.get('/forecast?months=3').text
-    data = json.loads(re.search(r'id="forecast-data">(.*?)</script>', page, re.S).group(1))  # type: ignore[union-attr]
+    data = chart_data(page)
     assert (
         data['combined'][data['dates'].index('2026-10-31')]
         == 3000_00 + 3 * 2500_00 - 2200_00 - 800_00
@@ -170,7 +212,7 @@ def test_shared_bill_change_invalidates_participants_forecast(env: Env) -> None:
     with env.db() as db:
         assert db.get(User, sam.id).data_version > before  # type: ignore[union-attr]
     page = s.get('/forecast?months=1').text
-    data = json.loads(re.search(r'id="forecast-data">(.*?)</script>', page, re.S).group(1))  # type: ignore[union-attr]
+    data = chart_data(page)
     assert data['combined'][data['dates'].index('2026-10-12')] == 100_00 - 45_00
 
 
@@ -243,143 +285,203 @@ def test_budget_vs_actual(env: Env) -> None:
     assert a.get('/budget?month=2026-09').status_code == 200
 
 
-# ------------------------------------------------------------------- housing
+# -------------------------------------------------- bills in the budget
 
 
-def test_housing_manual_item_becomes_budget_and_shared_bill(env: Env) -> None:
-    alex = env.user('alex')
-    sam = env.user('sam')
-    a = env.login(alex)
-    resp = a.post(
-        '/housing',
-        data={
-            'name': 'Council rates',
-            'amount': '520',
-            'frequency': 'quarterly',
-            'category': 'Rates',
-            'due_date': '2026-11-15',
-            'shared_with': 'sam',
-            'split_percent': '50',
-        },
-    )
-    assert resp.status_code == 303
+def cat_id(env: Env, user: User, name: str) -> int:
     with env.db() as db:
-        item = db.execute(select(HousingItem)).scalar_one()
-        bill = db.execute(select(Bill).where(Bill.housing_item_id == item.id)).scalar_one()
-        assert bill.frequency == 'quarterly' and bill.next_due == date(2026, 11, 15)
-        assert sorted(s.user_id for s in bill.shares) == sorted([alex.id, sam.id])
-        budget = db.execute(select(Budget).where(Budget.user_id == alex.id)).scalar_one()
-        # My half of 520 a quarter is 260, which is 86.67 a month.
-        assert budget.monthly_cents == 86_67
-    assert '-$260.00' in env.login(sam).get('/calendar?view=agenda&date=2026-11-01').text
-    # Editing the item updates the bill and the budget.
-    a.post(
-        f'/housing/{item.id}',
-        data={
-            'name': 'Council rates',
-            'amount': '600',
-            'frequency': 'quarterly',
-            'category': 'Rates',
-            'due_date': '2026-11-15',
-        },
-    )
-    with env.db() as db:
-        bill = db.execute(select(Bill).where(Bill.housing_item_id == item.id)).scalar_one()
-        assert bill.amount_cents == 600_00 and len(bill.shares) == 1
-        assert (
-            db.execute(select(Budget).where(Budget.user_id == alex.id)).scalar_one().monthly_cents
-            == 200_00
+        return int(
+            db.execute(
+                select(Category.id).where(Category.user_id == user.id, Category.name == name)
+            ).scalar_one()
         )
 
 
-def test_housing_templates_download(env: Env) -> None:
+def test_bills_count_towards_their_category_budget(env: Env) -> None:
+    alex = env.user('alex')
+    sam = env.user('sam')
+    a = env.login(alex)
+    housing = cat_id(env, alex, 'Housing')
+    create_bill(
+        a,
+        name='Council rates',
+        amount='520',
+        frequency='quarterly',
+        next_due='2026-11-15',
+        category_id=str(housing),
+        split_mode='percent',
+        participants=[str(sam.id)],
+        **{f'split_{alex.id}': '50', f'split_{sam.id}': '50'},
+    )
+    # My half of 520 a quarter is 86.67 a month: that is the budget, nothing stored.
+    page = a.get('/budget?month=2026-10').text
+    assert '$86.67' in page and 'Includes $86.67 of bills' in page
+    with env.db() as db:
+        assert db.execute(select(Budget)).first() is None
+    assert '-$260.00' in env.login(sam).get('/calendar?view=agenda&date=2026-11-01').text
+    # A total above the bills keeps only the rest.
+    a.post('/budget', data={'category_id': str(housing), 'amount': '150'})
+    with env.db() as db:
+        assert db.execute(select(Budget.monthly_cents)).scalar_one() == 63_33
+    assert '$150.00' in a.get('/budget?month=2026-10').text
+    # Below the bills: the bills are the budget.
+    resp = a.post(
+        '/budget', data={'category_id': str(housing), 'amount': '50'}, follow_redirects=True
+    )
+    assert 'come to $86.67 a month' in resp.text
+    with env.db() as db:
+        assert db.execute(select(Budget)).first() is None
+    # The bills page shows the same monthly figure, filtered by category.
+    bills_page = a.get(f'/bills?category={housing}').text
+    assert 'Bills: Housing' in bills_page and '$86.67' in bills_page
+
+
+def test_budget_in_forecast_is_only_the_part_beyond_bills(env: Env) -> None:
+    alex = env.user('alex')
+    a = env.login(alex)
+    utilities = cat_id(env, alex, 'Utilities')
+    create_bill(a, name='Power', amount='200', next_due='2026-10-20', category_id=str(utilities))
+    a.post(
+        '/budget',
+        data={'category_id': str(utilities), 'amount': '250', 'use_in_forecast': 'true'},
+    )
+    with env.db() as db:
+        est = forecasting.estimates(db, db.get(User, alex.id), date(2026, 10, 1))  # type: ignore[arg-type]
+    # Power is forecast from its own date; the budget adds only the other 50.
+    assert [(e.name, e.monthly_cents, e.source) for e in est] == [('Utilities', -50_00, 'budget')]
+
+
+def test_old_housing_address_lands_on_bills(env: Env) -> None:
     a = env.login(env.user('alex'))
-    csv_t = a.get('/housing/template.csv')
+    resp = a.get('/housing')
+    assert resp.status_code == 308 and resp.headers['location'] == '/bills'
+
+
+# --------------------------------------------------------------- bill import
+
+FIELDS = ['name', 'amount', 'frequency', 'category', 'due_date', 'shared_with', 'split_percent']
+MAP = {f'map_{f}': str(i) for i, f in enumerate(FIELDS)}
+
+
+def upload_bills(client: CsrfClient, filename: str, body: bytes, kind: str = 'text/csv') -> str:
+    resp = client.post('/bills/import', files={'file': (filename, body, kind)})
+    assert resp.status_code == 303, resp.text
+    return str(resp.headers['location'].rsplit('/', 1)[1])
+
+
+def test_bill_templates_download(env: Env) -> None:
+    a = env.login(env.user('alex'))
+    csv_t = a.get('/bills/template.csv')
     assert csv_t.status_code == 200 and csv_t.text.startswith(
         'name,amount,frequency,category,due_date'
     )
-    js = a.get('/housing/template.json')
-    assert json.loads(js.text)['items'][0]['name'] == 'Council rates'
+    js = a.get('/bills/template.json')
+    assert json.loads(js.text)['bills'][0]['name'] == 'Council rates'
+    assert 'Upload and preview' in a.get('/bills/import').text
 
 
-def test_housing_csv_import_preview_and_reimport_diff(env: Env) -> None:
-    env.user('partner')
-    a = env.login(env.user('alex'))
-    first = a.get('/housing/template.csv').text
-    resp = a.post('/housing/import', files={'file': ('h.csv', first.encode(), 'text/csv')})
-    name = resp.headers['location'].rsplit('/', 1)[1]
-    preview = a.get(f'/housing/import/{name}')
-    assert 'Added (3)' in preview.text
+def test_bill_csv_import_preview_and_reimport_diff(env: Env) -> None:
+    partner = env.user('partner')
+    alex = env.user('alex')
+    a = env.login(alex)
+    # A bill made by hand earlier, under a name the file also uses.
+    create_bill(a, name='Water', amount='300', frequency='quarterly', next_due='2026-10-10')
+    first = a.get('/bills/template.csv').text
+    name = upload_bills(a, 'h.csv', first.encode())
+    preview = a.get(f'/bills/import/{name}').text
+    assert 'Added (2)' in preview and 'Changed (1)' in preview
     with env.db() as db:
-        assert db.execute(select(HousingItem)).first() is None  # nothing until applied
-    a.post(
-        f'/housing/import/{name}/apply',
-        data={
-            f'map_{f}': str(i)
-            for i, f in enumerate(
-                [
-                    'name',
-                    'amount',
-                    'frequency',
-                    'category',
-                    'due_date',
-                    'shared_with',
-                    'split_percent',
-                ]
-            )
-        },
-    )
+        assert len(db.execute(select(Bill)).scalars().all()) == 1  # nothing until applied
+    a.post(f'/bills/import/{name}/apply', data=MAP)
     with env.db() as db:
-        assert len(db.execute(select(HousingItem)).scalars().all()) == 3
-    # Re-import with one changed, one removed.
+        bills = {b.name: b for b in db.execute(select(Bill)).scalars()}
+        assert set(bills) == {'Council rates', 'Home insurance', 'Water'}
+        water = bills['Water']
+        # Matched by name: updated, not duplicated, and the file's due date taken
+        # only when it gives one (the template's Water has none).
+        assert water.amount_cents == 310_00 and water.next_due == date(2026, 10, 10)
+        assert {s.user_id for s in water.shares} == {alex.id, partner.id}
+        rates = bills['Council rates']
+        assert rates.next_due == date(2026, 11, 15) and len(rates.shares) == 1
+        mine = next(s for s in bills['Home insurance'].shares if s.user_id == alex.id)
+        insurance = db.execute(select(Category).where(Category.id == mine.category_id)).scalar_one()
+        assert insurance.name == 'Insurance'
+    # Re-import with one changed and one left out, which is stopped on request.
     second = '\n'.join(first.splitlines()[:3]).replace('520.00', '560.00') + '\n'
-    resp = a.post('/housing/import', files={'file': ('h2.csv', second.encode(), 'text/csv')})
-    name = resp.headers['location'].rsplit('/', 1)[1]
-    diff = a.get(f'/housing/import/{name}').text
+    name = upload_bills(a, 'h2.csv', second.encode())
+    diff = a.get(f'/bills/import/{name}').text
     assert 'Changed (1)' in diff and 'Not in the file (1)' in diff and 'Added (0)' in diff
+    a.post(f'/bills/import/{name}/apply', data={'remove_missing': 'on', **MAP})
+    with env.db() as db:
+        bills = {b.name: b for b in db.execute(select(Bill)).scalars()}
+        assert bills['Council rates'].amount_cents == 560_00
+        assert bills['Water'].active is False and bills['Home insurance'].active is True
+
+
+def test_bill_import_keeps_a_split_the_file_cannot_describe(env: Env) -> None:
+    alex = env.user('alex')
+    sam = env.user('sam')
+    kim = env.user('kim')
+    a = env.login(alex)
+    create_bill(
+        a,
+        name='Internet',
+        amount='90',
+        next_due='2026-10-12',
+        participants=[str(sam.id), str(kim.id)],
+    )
+    name = upload_bills(a, 'i.csv', b'name,amount,frequency\nInternet,99,monthly\n')
+    assert 'shared (kept as it is)' in a.get(f'/bills/import/{name}').text
     a.post(
-        f'/housing/import/{name}/apply',
-        data={
-            'remove_missing': 'on',
-            **{
-                f'map_{f}': str(i)
-                for i, f in enumerate(
-                    [
-                        'name',
-                        'amount',
-                        'frequency',
-                        'category',
-                        'due_date',
-                        'shared_with',
-                        'split_percent',
-                    ]
-                )
-            },
-        },
+        f'/bills/import/{name}/apply',
+        data={'map_name': '0', 'map_amount': '1', 'map_frequency': '2'},
     )
     with env.db() as db:
-        items = {i.name: i.amount_cents for i in db.execute(select(HousingItem)).scalars()}
-        assert items == {'Council rates': 560_00, 'Home insurance': 1850_00}
-        water = db.execute(select(Bill).where(Bill.name == 'Water')).scalar_one()
-        assert water.active is False
+        bill = db.execute(select(Bill)).scalar_one()
+        assert bill.amount_cents == 99_00 and len(bill.shares) == 3
 
 
-def test_housing_csv_with_other_headers_needs_mapping(env: Env) -> None:
+def test_bill_import_leaves_what_the_file_does_not_mention(env: Env) -> None:
+    alex = env.user('alex')
+    sam = env.user('sam')
+    a = env.login(alex)
+    utilities = cat_id(env, alex, 'Utilities')
+    create_bill(
+        a,
+        name='Power',
+        amount='200',
+        next_due='2026-10-20',
+        category_id=str(utilities),
+        participants=[str(sam.id)],
+    )
+    # No category or sharing columns: only the amount moves.
+    name = upload_bills(a, 'p.csv', b'name,amount,frequency\nPower,240,monthly\n')
+    preview = a.get(f'/bills/import/{name}').text
+    assert 'Changed (1)' in preview
+    a.post(
+        f'/bills/import/{name}/apply',
+        data={'map_name': '0', 'map_amount': '1', 'map_frequency': '2'},
+    )
+    with env.db() as db:
+        bill = db.execute(select(Bill)).scalar_one()
+        assert bill.amount_cents == 240_00 and bill.next_due == date(2026, 10, 20)
+        assert {s.user_id for s in bill.shares} == {alex.id, sam.id}
+        mine = next(s for s in bill.shares if s.user_id == alex.id)
+        assert mine.category_id == utilities
+    # The same file again changes nothing.
+    name = upload_bills(a, 'p.csv', b'name,amount,frequency\nPower,240,monthly\n')
+    assert 'Nothing would change' in a.get(f'/bills/import/{name}').text
+
+
+def test_bill_csv_with_other_headers_needs_mapping(env: Env) -> None:
     a = env.login(env.user('alex'))
-    text = 'Item,Cost,Every,Group\nStrata,1200,quarterly,Housing\n'
-    name = (
-        a.post('/housing/import', files={'file': ('o.csv', text.encode(), 'text/csv')})
-        .headers['location']
-        .rsplit('/', 1)[1]
-    )
-    assert 'Map the columns' in a.get(f'/housing/import/{name}').text
-    preview = a.get(
-        f'/housing/import/{name}?map_name=0&map_amount=1&map_frequency=2&map_category=3'
-    )
+    name = upload_bills(a, 'o.csv', b'Item,Cost,Every,Group\nStrata,1200,quarterly,Housing\n')
+    assert 'Map the columns' in a.get(f'/bills/import/{name}').text
+    preview = a.get(f'/bills/import/{name}?map_name=0&map_amount=1&map_frequency=2&map_category=3')
     assert 'Added (1)' in preview.text and 'Strata' in preview.text
 
 
-def test_housing_json_import_and_errors(env: Env) -> None:
+def test_bill_json_import_takes_the_old_housing_format(env: Env) -> None:
     a = env.login(env.user('alex'))
     doc = {
         'items': [
@@ -388,32 +490,61 @@ def test_housing_json_import_and_errors(env: Env) -> None:
             {'name': 'Bad2', 'amount': '5', 'frequency': 'sometimes'},
         ]
     }
-    name = (
-        a.post(
-            '/housing/import',
-            files={'file': ('h.json', json.dumps(doc).encode(), 'application/json')},
-        )
-        .headers['location']
-        .rsplit('/', 1)[1]
-    )
-    page = a.get(f'/housing/import/{name}').text
+    name = upload_bills(a, 'h.json', json.dumps(doc).encode(), 'application/json')
+    page = a.get(f'/bills/import/{name}').text
     assert 'Added (1)' in page and '2 rows skipped' in page
 
 
-def test_another_users_staged_housing_file_is_unreachable(env: Env) -> None:
+def test_another_users_staged_bill_file_is_unreachable(env: Env) -> None:
     a = env.login(env.user('alex'))
     b = env.login(env.user('blake'))
-    name = (
-        a.post(
-            '/housing/import',
-            files={'file': ('h.csv', b'name,amount,frequency\nX,1,monthly\n', 'text/csv')},
-        )
-        .headers['location']
-        .rsplit('/', 1)[1]
+    name = upload_bills(a, 'h.csv', b'name,amount,frequency\nX,1,monthly\n')
+    assert b.get(f'/bills/import/{name}').status_code == 404
+    assert b.post(f'/bills/import/{name}/apply').status_code == 404
+    assert a.get('/bills/import/../../fiscus.db').status_code == 404
+
+
+def test_future_payslip_is_one_off_income(env: Env) -> None:
+    a, alex, acct = setup_household(env)
+    before = chart_data(a.get('/forecast?months=1').text)
+    # A bonus paid on 20 Oct, and one already paid (in the balance already).
+    a.post(
+        '/payslips',
+        data={
+            'date': '2026-10-20',
+            'source': 'Acme bonus',
+            'gross': '5000',
+            'tax_withheld': '1500',
+            'net': '3500',
+            'account_id': str(acct),
+        },
     )
-    assert b.get(f'/housing/import/{name}').status_code == 404
-    assert b.post(f'/housing/import/{name}/apply').status_code == 404
-    assert a.get('/housing/import/../../fiscus.db').status_code == 404
+    a.post(
+        '/payslips',
+        data={'date': '2026-09-20', 'gross': '1000', 'tax_withheld': '0', 'net': '1000'},
+    )
+    after = chart_data(a.get('/forecast?months=1').text)
+    i19, i20 = after['dates'].index('2026-10-19'), after['dates'].index('2026-10-20')
+    assert after['combined'][i19] == before['combined'][i19]
+    assert after['combined'][i20] == before['combined'][i20] + 3500_00
+    assert any(m['label'] == 'Acme bonus' and m['kind'] == 'pay' for m in after['markers'])
+    page = a.get('/pay').text
+    assert 'Expected' in page
+    cal = a.get('/calendar?view=agenda&date=2026-10-01').text
+    assert 'Acme bonus' in cal
+    with env.db() as db:
+        user = db.get(User, alex.id)
+        assert user is not None
+        tv = taxes.view(db, user, env.clock.today())
+    # Past payslip only in the year to date; the bonus adds to the projection.
+    assert tv.ytd.salary_gross_cents == 1000_00
+    with env.db() as db:
+        db.execute(delete(Payslip).where(Payslip.source == 'Acme bonus'))
+        db.commit()
+        user = db.get(User, alex.id)
+        assert user is not None
+        without = taxes.view(db, user, env.clock.today())
+    assert tv.projected.salary_gross_cents - without.projected.salary_gross_cents == 5000_00
 
 
 # ----------------------------------------------------------------------- tax
@@ -480,7 +611,8 @@ def test_every_page_renders(env: Env) -> None:
         '/forecast?months=24',
         '/scenarios',
         '/budget',
-        '/housing',
+        '/bills/import',
+        f'/bills?category={acct}',
         '/tax',
         '/settings',
     ]:

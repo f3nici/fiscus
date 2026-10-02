@@ -224,13 +224,13 @@ def create_app(
     from fiscus.routes import (
         accounts,
         admin,
+        bill_import,
         bills,
         budget,
         calendar,
         dashboard,
         forecast,
         health,
-        housing,
         imports,
         loans,
         pay,
@@ -255,13 +255,13 @@ def create_app(
         imports,
         transactions,
         category_routes,
+        bill_import,  # its literal paths before /bills/{bill_id}
         bills,
         pay,
         calendar,
         loans,
         forecast,
         budget,
-        housing,
         tax,
     ):
         app.include_router(module.router)

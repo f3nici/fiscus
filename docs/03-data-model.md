@@ -33,7 +33,7 @@ user's `data_version` (the forecast cache key).
 
 | Table | Notes |
 | --- | --- |
-| bills | owner, amount, frequency, next due (the recurrence anchor), end date, split mode, matching tolerance, window and hint, optional housing item |
+| bills | owner, amount, frequency, next due (the recurrence anchor), end date, split mode, matching tolerance, window and hint |
 | bill_shares (owned) | one per participant, the owner included: split value (basis points or cents), the participant's own account and category |
 | bill_payments (owned) | one participant's occurrence marked paid, by transaction or by hand; unique per bill, user and due date, and per transaction |
 
@@ -42,12 +42,11 @@ user's `data_version` (the forecast cache key).
 | Table | Notes |
 | --- | --- |
 | pay_schedules (owned) | frequency, anchor payday, net, optional gross and withholding, end date, account |
-| payslips (owned) | date, gross, withheld, net, source |
+| payslips (owned) | date, gross, withheld, net, source, account (paid into). Dated after today, a payslip is one-off income in the forecast, calendar and tax projection |
 | loans (owned) | principal, start, term, repayment frequency, current balance and its date, optional repayment override, repayment account |
 | loan_rates (owned) | rate from an effective date; the history |
 | recurring_transfers (owned) | from, to, amount, frequency, tax set-aside flag |
-| budgets (owned) | monthly amount per category, `use_in_forecast` |
-| housing_items (owned) | name, amount, frequency, category, due date, shared-with user and their share; each drives a bill and its category's budget |
+| budgets (owned) | per category, the monthly amount set aside on top of this person's bills in it (the budget shown is the bills' monthly equivalent plus this), `use_in_forecast` |
 | scenarios, scenario_adjustments (owned) | named what-ifs; adjustments are a kind plus JSON parameters |
 | forecast_cache | one row per user: key and serialised result |
 | notification_log | one row per reminder sent, so each is sent once |

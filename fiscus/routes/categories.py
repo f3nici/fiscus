@@ -90,14 +90,8 @@ def delete_category(
     db: Session = Depends(get_db),
 ) -> Response:
     cat = get_owned(db, Category, category_id, user)
-    try:
-        db.delete(cat)
-        db.flush()
-    except IntegrityError:
-        db.rollback()
-        return redirect(
-            '/categories', flash='That category is used by a housing item', request=request
-        )
+    db.delete(cat)
+    db.flush()
     return redirect(
         '/categories',
         flash='Category deleted; its transactions are now uncategorised',

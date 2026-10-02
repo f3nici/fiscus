@@ -8,7 +8,7 @@ a PWA on phones. No external calls, no telemetry, no CDN.
 accounts and ANZ/mapped CSV import with dedup and undo; categories, rules and
 recategorising; bills with shares, matching and states; pay schedules and
 payslips; the calendar; home loan and offset; forecasting with scenarios;
-budget and housing costs; the tax estimate; the dashboard; ntfy reminders;
+the budget (bills count towards it); bill import; the tax estimate; the dashboard; ntfy reminders;
 backups. Next steps are in `docs/10-decisions.md` §3.
 
 ## Read before building
@@ -66,8 +66,9 @@ doc 10 wins.
   never an HTTP endpoint without a session.
 - **CSP is strict**: `script-src 'self'`, `style-src 'self'`. No inline
   scripts, no `style=""` attributes (a test fails on one), no `eval` (so no
-  htmx `js:` values). Data for scripts goes in
-  `<script type="application/json">` with `<` escaped.
+  htmx `js:` values). Data for scripts goes in a `data-*` attribute as JSON,
+  autoescaped. Not a `<script type="application/json">`: htmx drops every
+  script tag when it swaps a boosted page.
 - **Everything frontend is vendored** in `fiscus/static/vendor` with its
   licence and a line in its README. Nothing loads from another origin.
 - **No external calls** except the user's own ntfy server, off by default.
@@ -100,10 +101,10 @@ doc 10 wins.
 fiscus/
   config.py clock.py money.py db.py models.py web.py app.py jobs.py cli.py
   domain/     recurrence, splits, csvimport, rules, matching, loan, forecast,
-              tax, housing. Pure, no I/O.
+              tax, bill_import, budget_import. Pure, no I/O.
   services/   access (ownership), auth (sessions, links, WebAuthn), users,
               ledger, imports, bills, forecasting, loans, taxes, budgeting,
-              housing, calendar_events, reminders, ntfy, backup, versioning, audit
+              bill_import, calendar_events, reminders, ntfy, backup, versioning, audit
   routes/     one module per screen
   templates/  Jinja2 + HTMX
   static/     css, js (app, webauthn, calendar, forecast-chart, sw.src.js),
@@ -144,8 +145,9 @@ FISCUS_DATA_DIR=./data FISCUS_BASE_URL=http://localhost:8000 python -m fiscus
 - **One uvicorn worker, always.** SQLite, the in-memory rate limiter and the
   background jobs assume a single process. `python -m fiscus` enforces it.
 - **Route order matters** for literal paths beside `{id}` paths
-  (`/rules/rerun` before `/rules/{rule_id}`, `/housing/import` before
-  `/housing/{item_id}`). FastAPI matches the first, then fails validation.
+  (`/rules/rerun` before `/rules/{rule_id}`; the `bill_import` router before
+  `bills`, for `/bills/import` beside `/bills/{bill_id}`). FastAPI matches the
+  first, then fails validation.
 - **The calendar uses vue-cal's class names on server-rendered markup.** If a
   layout looks wrong, check `static/vendor/vuecal-4.10.2.css` before writing
   new CSS: a vue-cal rule is probably applying (`.vuecal--no-time

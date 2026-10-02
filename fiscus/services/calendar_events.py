@@ -14,9 +14,9 @@ from sqlalchemy.orm import Session
 
 from fiscus.clock import Clock
 from fiscus.domain import recurrence
-from fiscus.domain.loan import is_repayment_day
-from fiscus.models import Loan, PaySchedule, User
-from fiscus.services import bills, forecasting
+from fiscus.domain.loan import repayments as loan_repayments
+from fiscus.models import Loan, PaySchedule, Payslip, User
+from fiscus.services import bills, forecasting, ledger
 from fiscus.services.access import owned
 
 VIEWS = ('month', 'week', 'day', 'agenda')
@@ -85,24 +85,32 @@ def events(db: Session, user: User, start: date, end: date, today: date) -> list
                     ps.id,
                 )
             )
-    for loan in db.execute(owned(Loan, user)).scalars():
+    # Payslips after today are one-off pays to come; earlier ones are in the
+    # imported transactions already.
+    for slip in db.execute(
+        owned(Payslip, user).where(Payslip.date > today, Payslip.date >= start, Payslip.date <= end)
+    ).scalars():
+        out.append(
+            Event(slip.date, 'pay', slip.source or 'Payslip', slip.net_cents, 'scheduled', None)
+        )
+    loans = db.execute(owned(Loan, user)).scalars().all()
+    balances = ledger.balances(db, user, today) if loans else {}
+    for loan in loans:
         spec = forecasting.loan_spec(db, loan)
-        payment = spec.scheduled_repayment()
-        day = start
-        while day <= end:
-            if is_repayment_day(spec, day) and day <= spec.maturity:
-                out.append(
-                    Event(
-                        day,
-                        'loan',
-                        f'{loan.name} repayment',
-                        -payment,
-                        'paid' if day <= today else 'scheduled',
-                        None,
-                        loan.id,
-                    )
+        # Today's offset held steady, as on the loan page.
+        offset = sum(max(0, balances.get(a, 0)) for a in spec.offset_account_ids)
+        for day, payment in loan_repayments(spec, start, end, offset):
+            out.append(
+                Event(
+                    day,
+                    'loan',
+                    f'{loan.name} repayment',
+                    -payment,
+                    'paid' if day <= today else 'scheduled',
+                    None,
+                    loan.id,
                 )
-            day += timedelta(days=1)
+            )
     order = {'pay': 0, 'shared': 1, 'bill': 1, 'loan': 2}
     out.sort(key=lambda e: (e.date, order.get(e.kind, 3), e.title))
     return out

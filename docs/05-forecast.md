@@ -19,7 +19,10 @@ anchor. A bill's "next due" is its anchor.
   then the evening's interest on the balance and the offset accounts' balances
   as they now stand.
 - **Rate changes** reprice the repayment over the remaining term from the
-  balance that day, unless the repayment is fixed by hand.
+  balance that day, unless the repayment is fixed by hand. A change dated
+  before the loan's balance date reprices from that balance, so a backdated
+  change still moves the repayment. The calendar and the loan page step the
+  same simulation (`loan.repayments`), with today's offset held steady.
 - **Offset savings** this month and this financial year sum
   `min(balance, offset at end of day) x rate / 365` over the actual daily
   offset balances from transactions, holding the loan balance at its current
@@ -30,7 +33,8 @@ anchor. A bill's "next due" is its anchor.
 `domain/forecast.run(ForecastInput) -> ForecastResult` is pure. Day 0 is
 today with real balances. Each later day applies:
 
-1. flows: pay (net), bills at this person's share, planned transfers (both
+1. flows: pay (net, from schedules and from payslips dated after today),
+   bills at this person's share, planned transfers (both
    legs), scenario one-offs. Unpaid bills overdue within the last two months
    are assumed to go out tomorrow;
 2. loan repayments, debited from the repayment account;
@@ -41,7 +45,9 @@ today with real balances. Each later day applies:
 Discretionary spending is, per category, the average of the last 90 days
 scaled to a month, excluding transfers, salary (covered by pay schedules) and
 any transaction matched to a bill (bills come from their schedule). A budget
-line marked "use in forecast" replaces that category's average. Business
+line marked "use in forecast" replaces that category's average with the part
+of its budget beyond the category's bills, since the bills are already
+forecast from their own dates. Business
 income is projected the same way.
 
 Outputs: per-account and combined daily balances, loan balances, markers for
