@@ -180,6 +180,8 @@ class UserSettings(Base, Owned):
     ntfy_overdue: Mapped[bool] = mapped_column(Boolean, default=True)
     ntfy_low_balance: Mapped[bool] = mapped_column(Boolean, default=True)
     ntfy_hour: Mapped[int] = mapped_column(Integer, default=8)
+    # The budget month runs from this day to the day before it next month.
+    budget_start_day: Mapped[int] = mapped_column(Integer, default=1)
 
 
 class SquareConnection(Base, Owned):
@@ -249,6 +251,8 @@ class Account(Base, Owned):
     )
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime)
+    # The day the balance was last typed in by hand.
+    balance_updated_on: Mapped[date | None] = mapped_column(Date, nullable=True)
 
 
 class ImportMapping(Base, Owned):
@@ -507,6 +511,21 @@ class Budget(Base, Owned):
     monthly_cents: Mapped[int] = mapped_column(Integer)
     # Use this amount instead of the rolling average in the forecast.
     use_in_forecast: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class BudgetSpend(Base, Owned):
+    """Money taken off a category's budget by hand."""
+
+    __tablename__ = 'budget_spends'
+    __table_args__ = (Index('ix_budget_spends_user_date', 'user_id', 'date'),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'))
+    category_id: Mapped[int] = mapped_column(ForeignKey('categories.id', ondelete='CASCADE'))
+    date: Mapped[date] = mapped_column(Date)
+    amount_cents: Mapped[int] = mapped_column(Integer)
+    note: Mapped[str] = mapped_column(String(120), default='')
+    created_at: Mapped[datetime] = mapped_column(DateTime)
 
 
 class Scenario(Base, Owned):

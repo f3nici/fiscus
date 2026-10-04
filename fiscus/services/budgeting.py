@@ -1,30 +1,40 @@
-"""Monthly budget against actual spending.
+"""The budget: what is set aside for each category in a budget month, and what is left.
 
 A category's budget is this person's bills in it (each share at its monthly
-equivalent, a one-off in the month it falls due) plus whatever else they set
+equivalent, a one-off in the period it falls due) plus whatever else they set
 aside for it. The bills are counted for them; only the rest is stored.
+
+Spending is not read from bank transactions. It is what the person takes off a
+budget by hand (`BudgetSpend`) plus their share of every bill they mark paid
+that falls due in the period. The budget month starts on the day they choose.
 """
 
 from __future__ import annotations
 
-import calendar
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from fiscus.domain import recurrence
-from fiscus.models import Budget, Category, User
-from fiscus.services import bills, ledger
+from fiscus.models import Budget, BudgetSpend, Category, Payslip, User
+from fiscus.services import bills, ledger, pay
 from fiscus.services.access import owned
+from fiscus.services.users import settings_for
 
 
 @dataclass(frozen=True)
 class BudgetRow:
     category: Category
     budget: Budget | None
-    actual_cents: int  # positive: spent (or earned, for income)
+    spent_cents: int  # taken off by hand (earned, for income)
     bills_cents: int  # this person's bills in the category, per month
+    bills_paid_cents: int  # their share of bills marked paid this period
+
+    @property
+    def actual_cents(self) -> int:
+        return self.spent_cents + self.bills_paid_cents
 
     @property
     def extra_cents(self) -> int:
@@ -61,14 +71,36 @@ class BudgetRow:
         return 'ok'
 
 
-def month_bounds(month: date) -> tuple[date, date]:
-    start = month.replace(day=1)
-    return start, start.replace(day=calendar.monthrange(start.year, start.month)[1])
+@dataclass(frozen=True)
+class Summary:
+    expected_cents: int  # pay due in the period plus income budgets
+    pay_cents: int
+    budget_cents: int  # spending budgets, bills included
+    spent_cents: int
+    to_spend_cents: int  # what is left in budgets not yet overspent
+    over: int
+
+    @property
+    def unbudgeted_cents(self) -> int:
+        return self.expected_cents - self.budget_cents
 
 
-def bills_by_category(db: Session, user: User, month: date) -> dict[int, int]:
-    """This person's bills per category for the month, smoothed to a monthly amount."""
-    start, end = month_bounds(month)
+def start_day(db: Session, user: User) -> int:
+    return settings_for(db, user).budget_start_day
+
+
+def period(db: Session, user: User, day: date) -> tuple[date, date]:
+    """The budget month holding `day`."""
+    return recurrence.month_period(day, start_day(db, user))
+
+
+def period_starting_in(db: Session, user: User, month: date) -> tuple[date, date]:
+    """The budget month that starts in the calendar month of `month`."""
+    return period(db, user, recurrence.add_months(month, 0, start_day(db, user)))
+
+
+def bills_by_category(db: Session, user: User, start: date, end: date) -> dict[int, int]:
+    """This person's bills per category for the period, smoothed to a monthly amount."""
     out: dict[int, int] = {}
     for share in bills.user_shares(db, user):
         bill = share.bill
@@ -87,12 +119,44 @@ def bills_by_category(db: Session, user: User, month: date) -> dict[int, int]:
     return out
 
 
+def bills_paid_by_category(
+    db: Session, user: User, start: date, end: date, today: date
+) -> dict[int, int]:
+    """This person's share of bills due in the period and marked paid."""
+    out: dict[int, int] = {}
+    for occ in bills.occurrences(db, user, start, end, today):
+        if occ.payment is None or occ.share.category_id is None:
+            continue
+        cid = occ.share.category_id
+        out[cid] = out.get(cid, 0) + occ.share_cents
+    return out
+
+
+def spent_by_category(db: Session, user: User, start: date, end: date) -> dict[int, int]:
+    rows = db.execute(
+        select(BudgetSpend.category_id, func.sum(BudgetSpend.amount_cents))
+        .where(BudgetSpend.user_id == user.id, BudgetSpend.date >= start, BudgetSpend.date <= end)
+        .group_by(BudgetSpend.category_id)
+    )
+    return {cid: int(total) for cid, total in rows}
+
+
+def spends(db: Session, user: User, start: date, end: date) -> list[BudgetSpend]:
+    return list(
+        db.execute(
+            owned(BudgetSpend, user)
+            .where(BudgetSpend.date >= start, BudgetSpend.date <= end)
+            .order_by(BudgetSpend.date.desc(), BudgetSpend.id.desc())
+        ).scalars()
+    )
+
+
 def set_total(
     db: Session,
     user: User,
     category: Category,
     total_cents: int,
-    month: date,
+    day: date,
     *,
     use_in_forecast: bool,
     add: bool = False,
@@ -102,7 +166,8 @@ def set_total(
     Only the part above the bills is stored. With `add`, the amount goes on top
     of whatever is set aside already.
     """
-    from_bills = bills_by_category(db, user, month).get(category.id, 0)
+    start, end = period(db, user, day)
+    from_bills = bills_by_category(db, user, start, end).get(category.id, 0)
     row = db.execute(
         owned(Budget, user).where(Budget.category_id == category.id)
     ).scalar_one_or_none()
@@ -122,27 +187,59 @@ def set_total(
     return from_bills + extra, from_bills
 
 
-def rows(db: Session, user: User, month: date, today: date) -> list[BudgetRow]:
-    start, end = month_bounds(month)
-    spend = ledger.spend_by_category(db, user, start, end)
+def rows(db: Session, user: User, start: date, end: date, today: date) -> list[BudgetRow]:
+    spent = spent_by_category(db, user, start, end)
+    paid = bills_paid_by_category(db, user, start, end, today)
     budgets = {b.category_id: b for b in db.execute(owned(Budget, user)).scalars()}
-    from_bills = bills_by_category(db, user, month)
+    from_bills = bills_by_category(db, user, start, end)
     out = []
     for cat in ledger.categories(db, user):
         if cat.is_transfer:
             continue
-        net = spend.get(cat.id, 0)
-        actual = net if cat.is_income else -net
-        if cat.id in budgets or actual or from_bills.get(cat.id):
-            out.append(BudgetRow(cat, budgets.get(cat.id), actual, from_bills.get(cat.id, 0)))
+        cid = cat.id
+        if cid in budgets or spent.get(cid) or paid.get(cid) or from_bills.get(cid):
+            out.append(
+                BudgetRow(
+                    cat,
+                    budgets.get(cid),
+                    spent.get(cid, 0),
+                    from_bills.get(cid, 0),
+                    paid.get(cid, 0),
+                )
+            )
     out.sort(key=lambda r: (r.category.is_income, -r.budget_cents, r.category.name))
     return out
 
 
-def totals(rs: list[BudgetRow]) -> dict[str, int]:
+def expected_pay(db: Session, user: User, start: date, end: date, today: date) -> int:
+    """Net pay due in the period: every pay schedule's paydays, and payslips still to come."""
+    total = 0
+    for ps, net in pay.schedules(db, user, today):
+        for _d in recurrence.occurrences(
+            ps.anchor_date, ps.frequency, start, end, until=ps.end_date
+        ):
+            total += net
+    # A payslip dated after today is a one-off pay still to come, as in the forecast.
+    first = max(start, today + timedelta(days=1))
+    total += int(
+        db.scalar(
+            select(func.coalesce(func.sum(Payslip.net_cents), 0)).where(
+                Payslip.user_id == user.id, Payslip.date >= first, Payslip.date <= end
+            )
+        )
+        or 0
+    )
+    return total
+
+
+def summary(rs: list[BudgetRow], pay_cents: int) -> Summary:
     spend = [r for r in rs if not r.category.is_income]
-    return {
-        'budget': sum(r.budget_cents for r in spend),
-        'actual': sum(r.actual_cents for r in spend),
-        'over': sum(1 for r in spend if r.state == 'over'),
-    }
+    income = sum(r.budget_cents for r in rs if r.category.is_income)
+    return Summary(
+        expected_cents=pay_cents + income,
+        pay_cents=pay_cents,
+        budget_cents=sum(r.budget_cents for r in spend),
+        spent_cents=sum(r.actual_cents for r in spend),
+        to_spend_cents=sum(max(0, r.remaining_cents) for r in spend if r.has_budget),
+        over=sum(1 for r in spend if r.state == 'over'),
+    )

@@ -18,13 +18,13 @@ user's `data_version` (the forecast cache key).
 | app_state | small key/value for instance state |
 | square_connections (owned) | one per user: enabled, access token, target account, categories for payments, fees and payouts, start date, synced-until, last result and error |
 | square_invoices (owned) | unpaid invoice payment requests as of the last sync: number, customer, due date, amount owing |
-| user_settings (owned) | low-balance threshold, forecast horizon, spending account, large-bill threshold, ntfy settings |
+| user_settings (owned) | low-balance threshold, forecast horizon, spending account, large-bill threshold, ntfy settings, `budget_start_day` (the budget month runs from this day) |
 
 ## Money
 
 | Table | Notes |
 | --- | --- |
-| accounts (owned) | type, opening balance, set-aside flag, `loan_id` for an offset, archived |
+| accounts (owned) | type, opening balance, set-aside flag, `loan_id` for an offset, archived, `balance_updated_on`. Typing in today's balance moves the opening balance so opening plus transactions comes to it |
 | transactions (owned) | date, signed amount, description, category, import, `dedup_hash` unique per account |
 | imports (owned) | file name, status (`pending`, `committed`, `undone`), counts, staged file path |
 | import_mappings (owned) | one column mapping per account, for non-ANZ files; a PDF statement's mapping sits under its `pdf` key |
@@ -48,7 +48,8 @@ user's `data_version` (the forecast cache key).
 | loans (owned) | principal, start, term, repayment frequency, current balance and its date, optional repayment override, repayment account |
 | loan_rates (owned) | rate from an effective date; the history |
 | recurring_transfers (owned) | from, to, amount, frequency, tax set-aside flag |
-| budgets (owned) | per category, the monthly amount set aside on top of this person's bills in it (the budget shown is the bills' monthly equivalent plus this), `use_in_forecast` |
+| budgets (owned) | per category, the monthly amount set aside on top of this person's bills in it (the budget shown is the bills' monthly equivalent plus this), `use_in_forecast` (no longer read: every budget is used in the forecast) |
+| budget_spends (owned) | money taken off a category's budget by hand: category, date, amount (negative for a refund), note |
 | scenarios, scenario_adjustments (owned) | named what-ifs; adjustments are a kind plus JSON parameters |
 | forecast_cache | one row per user: key and serialised result |
 | notification_log | one row per reminder sent, so each is sent once |

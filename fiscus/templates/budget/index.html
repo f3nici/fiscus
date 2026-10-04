@@ -1,65 +1,178 @@
 {% extends "base.html" %}
 {% block title %}Budget{% endblock %}
 {% block content %}
+  {% set back = '/budget?month=' ~ start.strftime('%Y-%m') %}
   <div class="page-head">
     <h1>Budget</h1>
     <div class="row">
-      <a class="btn btn-sm" href="/budget?month={{ prev.strftime('%Y-%m') }}" aria-label="Previous month">‹</a>
-      <strong>{{ month | d('month') }}</strong>
-      <a class="btn btn-sm" href="/budget?month={{ next.strftime('%Y-%m') }}" aria-label="Next month">›</a>
-      <a class="btn btn-primary btn-sm" href="#import" hx-boost="false">Import spreadsheet</a>
+      <a class="btn btn-sm" href="/budget?month={{ prev.strftime('%Y-%m') }}" aria-label="Previous budget month">‹</a>
+      <strong>{{ start | d('dm') }} to {{ end | d }}</strong>
+      <a class="btn btn-sm" href="/budget?month={{ next.strftime('%Y-%m') }}" aria-label="Next budget month">›</a>
+      <a class="btn btn-sm" href="#import" hx-boost="false">Import spreadsheet</a>
     </div>
   </div>
-  <div class="grid grid-3">
-    <div class="card stat"><div class="label">Budgeted spending</div><div class="value">{{ totals.budget | money }}</div></div>
-    <div class="card stat"><div class="label">Actual spending</div><div class="value {{ 'neg' if totals.actual > totals.budget and totals.budget else '' }}">{{ totals.actual | money }}</div></div>
-    <div class="card stat"><div class="label">Categories over</div><div class="value {{ 'neg' if totals.over else '' }}">{{ totals.over }}</div></div>
+
+  <div class="grid stats">
+    <div class="card stat">
+      <div class="label">Expected to earn</div>
+      <div class="value">{{ summary.expected_cents | money }}</div>
+      <span class="text-sm muted">{% if summary.pay_cents %}{{ summary.pay_cents | money }} pay{% if summary.expected_cents != summary.pay_cents %}, {{ (summary.expected_cents - summary.pay_cents) | money }} other income{% endif %}{% else %}<a href="/pay">Add your pay</a>{% endif %}</span>
+    </div>
+    <div class="card stat">
+      <div class="label">Budgeted</div>
+      <div class="value">{{ summary.budget_cents | money }}</div>
+      <span class="text-sm muted">bills included</span>
+    </div>
+    <div class="card stat">
+      <div class="label">Unbudgeted (extra)</div>
+      <div class="value {{ 'neg' if summary.unbudgeted_cents < 0 else 'pos' }}">{{ summary.unbudgeted_cents | money }}</div>
+      <span class="text-sm muted">{{ 'more budgeted than you expect to earn' if summary.unbudgeted_cents < 0 else 'earned but not budgeted for' }}</span>
+    </div>
+    <div class="card stat">
+      <div class="label">Spent so far</div>
+      <div class="value {{ 'neg' if summary.spent_cents > summary.budget_cents and summary.budget_cents else '' }}">{{ summary.spent_cents | money }}</div>
+      <span class="text-sm muted">{% if summary.over %}<span class="neg">{{ summary.over }} categor{{ 'y' if summary.over == 1 else 'ies' }} over</span>{% else %}nothing over{% endif %}</span>
+    </div>
+    <div class="card stat">
+      <div class="label">Still to spend</div>
+      <div class="value">{{ summary.to_spend_cents | money }}</div>
+      <span class="text-sm muted">left in your budgets</span>
+    </div>
+    <div class="card stat">
+      <div class="label">Free in accounts now</div>
+      {% if current and has_accounts %}
+        <div class="value {{ 'neg' if spendable - summary.to_spend_cents < 0 else 'pos' }}">{{ (spendable - summary.to_spend_cents) | money }}</div>
+        <span class="text-sm muted">{{ spendable | money }} in accounts, less what is still to spend · <a href="/accounts">Update</a></span>
+      {% elif has_accounts %}
+        <div class="value">-</div><span class="text-sm muted">Shown for the current budget month</span>
+      {% else %}
+        <div class="value">-</div><a class="text-sm" href="/accounts/new">Add your accounts</a>
+      {% endif %}
+    </div>
   </div>
+
+  {% if spend_cats %}
+    <form class="card mt" method="post" action="/budget/spend">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="back" value="{{ back }}">
+      <h2>Take off a budget</h2>
+      <div class="form-grid">
+        <div class="field">
+          <label class="label" for="spend_category">Category</label>
+          <select class="input" id="spend_category" name="category_id">{% for c in spend_cats %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select>
+        </div>
+        <div class="field">
+          <label class="label" for="spend_amount">Amount spent</label>
+          <input class="input" id="spend_amount" name="amount" inputmode="decimal" required placeholder="0.00">
+        </div>
+        <div class="field">
+          <label class="label" for="spend_note">Note (optional)</label>
+          <input class="input" id="spend_note" name="note" maxlength="120" placeholder="Coles, fuel...">
+        </div>
+        <div class="field">
+          <label class="label" for="spend_on">Date</label>
+          <input class="input" type="date" id="spend_on" name="on" value="{{ (today if current else end).isoformat() }}" min="{{ start.isoformat() }}" max="{{ end.isoformat() }}">
+        </div>
+      </div>
+      <button class="btn btn-primary" type="submit">Take off</button>
+      <p class="muted text-xs mt">A negative amount puts money back, for a refund. Bills you tick as paid come off their category by themselves.</p>
+    </form>
+  {% endif %}
+
   <div class="card mt">
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Category</th><th class="num">Budget</th><th class="num">From bills</th><th class="num">Actual</th><th>Progress</th><th class="num">Left</th><th></th></tr></thead>
+        <thead><tr><th>Category</th><th class="num">Left</th><th class="num">Spent</th><th class="num">Budget</th><th></th></tr></thead>
         <tbody>
           {% for r in rows %}
             <tr>
-              <td>{{ r.category.name }}{% if r.category.is_income %} <span class="pill pill-ok">Income</span>{% endif %}{% if r.budget and r.budget.use_in_forecast %} <span class="pill">In forecast</span>{% endif %}</td>
+              <td>
+                {{ r.category.name }}{% if r.category.is_income %} <span class="pill pill-ok">Income</span>{% endif %}
+                {% if r.has_budget %}<meter min="0" max="{{ r.budget_cents }}" low="{{ (r.budget_cents * 0.9) | int }}" high="{{ r.budget_cents }}" optimum="0" value="{{ [r.actual_cents, r.budget_cents] | min }}">{{ r.pct }}%</meter>{% endif %}
+                {% if r.bills_cents %}<div class="text-xs muted"><a href="/bills?category={{ r.category.id }}">{{ r.bills_cents | money }} of bills</a></div>{% endif %}
+              </td>
+              <td class="num {{ 'neg' if r.state == 'over' else '' }}"><strong>{{ r.remaining_cents | money if r.has_budget else '' }}</strong></td>
+              <td class="num">
+                {{ r.actual_cents | money }}
+                {% if r.bills_paid_cents %}<div class="text-xs muted">{{ r.bills_paid_cents | money }} bills paid</div>{% endif %}
+              </td>
               <td class="num">{{ r.budget_cents | money if r.has_budget else '-' }}</td>
-              <td class="num">{% if r.bills_cents %}<a href="/bills?category={{ r.category.id }}">{{ r.bills_cents | money }}</a>{% endif %}</td>
-              <td class="num">{{ r.actual_cents | money }}</td>
-              <td>{% if r.has_budget %}<meter min="0" max="{{ r.budget_cents }}" low="{{ (r.budget_cents * 0.9) | int }}" high="{{ r.budget_cents }}" optimum="0" value="{{ [r.actual_cents, r.budget_cents] | min }}">{{ r.pct }}%</meter>{% endif %}</td>
-              <td class="num {{ 'neg' if r.state == 'over' else '' }}">{{ r.remaining_cents | money if r.has_budget else '' }}</td>
               <td>
                 <details>
                   <summary class="text-sm">Set</summary>
                   <form method="post" action="/budget" class="mt-sm">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <input type="hidden" name="category_id" value="{{ r.category.id }}">
-                    <input type="hidden" name="back" value="/budget?month={{ month.strftime('%Y-%m') }}">
-                    <input class="input" name="amount" inputmode="decimal" value="{{ r.budget_cents | money_plain if r.has_budget else '' }}" aria-label="Monthly budget">
+                    <input type="hidden" name="back" value="{{ back }}">
+                    <input class="input" name="amount" inputmode="decimal" value="{{ r.budget_cents | money_plain if r.has_budget else '' }}" aria-label="Monthly budget for {{ r.category.name }}">
                     {% if r.bills_cents %}<p class="text-xs muted mt-sm">Includes {{ r.bills_cents | money }} of bills.</p>{% endif %}
-                    <label class="check mt-sm"><input type="checkbox" name="use_in_forecast" value="true" {{ 'checked' if r.budget and r.budget.use_in_forecast }}> Use in forecast</label>
-                    <button class="btn btn-sm btn-primary" type="submit">Save</button>
+                    <button class="btn btn-sm btn-primary mt-sm" type="submit">Save</button>
                   </form>
                 </details>
               </td>
             </tr>
           {% else %}
-            <tr><td colspan="7" class="muted">No budget lines or spending this month.</td></tr>
+            <tr><td colspan="5" class="muted">No budget lines yet. Add one below.</td></tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
   </div>
-  {% if unbudgeted %}
-    <form class="card mt row" method="post" action="/budget">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <input type="hidden" name="back" value="/budget?month={{ month.strftime('%Y-%m') }}">
-      <select class="input grow" name="category_id" aria-label="Category">{% for c in unbudgeted %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select>
-      <input class="input grow" name="amount" inputmode="decimal" placeholder="Monthly amount" required aria-label="Monthly amount">
-      <label class="check"><input type="checkbox" name="use_in_forecast" value="true"> Use in forecast</label>
-      <button class="btn btn-primary" type="submit">Add budget line</button>
-    </form>
-  {% endif %}
+
+  <form class="card mt" method="post" action="/budget">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="back" value="{{ back }}">
+    <h2>Add a budget line</h2>
+    <div class="form-grid">
+      <div class="field">
+        <label class="label" for="add_category">Category</label>
+        <select class="input" id="add_category" name="category_id">
+          <option value="0">New category (name it)</option>
+          {% for c in unbudgeted %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label class="label" for="new_category">New category name</label>
+        <input class="input" id="new_category" name="new_category" maxlength="80" placeholder="Only for a new category">
+      </div>
+      <div class="field">
+        <label class="label" for="add_amount">Monthly amount</label>
+        <input class="input" id="add_amount" name="amount" inputmode="decimal" required>
+      </div>
+    </div>
+    <button class="btn btn-primary" type="submit">Add budget line</button>
+  </form>
+
+  <div class="card mt">
+    <h2>Taken off this budget month</h2>
+    <ul class="list">
+      {% for s in spends %}
+        <li>
+          <span class="grow">
+            <span class="title">{{ cat_names.get(s.category_id, '') }}{% if s.note %} · {{ s.note }}{% endif %}</span>
+            <span class="text-xs muted">{{ s.date | d('dm') }}</span>
+          </span>
+          <span class="num">{{ s.amount_cents | money }}</span>
+          <form class="inline" method="post" action="/budget/spend/{{ s.id }}/delete" data-confirm="Remove this entry?">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="back" value="{{ back }}">
+            <button class="btn btn-sm" type="submit" aria-label="Remove">✕</button>
+          </form>
+        </li>
+      {% else %}
+        <li class="muted">Nothing taken off yet.</li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <form class="card mt row" method="post" action="/budget/start-day">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label class="label grow" for="start_day">Budget month starts on day</label>
+    <input class="input input-day" type="number" id="start_day" name="start_day" min="1" max="31" value="{{ start_day }}" required>
+    <button class="btn" type="submit">Save</button>
+    <p class="muted text-xs w-full">Your payday works well. A day past the end of a short month falls on its last day.</p>
+  </form>
+
   <form class="card mt" id="import" method="post" action="/budget/import" enctype="multipart/form-data" hx-boost="false">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <h2>Import from a spreadsheet</h2>
@@ -69,5 +182,5 @@
       <button class="btn btn-primary" type="submit">Upload and preview</button>
     </div>
   </form>
-  <p class="muted text-sm mt">Bills count towards their category's budget at a monthly rate, so add a recurring cost once, on the <a href="/bills">Bills</a> page. The budget you set for a category is the whole amount, bills included; "use in forecast" covers the rest of the spending, since bills are forecast from their own dates.</p>
+  <p class="muted text-sm mt">Bills count towards their category's budget at a monthly rate, so add a recurring cost once, on the <a href="/bills">Bills</a> page. The budget you set for a category is the whole amount, bills included, and the forecast spends what is budgeted beyond the bills.</p>
 {% endblock %}

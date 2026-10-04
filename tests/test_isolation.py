@@ -18,6 +18,7 @@ from sqlalchemy import select, text
 from fiscus.models import (
     Account,
     Bill,
+    BudgetSpend,
     Category,
     Import,
     Loan,
@@ -49,6 +50,7 @@ OWNED_TABLES = [
     'loans',
     'loan_rates',
     'budgets',
+    'budget_spends',
     'scenarios',
     'scenario_adjustments',
     'recurring_transfers',
@@ -85,6 +87,7 @@ class Ids:
     scenario: int
     adjustment: int
     transfer: int
+    spend: int
 
 
 @pytest.fixture
@@ -163,6 +166,10 @@ def seeded(env: Env) -> tuple[CsrfClient, CsrfClient, Ids, User, User]:
         cat = db.execute(select(Category).where(Category.user_id == alex.id)).scalars().first()
         assert cat is not None
         a.post('/rules', data={'pattern': 'coffee', 'category_id': str(cat.id)})
+        a.post('/budget', data={'category_id': str(cat.id), 'amount': '300'})
+        a.post(
+            '/budget/spend', data={'category_id': str(cat.id), 'amount': '42', 'note': 'Bunnings'}
+        )
 
         def one(model: Any) -> int:
             found = db.execute(select(model.id).where(model.user_id == alex.id)).scalars().first()
@@ -188,6 +195,7 @@ def seeded(env: Env) -> tuple[CsrfClient, CsrfClient, Ids, User, User]:
             scenario=scenario,
             adjustment=one(ScenarioAdjustment),
             transfer=one(RecurringTransfer),
+            spend=one(BudgetSpend),
         )
     return a, b, ids, alex, blake
 
@@ -259,6 +267,9 @@ WRITES: list[tuple[str, dict[str, Any]]] = [
     ('/scenarios/{scenario}/adjustments/{adjustment}/delete', {}),
     ('/transfers/{transfer}/delete', {}),
     ('/budget', {'category_id': '{category}', 'amount': '1'}),
+    ('/budget/spend', {'category_id': '{category}', 'amount': '1'}),
+    ('/budget/spend/{spend}/delete', {}),
+    ('/accounts/{account}/balance', {'balance': '1'}),
     ('/square', {'account_id': '{account}', 'start_date': '2026-10-01'}),
     ('/square', {'fee_category_id': '{category}', 'start_date': '2026-10-01'}),
 ]
@@ -289,6 +300,8 @@ def test_b_cannot_write_a(env: Env, seeded: tuple[CsrfClient, CsrfClient, Ids, U
         )
         resp = b.post(url, data=form, files=files)
         assert resp.status_code == 404, f'POST {url} answered {resp.status_code}'
+    # The bulk balance form only reads B's own accounts: A's id is ignored.
+    b.post('/accounts/balances', data={f'balance_{ids.account}': '1'})
     assert snapshot(env) == before
 
 
@@ -319,6 +332,7 @@ def test_b_lists_show_none_of_a(seeded: tuple[CsrfClient, CsrfClient, Ids, User,
         'Kingsley St',
         'What if',
         'Stirling council',
+        'Bunnings',
         '$2,500',
     ]
     for page in pages:
