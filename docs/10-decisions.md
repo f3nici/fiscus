@@ -31,6 +31,8 @@
 
 | D24 | Square sync: a second outside service, off by default, per user, read only, fixed host | Payments (gross) and fees as separate rows, refunds, payouts out to the bank, into one account as an import, every six hours with a week of overlap; ids make it idempotent. Unpaid invoices show on the calendar, not in the forecast, which already averages business income. The token is stored like the ntfy token. |
 
+| D25 | Spending is budgeted by hand, not imported | Transactions, import, rules and Square are hidden from the menus; the code and data stay, so they can come back. A person takes spending off a budget as they go and types in their account balances (about weekly). Spent = hand entries plus their share of bills marked paid that fall due in the period. The budget month starts on a chosen day. Every budget replaces the spending average in the forecast. |
+
 ## 2. Assumptions
 
 - One household, a handful of users. SQLite and an in-process rate limiter are

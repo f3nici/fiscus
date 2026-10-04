@@ -11,8 +11,8 @@
     <div class="card">
       <h2>Getting started</h2>
       <ol>
-        <li><a href="/accounts/new">Add your accounts</a>: transaction, offset, savings, credit card.</li>
-        <li><a href="/import">Import a CSV</a> from your bank (ANZ is detected automatically).</li>
+        <li><a href="/accounts/new">Add your accounts</a> with what they are at today: transaction, offset, savings, credit card.</li>
+        <li><a href="/budget">Set your budget</a>: what you put aside each month for groceries, fuel and the rest.</li>
         <li><a href="/pay">Set up your pay schedule</a> and <a href="/bills/new">add your bills</a>, rates and insurance included (or <a href="/bills/import">import them from a file</a>).</li>
         <li>Optional: your <a href="/loans/new">home loan</a>.</li>
       </ol>
@@ -34,9 +34,13 @@
       <a class="text-sm" href="/accounts">{{ accounts | length }} account{{ '' if accounts | length == 1 else 's' }}</a>
     </div>
     <div class="card stat">
-      <div class="label">Spent this month</div>
-      <div class="value">{{ spend_total | money }}</div>
-      <span class="text-sm muted">{% if budget.budget %}of {{ budget.budget | money }} budgeted{% else %}<a href="/budget">Set a budget</a>{% endif %}</span>
+      <div class="label">Unbudgeted (extra)</div>
+      {% if budget.budget_cents or budget.expected_cents %}
+        <div class="value {{ 'neg' if budget.unbudgeted_cents < 0 else 'pos' }}">{{ budget.unbudgeted_cents | money }}</div>
+        <span class="text-sm muted">{{ budget.expected_cents | money }} to earn, {{ budget.budget_cents | money }} budgeted</span>
+      {% else %}
+        <div class="value">-</div><a class="text-sm" href="/budget">Set a budget</a>
+      {% endif %}
     </div>
     <div class="card stat">
       <div class="label">Tax set aside {{ estimate() }}</div>
@@ -105,14 +109,15 @@
     </div>
 
     <div class="card">
-      <div class="row between"><h2 class="mb-0">Spending this month</h2><a class="text-sm" href="/budget">Budget</a></div>
+      <div class="row between"><h2 class="mb-0">Budget left</h2><a class="text-sm" href="/budget">Budget</a></div>
       <ul class="list">
-        {% for name, cents in spending %}
-          <li><span class="title">{{ name }}</span><span class="num">{{ cents | money }}</span></li>
+        {% for r in spending %}
+          <li><span class="title">{{ r.category.name }}</span><span class="num {{ 'neg' if r.state == 'over' else '' }}">{{ r.remaining_cents | money }} <span class="text-xs muted">of {{ r.budget_cents | money }}</span></span></li>
         {% else %}
-          <li class="muted">No spending recorded this month yet.</li>
+          <li class="muted"><a href="/budget">Set a budget</a> to see what is left until {{ budget_end | d('dm') }}.</li>
         {% endfor %}
       </ul>
+      {% if spending %}<p class="text-sm muted mt">{{ budget.to_spend_cents | money }} still to spend until {{ budget_end | d('dm') }}.</p>{% endif %}
       {% if over %}
         <p class="text-sm neg mt">Over budget: {% for r in over %}{{ r.category.name }}{{ ', ' if not loop.last else '' }}{% endfor %}</p>
       {% endif %}

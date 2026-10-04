@@ -290,3 +290,18 @@ def test_assignment_is_one_to_one_and_prefers_nearest() -> None:
         (date(2026, 9, 3), 1),
         (date(2026, 9, 1), 2),
     ]
+
+
+@pytest.mark.parametrize(
+    ('day', 'start_day', 'period'),
+    [
+        (date(2026, 10, 1), 1, (date(2026, 10, 1), date(2026, 10, 31))),
+        (date(2026, 10, 1), 15, (date(2026, 9, 15), date(2026, 10, 14))),
+        (date(2026, 10, 15), 15, (date(2026, 10, 15), date(2026, 11, 14))),
+        (date(2027, 2, 10), 31, (date(2027, 1, 31), date(2027, 2, 27))),
+        (date(2027, 2, 28), 31, (date(2027, 2, 28), date(2027, 3, 30))),
+        (date(2026, 12, 20), 20, (date(2026, 12, 20), date(2027, 1, 19))),
+    ],
+)
+def test_month_period(day: date, start_day: int, period: tuple[date, date]) -> None:
+    assert recurrence.month_period(day, start_day) == period

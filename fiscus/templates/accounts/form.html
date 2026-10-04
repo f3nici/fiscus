@@ -17,9 +17,10 @@
         </select>
       </div>
       <div class="field">
-        <label class="label" for="opening_balance">Opening balance</label>
-        <input class="input" id="opening_balance" name="opening_balance" inputmode="decimal" value="{{ account.opening_balance_cents | money_plain if account else '0.00' }}">
-        <small>The balance before the first transaction you will import. Credit cards owing money are negative.</small>
+        <label class="label" for="balance">Balance today</label>
+        <input type="hidden" name="opening_balance" value="{{ account.opening_balance_cents | money_plain if account else '0.00' }}">
+        <input class="input" id="balance" name="balance" inputmode="decimal" value="{{ balance | money_plain if account else '0.00' }}">
+        <small>What the account is at now. Credit cards owing money are negative.</small>
       </div>
       <div class="field">
         <label class="label" for="loan_id">Offsets a loan</label>
@@ -39,7 +40,7 @@
     </div>
   </form>
   {% if account %}
-    <form class="mt" method="post" action="/accounts/{{ account.id }}/delete" data-confirm="Delete {{ account.name }} and every transaction in it? This cannot be undone.">
+    <form class="mt" method="post" action="/accounts/{{ account.id }}/delete" data-confirm="Delete {{ account.name }}? This cannot be undone.">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <button class="btn btn-danger" type="submit">Delete account</button>
     </form>

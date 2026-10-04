@@ -104,3 +104,15 @@ def monthly_equivalent(amount_cents: int, frequency: str) -> int:
     if r * 2 >= 12:
         q += 1
     return q if total >= 0 else -q
+
+
+def month_period(day: date, start_day: int) -> tuple[date, date]:
+    """The month-long period holding `day`, starting on `start_day` of a month.
+
+    A start day past the end of a short month falls on its last day, as the
+    monthly occurrences do. Day 1 gives the calendar month.
+    """
+    start = add_months(day, 0, start_day)
+    if start > day:
+        start = add_months(day, -1, start_day)
+    return start, add_months(start, 1, start_day) - timedelta(days=1)

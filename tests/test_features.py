@@ -12,8 +12,17 @@ from typing import Any
 from sqlalchemy import delete, select
 
 from fiscus.domain import loan as L
-from fiscus.models import Bill, Budget, Category, ForecastCache, Payslip, User
-from fiscus.services import forecasting, taxes
+from fiscus.models import (
+    Account,
+    Bill,
+    Budget,
+    BudgetSpend,
+    Category,
+    ForecastCache,
+    Payslip,
+    User,
+)
+from fiscus.services import budgeting, forecasting, ledger, taxes
 from tests.conftest import CsrfClient, Env
 from tests.test_imports_bills import ANZ_SEPT, create_bill, import_csv, make_account
 
@@ -264,25 +273,174 @@ def test_discretionary_spending_uses_average_or_budget(env: Env) -> None:
 # -------------------------------------------------------------------- budget
 
 
-def test_budget_vs_actual(env: Env) -> None:
+def _groceries(env: Env, user: User) -> int:
+    with env.db() as db:
+        return int(
+            db.execute(
+                select(Category.id).where(Category.user_id == user.id, Category.name == 'Groceries')
+            ).scalar_one()
+        )
+
+
+def test_spending_is_taken_off_the_budget_by_hand(env: Env) -> None:
     alex = env.user('alex')
     a = env.login(alex)
     acct = make_account(a)
-    with env.db() as db:
-        groceries = (
-            db.execute(
-                select(Category).where(Category.user_id == alex.id, Category.name == 'Groceries')
-            )
-            .scalar_one()
-            .id
-        )
+    groceries = _groceries(env, alex)
     a.post('/rules', data={'pattern': 'coles', 'category_id': str(groceries)})
+    # Imported transactions no longer count towards the budget.
     import_csv(a, acct, '01/10/2026,"-450.00","COLES"\n')
     a.post('/budget', data={'category_id': str(groceries), 'amount': '400'})
     page = a.get('/budget?month=2026-10').text
-    assert 'Groceries' in page and '$450.00' in page and '-$50.00' in page
-    assert 'Categories over' in page
-    assert a.get('/budget?month=2026-09').status_code == 200
+    assert '$400.00' in page and '$450.00' not in page
+    resp = a.post(
+        '/budget/spend',
+        data={'category_id': str(groceries), 'amount': '120', 'note': 'Coles'},
+        follow_redirects=True,
+    )
+    assert '$120.00 off Groceries' in resp.text
+    a.post('/budget/spend', data={'category_id': str(groceries), 'amount': '330'})
+    page = a.get('/budget?month=2026-10').text
+    assert '$450.00' in page and '-$50.00' in page and '1 category over' in page
+    # A refund puts money back.
+    a.post('/budget/spend', data={'category_id': str(groceries), 'amount': '-60'})
+    page = a.get('/budget?month=2026-10').text
+    assert '$390.00' in page and '$10.00' in page and 'nothing over' in page
+    # Removing an entry puts it back too; the next month starts full.
+    with env.db() as db:
+        sid = db.execute(select(BudgetSpend.id).where(BudgetSpend.note == 'Coles')).scalar_one()
+    a.post(f'/budget/spend/{sid}/delete')
+    assert '$130.00' in a.get('/budget?month=2026-10').text
+    nov = a.get('/budget?month=2026-11').text
+    assert '1 Nov to 30 Nov 2026' in nov and 'Nothing taken off yet' in nov
+    assert (
+        a.post('/budget/spend', data={'category_id': str(groceries), 'amount': '0'}).status_code
+        == 303
+    )
+    with env.db() as db:
+        assert db.execute(select(BudgetSpend)).scalars().all().__len__() == 2
+
+
+def test_budget_shows_expected_earnings_against_budgeted(env: Env) -> None:
+    alex = env.user('alex')
+    a = env.login(alex)
+    make_account(a, opening='1000')
+    a.post(
+        '/pay/schedules',
+        data={
+            'name': 'Acme wages',
+            'frequency': 'fortnightly',
+            'anchor_date': '2026-10-02',
+            'net': '2500',
+        },
+    )
+    groceries = _groceries(env, alex)
+    a.post('/budget', data={'category_id': str(groceries), 'amount': '400'})
+    a.post('/budget', data={'category_id': '0', 'new_category': 'Fuel', 'amount': '200'})
+    a.post('/budget/spend', data={'category_id': str(groceries), 'amount': '100'})
+    with env.db() as db:
+        user = db.get(User, alex.id)
+        assert user is not None
+        start, end = budgeting.period(db, user, date(2026, 10, 1))
+        rows = budgeting.rows(db, user, start, end, date(2026, 10, 1))
+        s = budgeting.summary(rows, budgeting.expected_pay(db, user, start, end, date(2026, 10, 1)))
+    # Paid on 2, 16 and 30 October.
+    assert s.expected_cents == 7500_00
+    assert s.budget_cents == 600_00
+    assert s.unbudgeted_cents == 6900_00
+    assert s.spent_cents == 100_00 and s.to_spend_cents == 500_00
+    page = a.get('/budget').text
+    assert 'Expected to earn' in page and '$7,500.00' in page and '$6,900.00' in page
+    # 1000 in the account, 500 still budgeted.
+    assert 'Free in accounts now' in page and '$500.00 in accounts' not in page
+    assert '$1,000.00 in accounts, less what is still to spend' in page
+    dash = a.get('/').text
+    assert 'Unbudgeted (extra)' in dash and '$6,900.00' in dash and 'Budget left' in dash
+
+
+def test_budget_month_starts_on_the_chosen_day(env: Env) -> None:
+    alex = env.user('alex')
+    a = env.login(alex)
+    groceries = _groceries(env, alex)
+    a.post('/budget', data={'category_id': str(groceries), 'amount': '400'})
+    assert a.post('/budget/start-day', data={'start_day': '0'}).status_code == 303
+    a.post('/budget/start-day', data={'start_day': '15'})
+    # Today is 1 October, so the budget month began on 15 September.
+    page = a.get('/budget').text
+    assert '15 Sep to 14 Oct 2026' in page
+    a.post(
+        '/budget/spend', data={'category_id': str(groceries), 'amount': '50', 'on': '2026-09-20'}
+    )
+    a.post(
+        '/budget/spend', data={'category_id': str(groceries), 'amount': '70', 'on': '2026-10-20'}
+    )
+    page = a.get('/budget').text
+    assert '$350.00' in page and '$330.00' not in page
+    later = a.get('/budget?month=2026-10').text
+    assert '15 Oct to 14 Nov 2026' in later and '$330.00' in later
+
+
+def test_a_paid_bill_comes_off_its_category(env: Env) -> None:
+    alex = env.user('alex')
+    a = env.login(alex)
+    utilities = cat_id(env, alex, 'Utilities')
+    bill = create_bill(
+        a, name='Power', amount='200', next_due='2026-10-20', category_id=str(utilities)
+    )
+    page = a.get('/budget').text
+    assert '$200.00 of bills' in page and 'bills paid' not in page
+    a.post(f'/bills/{bill}/occurrence/2026-10-20/paid')
+    page = a.get('/budget').text
+    assert '$200.00 bills paid' in page and 'nothing over' in page
+
+
+def test_balances_are_typed_in(env: Env) -> None:
+    alex = env.user('alex')
+    a = env.login(alex)
+    everyday = make_account(a, opening='1000')
+    savings = make_account(a, 'Savings', 'savings', opening='5000')
+    import_csv(a, everyday, '15/09/2026,"-300.00","COLES"\n')
+    resp = a.post(
+        '/accounts/balances',
+        data={f'balance_{everyday}': '812.40', f'balance_{savings}': ''},
+        follow_redirects=True,
+    )
+    assert 'Updated 1 balance' in resp.text
+    with env.db() as db:
+        user = db.get(User, alex.id)
+        assert user is not None
+        bal = ledger.balances(db, user, date(2026, 10, 1))
+        assert bal == {everyday: 812_40, savings: 5000_00}
+        acct = db.get(Account, everyday)
+        assert acct is not None and acct.balance_updated_on == date(2026, 10, 1)
+    assert a.post('/accounts/balances', data={f'balance_{savings}': 'abc'}).status_code == 303
+    a.post(f'/accounts/{savings}/balance', data={'balance': '5100'})
+    page = a.get(f'/accounts/{savings}').text
+    assert '$5,100.00' in page and 'Updated 1 Oct 2026' in page
+    # Editing the account without touching the balance leaves it be.
+    a.post(
+        f'/accounts/{everyday}',
+        data={
+            'name': 'Day to day',
+            'type': 'transaction',
+            'opening_balance': '1112.40',
+            'balance': '812.40',
+        },
+    )
+    with env.db() as db:
+        user = db.get(User, alex.id)
+        assert user is not None
+        assert ledger.balances(db, user, date(2026, 10, 1))[everyday] == 812_40
+
+
+def test_any_budget_replaces_the_average_in_the_forecast(env: Env) -> None:
+    alex = env.user('alex')
+    a = env.login(alex)
+    make_account(a)
+    a.post('/budget', data={'category_id': str(_groceries(env, alex)), 'amount': '400'})
+    with env.db() as db:
+        est = forecasting.estimates(db, db.get(User, alex.id), date(2026, 10, 1))  # type: ignore[arg-type]
+    assert [(e.name, e.monthly_cents, e.source) for e in est] == [('Groceries', -400_00, 'budget')]
 
 
 # -------------------------------------------------- bills in the budget

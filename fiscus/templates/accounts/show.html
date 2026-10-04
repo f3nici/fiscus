@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% from "_macros.html" import money_cell, select_categories %}
 {% block title %}{{ account.name }}{% endblock %}
 {% block content %}
   <div class="page-head">
@@ -9,73 +8,22 @@
     </div>
     <div class="row">
       <a class="btn" href="/accounts/{{ account.id }}/edit">Edit</a>
-      <a class="btn btn-primary" href="/import?account_id={{ account.id }}">Import CSV</a>
     </div>
   </div>
   <div class="grid grid-2">
     <div class="card stat">
       <div class="label">Balance</div>
       <div class="value">{{ balance | money }}</div>
-      <span class="text-sm muted">{{ count }} transaction{{ '' if count == 1 else 's' }}</span>
+      <span class="text-sm muted">{% if account.balance_updated_on %}Updated {{ account.balance_updated_on | d }}{% else %}Not updated yet{% endif %}</span>
     </div>
-    <details class="card">
-      <summary>Add a transaction by hand</summary>
-      <form class="mt" method="post" action="/transactions">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <input type="hidden" name="account_id" value="{{ account.id }}">
-        <div class="form-grid">
-          <div class="field"><label class="label" for="date">Date</label><input class="input" type="date" id="date" name="date" value="{{ today.isoformat() }}" required></div>
-          <div class="field"><label class="label" for="amount">Amount (negative for money out)</label><input class="input" id="amount" name="amount" inputmode="decimal" required></div>
-          <div class="field full"><label class="label" for="description">Description</label><input class="input" id="description" name="description" required maxlength="500"></div>
-          <div class="field full"><label class="label" for="category_id">Category</label>{{ select_categories('category_id', cats.values() | list, 0, 'Use my rules') }}</div>
-        </div>
-        <button class="btn btn-primary" type="submit">Add</button>
-      </form>
-    </details>
+    <form class="card" method="post" action="/accounts/{{ account.id }}/balance">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label class="label" for="balance">What it is at today</label>
+      <div class="row">
+        <input class="input grow" id="balance" name="balance" inputmode="decimal" value="{{ balance | money_plain }}" required>
+        <button class="btn btn-primary" type="submit">Update</button>
+      </div>
+      <p class="muted text-xs mt-sm">Credit cards owing money are negative.</p>
+    </form>
   </div>
-
-  <div class="card mt">
-    <h2>Transactions</h2>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Date</th><th>Description</th><th>Category</th><th class="num">Amount</th><th></th></tr></thead>
-        <tbody>
-          {% for t in txns %}
-            <tr>
-              <td class="num">{{ t.date | d }}</td>
-              <td>{{ t.description }}</td>
-              <td>{{ cats[t.category_id].name if t.category_id in cats else '' }}</td>
-              <td class="num">{{ money_cell(t.amount_cents) }}</td>
-              <td>
-                {% if t.import_id is none %}
-                  <form class="inline" method="post" action="/transactions/{{ t.id }}/delete" data-confirm="Delete this transaction?">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <button class="btn btn-sm" type="submit" aria-label="Delete">✕</button>
-                  </form>
-                {% endif %}
-              </td>
-            </tr>
-          {% else %}
-            <tr><td colspan="5" class="muted">No transactions yet. <a href="/import?account_id={{ account.id }}">Import a CSV</a>.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    <div class="row between mt">
-      {% if page > 1 %}<a class="btn btn-sm" href="?page={{ page - 1 }}">Newer</a>{% else %}<span></span>{% endif %}
-      {% if more %}<a class="btn btn-sm" href="?page={{ page + 1 }}">Older</a>{% endif %}
-    </div>
-  </div>
-
-  {% if imports %}
-    <div class="card mt">
-      <h2>Recent imports</h2>
-      <ul class="list">
-        {% for i in imports %}
-          <li><span class="grow"><span class="title">{{ i.file_name }}</span><span class="text-xs muted">{{ i.status }} · {{ i.imported_count }} new · {{ i.duplicate_count }} duplicates</span></span></li>
-        {% endfor %}
-      </ul>
-      <a class="text-sm" href="/import">Import history</a>
-    </div>
-  {% endif %}
 {% endblock %}

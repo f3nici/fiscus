@@ -42,23 +42,14 @@ def dashboard(
     today = c.clock.today()
     accts = ledger.accounts(db, user)
     bal = ledger.balances(db, user, today)
-    month_start = today.replace(day=1)
-    spend = ledger.spend_by_category(db, user, month_start, today)
-    cats = {cat.id: cat for cat in ledger.categories(db, user)}
-    spending = sorted(
-        (
-            (cats[cid].name if cid in cats else 'Uncategorised', -v)
-            for cid, v in spend.items()
-            if v < 0 and not (cid in cats and cats[cid].is_income)
-        ),
-        key=lambda x: -x[1],
-    )
     upcoming = [
         d
         for d in calendar_events.grid(db, c.clock, user, 'agenda', today).days
         if d.date <= today + timedelta(days=14)
     ]
-    rows = budgeting.rows(db, user, today, today)
+    start, end = budgeting.period(db, user, today)
+    rows = budgeting.rows(db, user, start, end, today)
+    summary = budgeting.summary(rows, budgeting.expected_pay(db, user, start, end, today))
     base = forecasting.base(db, c.clock, user, 3)
     try:
         tax_view = taxes.view(db, user, today, c.tax_dir)
@@ -77,10 +68,10 @@ def dashboard(
             'accounts': accts,
             'balances': bal,
             'total': sum(bal.get(a.id, 0) for a in accts),
-            'spending': spending[:8],
-            'spend_total': sum(v for _n, v in spending),
+            'spending': [r for r in rows if r.has_budget and not r.category.is_income][:8],
+            'budget_end': end,
             'upcoming': upcoming,
-            'budget': budgeting.totals(rows),
+            'budget': summary,
             'over': [r for r in rows if r.state == 'over'][:4],
             'forecast': base,
             'spark': sparkline(base.combined),

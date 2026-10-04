@@ -1,4 +1,4 @@
-"""Monthly budget against actual."""
+"""The budget: set aside per category, take spending off by hand, see what is left."""
 
 from __future__ import annotations
 
@@ -10,14 +10,16 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 from fastapi.responses import PlainTextResponse, Response
 from sqlalchemy.orm import Session
 
+from fiscus.clock import utcnow_naive
 from fiscus.domain import recurrence
 from fiscus.domain.csvimport import MAX_BYTES, ImportError_
 from fiscus.forms import FormError, money
-from fiscus.models import Category, Loan, User
+from fiscus.models import BudgetSpend, Category, Loan, User
 from fiscus.money import fmt
 from fiscus.services import budget_import as importer
 from fiscus.services import budgeting, ledger
 from fiscus.services.access import get_owned, owned
+from fiscus.services.users import settings_for
 from fiscus.web import ctx, current_user, get_db, redirect, render
 
 router = APIRouter()
@@ -33,47 +35,66 @@ def budget_page(
     c = ctx(request)
     today = c.clock.today()
     try:
-        focus = date.fromisoformat(month + '-01') if month else today.replace(day=1)
+        start, end = budgeting.period_starting_in(db, user, date.fromisoformat(month + '-01'))
     except ValueError:
-        focus = today.replace(day=1)
-    rows = budgeting.rows(db, user, focus, today)
+        start, end = budgeting.period(db, user, today)
+    rows = budgeting.rows(db, user, start, end, today)
     budgeted = {r.category.id for r in rows if r.has_budget}
+    accts = ledger.accounts(db, user)
+    bal = ledger.balances(db, user, today)
+    # Money that can be spent: not the tax set-aside, not a loan offset's job to guess.
+    spendable = sum(bal.get(a.id, 0) for a in accts if not a.is_set_aside)
+    summary = budgeting.summary(rows, budgeting.expected_pay(db, user, start, end, today))
+    cats = ledger.categories(db, user)
     return render(
         request,
         'budget/index.html',
         {
             'rows': rows,
-            'totals': budgeting.totals(rows),
-            'month': focus,
-            'prev': recurrence.add_months(focus, -1),
-            'next': recurrence.add_months(focus, 1),
-            'unbudgeted': [
-                cat
-                for cat in ledger.categories(db, user)
-                if cat.id not in budgeted and not cat.is_transfer
-            ],
+            'summary': summary,
+            'start': start,
+            'end': end,
+            'current': start <= today <= end,
+            'prev': recurrence.add_months(start, -1),
+            'next': recurrence.add_months(start, 1),
+            'start_day': budgeting.start_day(db, user),
+            'spends': budgeting.spends(db, user, start, end),
+            'cat_names': {cat.id: cat.name for cat in cats},
+            'spend_cats': [r.category for r in rows if r.has_budget and not r.category.is_income],
+            'spendable': spendable,
+            'has_accounts': bool(accts),
+            'unbudgeted': [cat for cat in cats if cat.id not in budgeted and not cat.is_transfer],
         },
     )
+
+
+def _back(back: str) -> str:
+    return back if back.startswith('/budget') else '/budget'
 
 
 @router.post('/budget')
 def save_budget(
     request: Request,
-    category_id: int = Form(...),
+    category_id: int = Form(0),
+    new_category: str = Form(''),
     amount: str = Form(...),
-    use_in_forecast: bool = Form(False),
     back: str = Form('/budget'),
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> Response:
-    cat = get_owned(db, Category, category_id, user)
-    target = back if back.startswith('/budget') else '/budget'
+    target = _back(back)
+    if category_id:
+        cat = get_owned(db, Category, category_id, user)
+    elif new_category.strip():
+        cat = ledger.category_named(db, user, new_category)
+    else:
+        return redirect(target, flash='Choose or name a category', request=request)
     try:
         cents = money(amount, 'Amount', allow_negative=False)
     except FormError as exc:
         return redirect(target, flash=str(exc), request=request)
     total, from_bills = budgeting.set_total(
-        db, user, cat, cents, ctx(request).clock.today(), use_in_forecast=use_in_forecast
+        db, user, cat, cents, ctx(request).clock.today(), use_in_forecast=False
     )
     if from_bills and cents < from_bills:
         msg = f'Your bills in {cat.name} come to {fmt(from_bills)} a month, so that is its budget'
@@ -82,6 +103,73 @@ def save_budget(
     else:
         msg = f'Budget for {cat.name} saved'
     return redirect(target, flash=msg, request=request)
+
+
+@router.post('/budget/spend')
+def add_spend(
+    request: Request,
+    category_id: int = Form(...),
+    amount: str = Form(...),
+    note: str = Form(''),
+    on: str = Form(''),
+    back: str = Form('/budget'),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    cat = get_owned(db, Category, category_id, user)
+    target = _back(back)
+    c = ctx(request)
+    try:
+        cents = money(amount, 'Amount')
+        if cents == 0:
+            raise FormError('Enter an amount')
+        when = date.fromisoformat(on) if on else c.clock.today()
+    except FormError as exc:
+        return redirect(target, flash=str(exc), request=request)
+    except ValueError:
+        return redirect(target, flash='That date is not valid', request=request)
+    db.add(
+        BudgetSpend(
+            user_id=user.id,
+            category_id=cat.id,
+            date=when,
+            amount_cents=cents,
+            note=note.strip()[:120],
+            created_at=utcnow_naive(c.clock),
+        )
+    )
+    db.flush()
+    verb = 'earned in' if cat.is_income else 'off'
+    return redirect(target, flash=f'{fmt(abs(cents))} {verb} {cat.name}', request=request)
+
+
+@router.post('/budget/spend/{spend_id}/delete')
+def delete_spend(
+    spend_id: int,
+    request: Request,
+    back: str = Form('/budget'),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    row = get_owned(db, BudgetSpend, spend_id, user)
+    db.delete(row)
+    return redirect(_back(back), flash='Entry removed', request=request)
+
+
+@router.post('/budget/start-day')
+def save_start_day(
+    request: Request,
+    start_day: int = Form(...),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    if not 1 <= start_day <= 31:
+        return redirect('/budget', flash='Pick a day from 1 to 31', request=request)
+    settings_for(db, user).budget_start_day = start_day
+    db.flush()
+    return redirect(
+        '/budget', flash=f'Your budget month now starts on day {start_day}', request=request
+    )
 
 
 # ------------------------------------------------------- spreadsheet import
@@ -143,7 +231,8 @@ def budget_preview(
     cats = ledger.categories(db, user)
     by_name = {c.name.casefold(): c for c in cats}
     today = ctx(request).clock.today()
-    budgets = {r.category.id: r.budget_cents for r in budgeting.rows(db, user, today, today)}
+    start, end = budgeting.period(db, user, today)
+    budgets = {r.category.id: r.budget_cents for r in budgeting.rows(db, user, start, end, today)}
     current = {
         line.index: budgets.get(by_name[line.name.casefold()].id)
         for line in parsed.lines

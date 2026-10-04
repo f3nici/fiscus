@@ -90,7 +90,7 @@ def loan_spec(db: Session, loan: Loan) -> LoanSpec:
 
 
 def estimates(db: Session, user: User, today: date) -> list[Estimate]:
-    """Discretionary spending per category: 3-month average, or the budget if chosen."""
+    """Discretionary spending per category: the budget, or a 3-month average without one."""
     start = today - timedelta(days=AVERAGE_DAYS)
     cats = {c.id: c for c in ledger.categories(db, user)}
     paid_txn_ids = set(
@@ -114,9 +114,8 @@ def estimates(db: Session, user: User, today: date) -> list[Estimate]:
         if cat is None and t.amount_cents > 0:
             continue
         totals[t.category_id] += t.amount_cents
-    budgets = {
-        b.category_id: b for b in db.execute(owned(Budget, user)).scalars() if b.use_in_forecast
-    }
+    # Spending is budgeted rather than imported, so a budget replaces the average.
+    budgets = {b.category_id: b for b in db.execute(owned(Budget, user)).scalars()}
     out: list[Estimate] = []
     seen: set[int | None] = set()
     for cid, total in totals.items():

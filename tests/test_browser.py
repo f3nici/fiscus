@@ -123,7 +123,7 @@ def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any
     # Add an account and walk the main screens.
     page.goto(f'{base}/accounts/new')
     page.fill('#name', 'Everyday')
-    page.fill('#opening_balance', '2500')
+    page.fill('#balance', '2500')
     page.click('main button[type=submit]')
     page.wait_for_url(f'{base}/accounts/*')
     for path in [
@@ -160,7 +160,22 @@ def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any
     page.click('form[action="/pay/schedules"] button[type=submit]')
     page.wait_for_url(f'{base}/pay')
     assert 'varies' in page.content()
-    page.goto(f'{base}/transactions')
+
+    # The weekly routine: a budget line, money taken off it, balances typed in.
+    page.goto(f'{base}/budget')
+    page.fill('#new_category', 'Fuel')
+    page.fill('#add_amount', '200')
+    page.click('form:has(#add_amount) button[type=submit]')
+    page.wait_for_selector('#spend_amount')
+    page.fill('#spend_amount', '65.50')
+    page.fill('#spend_note', 'Ampol')
+    page.click('form[action="/budget/spend"] button[type=submit]')
+    page.wait_for_selector('text=Ampol')
+    assert '$134.50' in page.content()
+    page.goto(f'{base}/accounts')
+    page.fill('input[name^=balance_]', '2400')
+    page.click('form[action="/accounts/balances"] button[type=submit]')
+    page.wait_for_selector('tfoot th:has-text("$2,400.00")')
 
     # Narrow screen: the calendar opens on the agenda.
     page.goto(f'{base}/calendar')

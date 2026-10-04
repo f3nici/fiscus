@@ -34,6 +34,14 @@ def balances(db: Session, user: User, as_of: date | None = None) -> dict[int, in
     return {a.id: a.opening_balance_cents + sums.get(a.id, 0) for a in accts}
 
 
+def set_balance(db: Session, user: User, acct: Account, cents: int, today: date) -> None:
+    """Make the account's balance today `cents` by moving its opening balance."""
+    current = balances(db, user, today).get(acct.id, 0)
+    acct.opening_balance_cents += cents - current
+    acct.balance_updated_on = today
+    db.flush()
+
+
 def daily_balances(
     db: Session, user: User, account_ids: list[int], start: date, end: date
 ) -> dict[date, int]:
