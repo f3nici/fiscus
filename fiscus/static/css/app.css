@@ -62,7 +62,7 @@ small, .muted { color: var(--mid); }
 .brand img { width: 28px; height: 28px; border-radius: 8px; }
 .page-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
 .stack > * + * { margin-top: 16px; }
-.grid { display: grid; gap: 16px; }
+.grid { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
 .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .between { justify-content: space-between; }
 .grow { flex: 1; min-width: 0; }
@@ -257,3 +257,49 @@ tr.group-head th { padding-top: 18px; color: #fff; border-bottom: 1px solid var(
 .tabs a { padding: 8px 14px; color: var(--mid); border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
 .tabs a:hover { text-decoration: none; color: #fff; }
 .tabs a.active { color: #fff; border-bottom-color: var(--primary); font-weight: 500; }
+
+/*
+ * Tables that stack when their box is narrow (a phone, or a half-width card):
+ * each row becomes a block, its first cell the title across the top and the
+ * rest labelled from data-label, two or three to a line, so nothing scrolls
+ * sideways.
+ */
+.table-wrap { container-type: inline-size; }
+@container (max-width: 560px) {
+  .stack-table, .stack-table tbody, .stack-table tfoot { display: block; }
+  .stack-table thead { display: none; }
+  .stack-table tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .stack-table.cols-3 tr { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .stack-table tbody tr:last-child { border-bottom: none; }
+  .stack-table tfoot tr { border-top: 1px solid var(--line-strong); border-bottom: none; }
+  .stack-table td, .stack-table th { display: block; border: none; padding: 0; text-align: left; min-width: 0; overflow-wrap: anywhere; white-space: normal; }
+  .stack-table td.num, .stack-table th.num { text-align: left; }
+  .stack-table tr > :first-child, .stack-table .cell-full, .stack-table [colspan] { grid-column: 1 / -1; }
+  .stack-table tr > :first-child { font-size: 0.95rem; }
+  .stack-table [data-label]::before { content: attr(data-label); display: block; color: var(--mid); font-size: 0.7rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; }
+  .stack-table td:empty, .stack-table th:empty { display: none; }
+  .stack-table .cell-last { order: 1; }
+  .stack-table .cell-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .stack-table .cell-actions:not(:has(*)) { display: none; }
+  .stack-table .cell-actions > details[open] { flex-basis: 100%; }
+  .stack-table .input, .stack-table .w-money, .stack-table input[list] { width: 100%; min-width: 0; text-align: left; }
+  .budget-table tr.group-head { margin-top: 10px; padding: 10px 12px; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line); border-radius: var(--radius); }
+  .budget-table tr.group-head th { border-bottom: none; padding-top: 0; }
+  .budget-table tr.group-head > :first-child { font-size: 1.05rem; }
+  .order-btns { margin-bottom: 0; }
+  .order-btns .btn { min-width: 40px; min-height: 36px; }
+}
+
+/* Phones: tighter cards, headline figures two to a row, forms that wrap. */
+@media (max-width: 699px) {
+  .card { padding: 16px; }
+  .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .grid-4 > .card { padding: 14px; }
+  .grid-4 > .span-2 { grid-column: span 2; }
+  .grid-4 .stat .value { font-size: 1.25rem; }
+  .stat .label { overflow-wrap: anywhere; }
+  form.card.row > .label.grow { flex-basis: 100%; margin-bottom: 0; }
+  form.card.row > .input { flex: 1; width: auto; max-width: none; }
+  .row > .input[type=search] { flex-basis: 100%; }
+  .row > .input.grow { min-width: 8rem; }
+}

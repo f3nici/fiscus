@@ -25,15 +25,15 @@
   </form>
   <div class="card mt">
     <div class="table-wrap">
-      <table>
+      <table class="stack-table">
         <thead><tr><th>Date</th><th>Description</th><th>Account</th><th>Category</th><th class="num">Amount</th></tr></thead>
         <tbody>
           {% for t in txns %}
             <tr>
               <td class="num">{{ t.date | d }}</td>
-              <td>{{ t.description }}</td>
-              <td>{{ accounts[t.account_id].name if t.account_id in accounts else '' }}</td>
-              <td>
+              <td class="cell-full">{{ t.description }}</td>
+              <td data-label="Account">{{ accounts[t.account_id].name if t.account_id in accounts else '' }}</td>
+              <td class="cell-full cell-last">
                 <form method="post" action="/transactions/{{ t.id }}/category" hx-post="/transactions/{{ t.id }}/category" hx-trigger="change" hx-target="next .saved-slot" hx-swap="innerHTML">
                   <select class="input" name="category_id" aria-label="Category">
                     <option value="0">Uncategorised</option>
@@ -42,7 +42,7 @@
                 </form>
                 <span class="saved-slot"></span>
               </td>
-              <td class="num">{{ money_cell(t.amount_cents) }}</td>
+              <td class="num" data-label="Amount">{{ money_cell(t.amount_cents) }}</td>
             </tr>
           {% else %}
             <tr><td colspan="5" class="muted">No transactions match.</td></tr>

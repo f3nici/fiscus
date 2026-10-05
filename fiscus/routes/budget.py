@@ -102,6 +102,7 @@ def save_budget(
     request: Request,
     category_id: int = Form(0),
     new_category: str = Form(''),
+    name: str = Form(''),
     amount: str = Form(...),
     cycle_months: int = Form(1),
     saved: str = Form(''),
@@ -125,8 +126,17 @@ def save_budget(
     try:
         cents = money(amount, 'Amount', allow_negative=False)
         saved_cents = money(saved, 'Saved so far') if saved.strip() else None
+        new_name = text(name, 'Name', 80) if category_id and name.strip() else cat.name
     except FormError as exc:
         return redirect(target, flash=str(exc), request=request)
+    renamed = ''
+    if new_name != cat.name:
+        if ledger.category_exists(db, user, new_name, besides=cat):
+            return redirect(
+                target, flash='You already have a category with that name', request=request
+            )
+        renamed = f'{cat.name} renamed to {new_name}. '
+        cat.name = new_name
     if group_id >= 0:
         budget_groups.put_in(db, user, cat, group)
     today = ctx(request).clock.today()
@@ -153,7 +163,7 @@ def save_budget(
         msg = f'Saving up {fmt(total)} a month for {cat.name}, spent {every}'
     else:
         msg = f'Budget for {cat.name} saved'
-    return redirect(target, flash=msg, request=request)
+    return redirect(target, flash=renamed + msg, request=request)
 
 
 def _step(direction: str) -> int:

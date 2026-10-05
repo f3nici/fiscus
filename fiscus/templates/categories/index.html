@@ -9,7 +9,7 @@
     <div class="card">
       <h2>Categories</h2>
       <div class="table-wrap">
-        <table>
+        <table class="stack-table">
           <thead><tr><th>Name</th><th>Flags</th><th class="num">Used</th><th></th></tr></thead>
           <tbody>
             {% for c in cats %}
@@ -21,8 +21,8 @@
                   {% if c.is_deductible %}<span class="pill pill-shared">Deductible</span>{% endif %}
                   {% if c.is_transfer %}<span class="pill">Transfer</span>{% endif %}
                 </td>
-                <td class="num">{{ counts.get(c.id, 0) }}</td>
-                <td>
+                <td class="num" data-label="Used">{{ counts.get(c.id, 0) }}</td>
+                <td class="cell-full">
                   <details>
                     <summary class="text-sm">Edit</summary>
                     <form method="post" action="/categories/{{ c.id }}" class="mt-sm">

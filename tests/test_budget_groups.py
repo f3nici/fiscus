@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from urllib.parse import unquote
 
 from sqlalchemy import select
 
@@ -88,3 +89,41 @@ def test_a_group_needs_a_name(env: Env) -> None:
     with env.db() as db:
         assert db.execute(select(BudgetGroup)).first() is None
     assert resp.status_code == 200
+
+
+def test_a_budget_line_can_be_renamed(env: Env) -> None:
+    a = env.login(env.user('alex'))
+    a.post('/budget', data={'new_category': 'Food shop', 'amount': '600'})
+    a.post('/budget', data={'new_category': 'Petrol money', 'amount': '200'})
+    cid = _cat(env, 'Food shop')
+
+    resp = a.post(
+        '/budget', data={'category_id': str(cid), 'name': ' Weekly shop ', 'amount': '650'}
+    )
+    assert resp.status_code == 303
+    assert unquote(resp.cookies['fiscus_flash']).startswith('Food shop renamed to Weekly shop.')
+    page = a.get('/budget').text
+    with env.db() as db:
+        cat = db.get(Category, cid)
+        assert cat is not None and cat.name == 'Weekly shop'
+    assert '$650.00' in page
+
+    # Only the case changed: still a rename of the same line.
+    a.post('/budget', data={'category_id': str(cid), 'name': 'WEEKLY SHOP', 'amount': '650'})
+    with env.db() as db:
+        cat = db.get(Category, cid)
+        assert cat is not None and cat.name == 'WEEKLY SHOP'
+
+    # Another category's name, in any case, is refused and nothing changes.
+    resp = a.post('/budget', data={'category_id': str(cid), 'name': 'petrol money', 'amount': '1'})
+    assert unquote(resp.cookies['fiscus_flash']) == 'You already have a category with that name'
+    with env.db() as db:
+        cat = db.get(Category, cid)
+        assert cat is not None and cat.name == 'WEEKLY SHOP'
+    assert '$650.00' in a.get('/budget').text
+
+    # Without a name the line keeps its own.
+    a.post('/budget', data={'category_id': str(cid), 'amount': '700'})
+    with env.db() as db:
+        cat = db.get(Category, cid)
+        assert cat is not None and cat.name == 'WEEKLY SHOP'

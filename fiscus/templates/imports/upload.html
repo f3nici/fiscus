@@ -27,18 +27,18 @@
   <div class="card mt">
     <h2>Import history</h2>
     <div class="table-wrap">
-      <table>
+      <table class="stack-table cols-3">
         <thead><tr><th>When</th><th>File</th><th>Account</th><th class="num">Rows</th><th class="num">New</th><th class="num">Duplicates</th><th></th></tr></thead>
         <tbody>
           {% for i in history %}
             <tr>
               <td class="num">{{ (i.committed_at or i.created_at).strftime('%d %b %Y') }}</td>
-              <td>{{ i.file_name }}{% if i.status == 'undone' %} <span class="pill">Undone</span>{% endif %}</td>
-              <td>{{ names.get(i.account_id, '') }}</td>
-              <td class="num">{{ i.row_count }}</td>
-              <td class="num">{{ i.imported_count }}</td>
-              <td class="num">{{ i.duplicate_count }}</td>
-              <td>
+              <td class="cell-full">{{ i.file_name }}{% if i.status == 'undone' %} <span class="pill">Undone</span>{% endif %}</td>
+              <td class="cell-full" data-label="Account">{{ names.get(i.account_id, '') }}</td>
+              <td class="num" data-label="Rows">{{ i.row_count }}</td>
+              <td class="num" data-label="New">{{ i.imported_count }}</td>
+              <td class="num" data-label="Duplicates">{{ i.duplicate_count }}</td>
+              <td class="cell-full">
                 {% if i.status == 'committed' %}
                   <form class="inline" method="post" action="/import/{{ i.id }}/undo" data-confirm="Undo this import and delete the {{ i.imported_count }} transactions it added?">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

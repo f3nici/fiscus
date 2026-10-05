@@ -28,7 +28,7 @@
   </div>
   <div class="card">
     <div class="table-wrap">
-      <table>
+      <table class="stack-table cols-3">
         <thead><tr><th>Name</th><th>Type</th><th class="num">Balance</th><th>Updated</th></tr></thead>
         <tbody>
           {% for a in accounts %}
@@ -46,16 +46,16 @@
                   </div>
                 {% endif %}
               </td>
-              <td>{{ labels[a.type] }}</td>
-              <td class="num">{{ money_cell(balances.get(a.id, 0)) }}</td>
-              <td class="text-sm muted">{{ a.balance_updated_on | d('dm') if a.balance_updated_on else '' }}</td>
+              <td data-label="Type">{{ labels[a.type] }}</td>
+              <td class="num" data-label="Balance">{{ money_cell(balances.get(a.id, 0)) }}</td>
+              <td class="text-sm muted" data-label="Updated">{{ a.balance_updated_on | d('dm') if a.balance_updated_on else '' }}</td>
             </tr>
           {% else %}
             <tr><td colspan="4" class="muted">No accounts yet.</td></tr>
           {% endfor %}
         </tbody>
         {% if accounts %}
-          <tfoot><tr><th colspan="2">Total (active)</th><th class="num">{{ total | money }}</th><th></th></tr></tfoot>
+          <tfoot><tr><th colspan="2">Total (active)</th><th class="num cell-full">{{ total | money }}</th><th></th></tr></tfoot>
         {% endif %}
       </table>
     </div>

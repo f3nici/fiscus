@@ -97,6 +97,14 @@ def category_named(db: Session, user: User, name: str) -> Category:
     return cat
 
 
+def category_exists(db: Session, user: User, name: str, besides: Category | None = None) -> bool:
+    """Whether this person has another category by this name, ignoring case."""
+    q = owned(Category, user).where(func.lower(Category.name) == name.strip().lower())
+    if besides is not None:
+        q = q.where(Category.id != besides.id)
+    return db.execute(q.limit(1)).first() is not None
+
+
 def spend_by_category(db: Session, user: User, start: date, end: date) -> dict[int | None, int]:
     """Net movement per category in [start, end], transfers excluded. Spend is negative."""
     transfer_ids = {c.id for c in categories(db, user) if c.is_transfer}
