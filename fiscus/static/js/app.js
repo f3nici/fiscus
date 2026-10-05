@@ -142,6 +142,60 @@
     }
   });
 
+  // ------------------------------------- budget import: how often sets the amount
+  // The file's amount is read at the chosen cycle: a yearly $2,960 changed to
+  // every month is $2,960 a month. Back on the file's own cycle, its figure returns.
+  // A typed amount becomes the base. Cents are whole numbers throughout.
+  function cents(text) {
+    const m = String(text).replace(/[$,\s]/g, '').match(/^(\d*)(?:\.(\d{0,2}))?$/);
+    if (!m || (m[1] === '' && !m[2])) return null;
+    return Number(m[1] || '0') * 100 + Number(((m[2] || '') + '00').slice(0, 2));
+  }
+  function plain(c) {
+    return Math.floor(c / 100) + '.' + String(c % 100).padStart(2, '0');
+  }
+  const aud = new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' });
+  function savingHint(row, cycle, monthly) {
+    const hint = row.querySelector('[data-saving-hint]');
+    if (!hint) return;
+    const sel = row.querySelector('select[data-cycle-select]');
+    const label = sel.options[sel.selectedIndex].text.toLowerCase();
+    hint.textContent = cycle > 1 && monthly !== null ? `Saving up ${aud.format((monthly * cycle) / 100)} ${label}` : '';
+  }
+  document.addEventListener('change', (e) => {
+    const sel = e.target;
+    if (!sel.matches || !sel.matches('select[data-cycle-select]')) return;
+    const row = sel.closest('[data-budget-line]');
+    const input = row.querySelector('input[data-monthly-input]');
+    const cycle = Number(sel.value);
+    const old = Number(row.dataset.cycle);
+    let base = row.dataset.amount === '' ? null : Number(row.dataset.amount);
+    if (base === null) {
+      const typed = cents(input.value);
+      base = typed === null ? null : typed * old;
+    }
+    let monthly = null;
+    if (row.dataset.monthly !== '' && cycle === Number(row.dataset.fileCycle)) {
+      monthly = Number(row.dataset.monthly);
+    } else if (base !== null) {
+      monthly = Math.round(base / cycle);
+    }
+    if (monthly !== null) input.value = plain(monthly);
+    row.dataset.cycle = String(cycle);
+    savingHint(row, cycle, monthly);
+  });
+  document.addEventListener('input', (e) => {
+    const input = e.target;
+    if (!input.matches || !input.matches('input[data-monthly-input]')) return;
+    const row = input.closest('[data-budget-line]');
+    const cycle = Number(row.dataset.cycle);
+    const typed = cents(input.value);
+    // From here on the typed figure leads, not the file's.
+    row.dataset.amount = typed === null ? '' : String(typed * cycle);
+    row.dataset.monthly = '';
+    savingHint(row, cycle, typed);
+  });
+
   // ------------------------------------------------- recategorise select all
   document.addEventListener('change', (e) => {
     if (!e.target.matches('[data-select-all]')) return;

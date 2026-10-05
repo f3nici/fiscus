@@ -231,6 +231,20 @@ button.btn-link .title { color: #fff; }
 .import-table .section-row th { padding-top: 16px; color: #fff; font-size: 0.8rem; border-bottom: 1px solid var(--line-strong); }
 .w-money { width: 7.5rem; text-align: right; }
 .import-table input[list] { min-width: 13rem; }
+.budget-import select.input { min-width: 11rem; }
+.budget-import .in-file { white-space: nowrap; }
+.budget-import .in-file .pill { display: flex; width: max-content; margin-top: 4px; }
+@media (max-width: 699px) {
+  .budget-import thead { display: none; }
+  .budget-import tbody tr { display: grid; grid-template-columns: 28px 1fr; column-gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .budget-import tbody tr.section-row { display: block; border-bottom: none; padding: 0; }
+  .budget-import tbody td { border: none; padding: 4px 0; text-align: left; }
+  .budget-import tbody td:nth-child(n+3) { grid-column: 2; }
+  .budget-import td[data-label]::before { content: attr(data-label); display: block; color: var(--mid); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2px; }
+  .budget-import td[data-label]:empty { display: none; }
+  .budget-import select.input, .budget-import .w-money, .budget-import input[list] { width: 100%; min-width: 0; text-align: left; }
+  .budget-import .in-file .pill { display: inline-flex; margin: 0 0 0 6px; }
+}
 .tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--line); overflow-x: auto; }
 .tabs a { padding: 8px 14px; color: var(--mid); border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
 .tabs a:hover { text-decoration: none; color: #fff; }

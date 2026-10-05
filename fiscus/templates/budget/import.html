@@ -17,7 +17,7 @@
       </form>
     {% endif %}
   </div>
-  <p class="muted">Each ticked line becomes a budget for its category. A line paid every 2, 3 or 6 months or yearly is saved up a month at a time, so the month you pay it is not over budget; change How often if the file has it wrong. Lines that share a category are added together (the category is saved up if any of them is), and bills in a category are paid out of its budget, not added to it. Change a category, an amount or how often before importing; nothing is saved until you press Import.</p>
+  <p class="muted">Each ticked line becomes a budget for its category. A line paid every 2, 3 or 6 months or yearly is saved up a month at a time, so the month you pay it is not over budget; change How often if the file has it wrong. The amount to budget is always a month's share: a yearly $1,200 is $100 a month. Lines that share a category are added together (the category is saved up if any of them is), and bills in a category are paid out of its budget, not added to it. Change a category, an amount or how often before importing; nothing is saved until you press Import.</p>
 
   <form method="post" action="/budget/import/{{ name }}/apply">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -25,9 +25,9 @@
     <datalist id="budget-cats">{% for c in cats %}<option value="{{ c.name }}"></option>{% endfor %}</datalist>
     <div class="card">
       <div class="table-wrap">
-        <table class="import-table">
+        <table class="import-table budget-import">
           <thead>
-            <tr><th></th><th>Line</th><th>In the file</th><th>Category</th><th class="num">Per month</th><th>How often</th><th class="num">Budget now</th></tr>
+            <tr><th></th><th>Line</th><th>In the file</th><th>Category</th><th>How often</th><th class="num">Budget a month</th><th class="num">Budget now</th></tr>
           </thead>
           <tbody>
             {% set ns = namespace(section=None) %}
@@ -36,7 +36,7 @@
                 {% set ns.section = line.section %}
                 <tr class="section-row"><th colspan="7">{{ line.section or 'Lines' }}</th></tr>
               {% endif %}
-              <tr class="{{ '' if line.include else 'muted' }}">
+              <tr class="{{ '' if line.include else 'muted' }}" data-budget-line data-amount="{{ line.amount_cents if line.amount_cents is not none else '' }}" data-monthly="{{ line.monthly_cents if line.monthly_cents is not none else '' }}" data-cycle="{{ line.cycle_months }}" data-file-cycle="{{ line.cycle_months }}">
                 <td><input type="checkbox" name="include_{{ line.index }}" aria-label="Include {{ line.name }}" {{ 'checked' if line.include else '' }}></td>
                 <td>
                   {{ line.name }}
@@ -44,15 +44,22 @@
                   {% if line.reason %}<div class="text-xs {{ 'neg' if line.monthly_cents is none and line.frequency not in (none, 'one_off') else 'muted' }}">{{ line.reason }}</div>{% endif %}
                   {% if line.notes %}<div class="text-xs muted">{{ line.notes[:140] }}{{ '…' if line.notes | length > 140 else '' }}</div>{% endif %}
                 </td>
-                <td class="num">{% if line.amount_cents is not none %}{{ line.amount_cents | money }}{% endif %} {{ line.frequency_label | lower }}</td>
-                <td><input class="input" name="category_{{ line.index }}" list="budget-cats" maxlength="80" value="{{ by_name.get(line.name | lower, line.name) }}" aria-label="Category for {{ line.name }}"></td>
-                <td class="num"><input class="input num w-money" name="monthly_{{ line.index }}" inputmode="decimal" value="{{ line.monthly_cents | money_plain if line.monthly_cents is not none else '' }}" aria-label="Monthly amount for {{ line.name }}"></td>
-                <td>
-                  <select class="input" name="cycle_{{ line.index }}" aria-label="How often {{ line.name }} is spent">
+                <td class="in-file" data-label="In the file">
+                  {% if line.amount_cents is not none %}<strong>{{ line.amount_cents | money }}</strong>{% else %}<span class="muted">No amount</span>{% endif %}
+                  {% if line.frequency_label %}<span class="pill {{ 'pill-upcoming' if line.cycle_months > 1 else '' }}">{{ line.frequency_label }}</span>{% else %}<span class="pill pill-over">No frequency</span>{% endif %}
+                </td>
+                <td data-label="Category"><input class="input" name="category_{{ line.index }}" list="budget-cats" maxlength="80" value="{{ by_name.get(line.name | lower, line.name) }}" aria-label="Category for {{ line.name }}"></td>
+                <td data-label="How often">
+                  <select class="input" name="cycle_{{ line.index }}" data-cycle-select aria-label="How often {{ line.name }} is spent">
                     {% for months, label in cycles.items() %}<option value="{{ months }}" {{ 'selected' if months == line.cycle_months else '' }}>{{ label }}</option>{% endfor %}
                   </select>
+                  {% if line.frequency in ('weekly', 'fortnightly', 'daily') %}<div class="text-xs muted">{{ line.frequency_label }} in the file, budgeted by the month</div>{% endif %}
                 </td>
-                <td class="num muted">{{ current[line.index] | money if current.get(line.index) else '' }}</td>
+                <td class="num" data-label="Budget a month">
+                  <input class="input num w-money" name="monthly_{{ line.index }}" inputmode="decimal" value="{{ line.monthly_cents | money_plain if line.monthly_cents is not none else '' }}" aria-label="Monthly amount for {{ line.name }}" data-monthly-input>
+                  <div class="text-xs muted" data-saving-hint>{% if line.cycle_months > 1 and line.monthly_cents is not none %}Saving up {{ (line.monthly_cents * line.cycle_months) | money }} {{ cycles[line.cycle_months] | lower }}{% endif %}</div>
+                </td>
+                <td class="num muted" data-label="Budget now">{{ current[line.index] | money if current.get(line.index) else '' }}</td>
               </tr>
             {% endfor %}
           </tbody>
@@ -61,9 +68,11 @@
     </div>
     <div class="card mt">
       <fieldset>
-        <legend>When a category already has a budget</legend>
-        <label class="check"><input type="radio" name="mode" value="replace" checked> Replace it with the imported amount</label>
-        <label class="check"><input type="radio" name="mode" value="add"> Add the imported amount to it</label>
+        <legend>Your current budget</legend>
+        <label class="check"><input type="radio" name="mode" value="replace" checked> Keep it, and replace the budget of each category in this file</label>
+        <label class="check"><input type="radio" name="mode" value="add"> Keep it, and add these amounts to each category in this file</label>
+        <label class="check"><input type="radio" name="mode" value="clear"> Clear the whole budget first, so only these lines are in it</label>
+        <p class="muted text-xs">Clearing removes every budget line you have now, including ones not in this file. What you have taken off by hand stays in its month.</p>
       </fieldset>
       <div class="row">
         <button class="btn btn-primary" type="submit">Import ticked lines</button>

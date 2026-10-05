@@ -10,7 +10,7 @@ from openpyxl import Workbook
 from sqlalchemy import select
 
 from fiscus.domain import budget_import as dom
-from fiscus.models import Budget, Category
+from fiscus.models import Budget, BudgetSpend, Category
 from fiscus.services import budget_import as svc
 from tests.conftest import CsrfClient, Env
 
@@ -223,6 +223,9 @@ def test_import_saves_up_yearly_and_quarterly_lines(env: Env) -> None:
     rates = next(line for line in lines if line.name == 'Council rates')
     assert f'name="cycle_{rates.index}"' in page
     assert '<option value="12" selected>Every year</option>' in page
+    # The file's frequency is shown plainly beside its amount.
+    assert '<span class="pill pill-upcoming">Yearly</span>' in page
+    assert 'Weekly in the file, budgeted by the month' in page
     form: dict[str, str] = {'count': '9', 'mode': 'replace'}
     for line in lines:
         form[f'name_{line.index}'] = line.name
@@ -287,6 +290,39 @@ def test_add_mode_and_forecast_flag(env: Env) -> None:
     with env.db() as db:
         b = db.execute(select(Budget).where(Budget.category_id == gid)).scalar_one()
         assert b.monthly_cents == 1140_00 and b.use_in_forecast
+
+
+def test_clear_mode_starts_the_budget_again(env: Env) -> None:
+    alex = env.user('alex')
+    a = env.login(alex)
+    gid = _cat(env, alex.id, 'Groceries')
+    a.post('/budget', data={'category_id': str(gid), 'amount': '100'})
+    a.post('/budget', data={'new_category': 'Old thing', 'amount': '50'})
+    a.post('/budget/spend', data={'category_id': str(gid), 'amount': '20'})
+    url = upload(a, svc.template_csv().encode(), 'b.csv')
+    page = a.get(url).text
+    assert 'value="clear"' in page
+    resp = a.post(
+        url + '/apply',
+        data={
+            'count': '1',
+            'include_0': 'on',
+            'name_0': 'Internet',
+            'category_0': 'Internet',
+            'monthly_0': '79.00',
+            'mode': 'clear',
+        },
+        follow_redirects=True,
+    )
+    assert 'Old budget cleared (2 lines)' in resp.text
+    with env.db() as db:
+        budgets = {
+            db.get(Category, b.category_id).name: b.monthly_cents  # type: ignore[union-attr]
+            for b in db.execute(select(Budget).where(Budget.user_id == alex.id)).scalars()
+        }
+        assert budgets == {'Internet': 79_00}
+        # What was taken off by hand stays.
+        assert db.execute(select(BudgetSpend)).scalar_one().amount_cents == 20_00
 
 
 def test_bad_amount_is_reported_not_saved(env: Env) -> None:
