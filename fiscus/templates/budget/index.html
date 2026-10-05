@@ -106,7 +106,7 @@
               </td>
               <td>
                 <details>
-                  <summary class="text-sm">Set</summary>
+                  <summary class="text-sm">{{ 'Edit' if r.has_budget else 'Set' }}</summary>
                   <form method="post" action="/budget" class="mt-sm">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <input type="hidden" name="category_id" value="{{ r.category.id }}">
@@ -123,6 +123,13 @@
                     {% if r.bills_cents %}<p class="text-xs muted mt-sm">Bills here come to {{ r.bills_cents | money }} a month and are paid out of this.</p>{% endif %}
                     <button class="btn btn-sm btn-primary mt-sm" type="submit">Save</button>
                   </form>
+                  {% if r.has_budget %}
+                    <form method="post" action="/budget/{{ r.category.id }}/remove" class="mt-sm" data-confirm="Remove {{ r.category.name }} from the budget?">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                      <input type="hidden" name="back" value="{{ back }}">
+                      <button class="btn btn-sm btn-danger" type="submit">Remove from budget</button>
+                    </form>
+                  {% endif %}
                 </details>
               </td>
             </tr>

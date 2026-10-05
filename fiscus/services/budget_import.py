@@ -12,8 +12,9 @@ from sqlalchemy.orm import Session
 
 from fiscus.domain import budget_import as dom
 from fiscus.domain.csvimport import ImportError_, decode, read_rows
-from fiscus.models import Category, User
+from fiscus.models import Budget, Category, User
 from fiscus.services import budgeting
+from fiscus.services.access import owned
 from fiscus.services.ledger import category_named
 
 MAX_UNZIPPED = 50 * 1024 * 1024
@@ -128,6 +129,16 @@ def apply(
         )
     db.flush()
     return len(totals), sum(cents for _, cents, _ in totals.values())
+
+
+def clear(db: Session, user: User) -> int:
+    """Remove every budget line, for an import that starts clean. What was
+    taken off by hand stays on record. Returns how many were removed."""
+    rows = list(db.execute(owned(Budget, user)).scalars())
+    for row in rows:
+        db.delete(row)
+    db.flush()
+    return len(rows)
 
 
 def template_csv() -> str:

@@ -22,6 +22,7 @@ import uvicorn
 
 from fiscus.app import create_app
 from fiscus.services import auth as auth_service
+from fiscus.services.budget_import import template_csv
 from tests.conftest import settings_for
 from tests.test_paydays import simple_slip
 from tests.test_payslip_pdf import payslip_pdf
@@ -213,6 +214,37 @@ def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any
     page.select_option('#add_cycle', '12')
     page.click('form:has(#add_amount) button[type=submit]')
     page.wait_for_selector('text=Saving up $900.00 every year')
+    # Importing: changing how often a line is spent reworks its monthly amount.
+    page.set_input_files(
+        'input[name=file]',
+        files=[{'name': 'b.csv', 'mimeType': 'text/csv', 'buffer': template_csv().encode()}],
+    )
+    page.click('#import button[type=submit]')
+    page.wait_for_url(f'{base}/budget/import/*')
+    rates = 'tr:has(input[value="Council rates"])'
+    assert page.input_value(f'{rates} input[name^=monthly_]') == '246.67'
+    page.select_option(f'{rates} select', '1')
+    assert page.input_value(f'{rates} input[name^=monthly_]') == '2960.00'
+    page.select_option(f'{rates} select', '3')
+    assert page.input_value(f'{rates} input[name^=monthly_]') == '986.67'
+    assert 'Saving up $2,960.01 every 3 months' in page.inner_text(rates)
+    page.select_option(f'{rates} select', '12')
+    assert page.input_value(f'{rates} input[name^=monthly_]') == '246.67'
+    # Weekly back to monthly returns the file's own monthly figure.
+    groceries = 'tr:has(input[value="Groceries"])'
+    page.select_option(f'{groceries} select', '12')
+    assert page.input_value(f'{groceries} input[name^=monthly_]') == '20.00'
+    page.select_option(f'{groceries} select', '1')
+    assert page.input_value(f'{groceries} input[name^=monthly_]') == '1040.00'
+    page.check('input[name=mode][value=clear]')
+    page.click('form[action$="/apply"] button[type=submit]')
+    page.wait_for_url(f'{base}/budget')
+    page.wait_for_selector(
+        '[data-flash]:has-text("Old budget cleared (2 lines)")', state='attached'
+    )
+    # Car rego came back from the file at its own amount, not the old $900.
+    table = page.inner_text('main table')
+    assert 'Saving up $1,109.04 every year' in table and '$900.00' not in table
     page.goto(f'{base}/accounts')
     page.fill('input[name^=balance_]', '2400')
     page.click('form[action="/accounts/balances"] button[type=submit]')

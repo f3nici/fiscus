@@ -283,6 +283,7 @@ WRITES: list[tuple[str, dict[str, Any]]] = [
     ('/budget', {'category_id': '{category}', 'amount': '1'}),
     ('/budget/spend', {'category_id': '{category}', 'amount': '1'}),
     ('/budget/spend/{spend}/delete', {}),
+    ('/budget/{category}/remove', {}),
     ('/accounts/{account}/balance', {'balance': '1'}),
     ('/square', {'account_id': '{account}', 'start_date': '2026-10-01'}),
     ('/square', {'fee_category_id': '{category}', 'start_date': '2026-10-01'}),

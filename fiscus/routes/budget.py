@@ -14,7 +14,7 @@ from fiscus.clock import utcnow_naive
 from fiscus.domain import recurrence
 from fiscus.domain.csvimport import MAX_BYTES, ImportError_
 from fiscus.forms import FormError, money
-from fiscus.models import BudgetSpend, Category, Loan, User
+from fiscus.models import Budget, BudgetSpend, Category, Loan, User
 from fiscus.money import fmt
 from fiscus.services import budget_import as importer
 from fiscus.services import budgeting, ledger
@@ -128,6 +128,23 @@ def save_budget(
     else:
         msg = f'Budget for {cat.name} saved'
     return redirect(target, flash=msg, request=request)
+
+
+@router.post('/budget/{category_id}/remove')
+def remove_budget(
+    category_id: int,
+    request: Request,
+    back: str = Form('/budget'),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    cat = get_owned(db, Category, category_id, user)
+    row = db.execute(owned(Budget, user).where(Budget.category_id == cat.id)).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404)
+    db.delete(row)
+    db.flush()
+    return redirect(_back(back), flash=f'{cat.name} removed from the budget', request=request)
 
 
 @router.post('/budget/spend')
@@ -309,17 +326,18 @@ async def budget_apply(
         return redirect(f'/budget/import/{name}', flash=str(exc), request=request)
     if not chosen:
         return redirect(f'/budget/import/{name}', flash='Tick at least one line', request=request)
+    mode = f('mode')
+    cleared = importer.clear(db, user) if mode == 'clear' else 0
     n, total = importer.apply(
         db,
         user,
         chosen,
         ctx(request).clock.today(),
-        replace=f('mode') != 'add',
+        replace=mode != 'add',
         use_in_forecast=f('use_in_forecast') == 'on',
     )
     (ctx(request).settings.upload_dir / name).unlink(missing_ok=True)
-    return redirect(
-        '/budget',
-        flash=f'Imported {len(chosen)} lines into {n} budget categories, {fmt(total)} a month',
-        request=request,
-    )
+    msg = f'Imported {len(chosen)} lines into {n} budget categories, {fmt(total)} a month'
+    if mode == 'clear':
+        msg = f'Old budget cleared ({cleared} lines). {msg}'
+    return redirect('/budget', flash=msg, request=request)

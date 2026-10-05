@@ -321,6 +321,25 @@ def test_spending_is_taken_off_the_budget_by_hand(env: Env) -> None:
         assert db.execute(select(BudgetSpend)).scalars().all().__len__() == 2
 
 
+def test_a_budget_line_can_be_removed(env: Env) -> None:
+    alex = env.user('alex')
+    a = env.login(alex)
+    groceries = _groceries(env, alex)
+    a.post('/budget', data={'category_id': str(groceries), 'amount': '600', 'cycle_months': '12'})
+    a.post('/budget/spend', data={'category_id': str(groceries), 'amount': '25', 'note': 'Coles'})
+    page = a.get('/budget').text
+    assert f'action="/budget/{groceries}/remove"' in page
+    resp = a.post(f'/budget/{groceries}/remove', follow_redirects=True)
+    assert 'Groceries removed from the budget' in resp.text
+    assert f'action="/budget/{groceries}/remove"' not in resp.text
+    with env.db() as db:
+        assert db.execute(select(Budget).where(Budget.user_id == alex.id)).first() is None
+        # What was taken off stays on record.
+        assert len(db.execute(select(BudgetSpend)).scalars().all()) == 1
+    # Nothing left to remove.
+    assert a.post(f'/budget/{groceries}/remove').status_code == 404
+
+
 def test_budget_shows_expected_earnings_against_budgeted(env: Env) -> None:
     alex = env.user('alex')
     a = env.login(alex)
