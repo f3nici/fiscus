@@ -5,7 +5,7 @@ from __future__ import annotations
 import html
 import json
 import re
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -473,7 +473,7 @@ def test_bills_count_towards_their_category_budget(env: Env) -> None:
     )
     # My half of 520 a quarter is 86.67 a month: that is the budget, nothing stored.
     page = a.get('/budget?month=2026-10').text
-    assert '$86.67' in page and 'Includes $86.67 of bills' in page
+    assert '$86.67' in page and 'Includes $86.67 a month of bills' in page
     with env.db() as db:
         assert db.execute(select(Budget)).first() is None
     assert '-$260.00' in env.login(sam).get('/calendar?view=agenda&date=2026-11-01').text
@@ -492,6 +492,92 @@ def test_bills_count_towards_their_category_budget(env: Env) -> None:
     # The bills page shows the same monthly figure, filtered by category.
     bills_page = a.get(f'/bills?category={housing}').text
     assert 'Bills: Housing' in bills_page and '$86.67' in bills_page
+
+
+def _saved(env: Env, user: User, month: date) -> dict[str, tuple[int | None, str]]:
+    with env.db() as db:
+        u = db.get(User, user.id)
+        assert u is not None
+        start, end = budgeting.period_starting_in(db, u, month)
+        rows = budgeting.rows(db, u, start, end, date(2026, 10, 1))
+        return {r.category.name: (r.saved_cents, r.state) for r in rows}
+
+
+def test_a_yearly_cost_is_saved_up_not_a_month_over(env: Env) -> None:
+    alex = env.user('alex')
+    a = env.login(alex)
+    resp = a.post(
+        '/budget',
+        data={'new_category': 'Car rego', 'amount': '900', 'cycle_months': '12'},
+        follow_redirects=True,
+    )
+    assert 'Saving up $75.00 a month for Car rego, spent every year' in resp.text
+    page = a.get('/budget?month=2026-10').text
+    assert 'Saving up $900.00 every year' in page
+    assert _saved(env, alex, date(2026, 10, 1))['Car rego'] == (75_00, 'ok')
+    assert _saved(env, alex, date(2026, 12, 1))['Car rego'] == (225_00, 'ok')
+    # Paid in December: out of what is saved, not December's $75.
+    with env.db() as db:
+        cid = db.execute(select(Category.id).where(Category.name == 'Car rego')).scalar_one()
+    a.post('/budget/spend', data={'category_id': str(cid), 'amount': '900', 'on': '2026-12-10'})
+    assert _saved(env, alex, date(2026, 12, 1))['Car rego'] == (-675_00, 'over')
+    # Already had some put away: say so, and December is covered.
+    a.post(
+        '/budget',
+        data={'category_id': str(cid), 'amount': '900', 'cycle_months': '12', 'saved': '700'},
+    )
+    assert _saved(env, alex, date(2026, 12, 1))['Car rego'] == (25_00, 'ok')
+    assert _saved(env, alex, date(2027, 1, 1))['Car rego'] == (100_00, 'ok')
+    # Changing the amount later keeps what is saved so far.
+    env.clock.set(datetime(2027, 1, 5, 2, tzinfo=UTC))
+    a = env.login(alex)
+    a.post('/budget', data={'category_id': str(cid), 'amount': '1200', 'cycle_months': '12'})
+    with env.db() as db:
+        row = db.execute(select(Budget)).scalar_one()
+        assert (row.saved_since, row.saved_opening_cents) == (date(2027, 1, 1), 25_00)
+    assert _saved(env, alex, date(2027, 1, 1))['Car rego'] == (125_00, 'ok')
+    # The forecast spends it evenly, a month at a time.
+    with env.db() as db:
+        assert db.execute(select(Budget.monthly_cents)).scalar_one() == 100_00
+    # Back to monthly: an ordinary budget again.
+    a.post('/budget', data={'category_id': str(cid), 'amount': '100', 'cycle_months': '1'})
+    with env.db() as db:
+        row = db.execute(select(Budget)).scalar_one()
+        assert (row.cycle_months, row.saved_since) == (1, None)
+    assert _saved(env, alex, date(2027, 1, 1))['Car rego'] == (None, 'ok')
+    assert (
+        a.post(
+            '/budget', data={'category_id': str(cid), 'amount': '1', 'cycle_months': '5'}
+        ).status_code
+        == 303
+    )
+
+
+def test_a_quarterly_bill_paid_comes_out_of_what_is_saved(env: Env) -> None:
+    alex = env.user('alex')
+    a = env.login(alex)
+    housing = cat_id(env, alex, 'Housing')
+    bill = create_bill(
+        a,
+        name='Council rates',
+        amount='300',
+        frequency='quarterly',
+        next_due='2026-11-15',
+        category_id=str(housing),
+    )
+    # Not saved up yet: the form suggests every 3 months, at the quarter's amount.
+    page = a.get('/budget?month=2026-10').text
+    assert 'Some of its bills are not monthly' in page
+    assert 'value="300.00"' in page and '<option value="3" selected>' in page
+    a.post('/budget', data={'category_id': str(housing), 'amount': '300', 'cycle_months': '3'})
+    with env.db() as db:
+        row = db.execute(select(Budget)).scalar_one()
+        assert (row.monthly_cents, row.cycle_months) == (0, 3)
+    a.post(f'/bills/{bill}/occurrence/2026-11-15/paid')
+    assert _saved(env, alex, date(2026, 11, 1))['Housing'] == (-100_00, 'over')
+    assert _saved(env, alex, date(2027, 1, 1))['Housing'] == (100_00, 'ok')
+    nov = a.get('/budget?month=2026-11').text
+    assert '1 category over' in nov
 
 
 def test_budget_in_forecast_is_only_the_part_beyond_bills(env: Env) -> None:
