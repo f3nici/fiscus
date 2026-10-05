@@ -265,7 +265,7 @@ tr.group-head th { padding-top: 18px; color: #fff; border-bottom: 1px solid var(
  * sideways.
  */
 .table-wrap { container-type: inline-size; }
-@container (max-width: 560px) {
+@container (max-width: 660px) {
   .stack-table, .stack-table tbody, .stack-table tfoot { display: block; }
   .stack-table thead { display: none; }
   .stack-table tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
@@ -293,6 +293,9 @@ tr.group-head th { padding-top: 18px; color: #fff; border-bottom: 1px solid var(
 /* Phones: tighter cards, headline figures two to a row, forms that wrap. */
 @media (max-width: 699px) {
   .card { padding: 16px; }
+  /* Stacked tables never scroll sideways; a scroll box here would also stop a
+     save landing on its last row. */
+  .table-wrap:has(> .stack-table) { overflow: visible; }
   .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .grid-4 > .card { padding: 14px; }
   .grid-4 > .span-2 { grid-column: span 2; }
@@ -303,3 +306,7 @@ tr.group-head th { padding-top: 18px; color: #fff; border-bottom: 1px solid var(
   .row > .input[type=search] { flex-basis: 100%; }
   .row > .input.grow { min-width: 8rem; }
 }
+
+/* A save returns to the line or form it changed; clear the sticky top bar. */
+[id] { scroll-margin-top: calc(72px + env(safe-area-inset-top)); }
+@media (min-width: 900px) { [id] { scroll-margin-top: 16px; } }

@@ -8,7 +8,7 @@ from urllib.parse import unquote
 from sqlalchemy import select
 
 from fiscus.domain import arrange
-from fiscus.models import BudgetGroup, Category
+from fiscus.models import BudgetGroup, BudgetSpend, Category
 from tests.conftest import Env
 
 
@@ -102,6 +102,7 @@ def test_a_budget_line_can_be_renamed(env: Env) -> None:
     )
     assert resp.status_code == 303
     assert unquote(resp.cookies['fiscus_flash']).startswith('Food shop renamed to Weekly shop.')
+    assert resp.headers['location'] == f'/budget#line-{cid}'
     page = a.get('/budget').text
     with env.db() as db:
         cat = db.get(Category, cid)
@@ -127,3 +128,33 @@ def test_a_budget_line_can_be_renamed(env: Env) -> None:
     with env.db() as db:
         cat = db.get(Category, cid)
         assert cat is not None and cat.name == 'WEEKLY SHOP'
+
+
+def test_each_save_comes_back_to_what_it_changed(env: Env) -> None:
+    a = env.login(env.user('alex'))
+    back = '/budget?month=2026-10'
+
+    def goes(path: str, data: dict[str, str]) -> str:
+        resp = a.post(path, data={'back': back, **data})
+        assert resp.status_code == 303
+        return str(resp.headers['location'])
+
+    assert (
+        goes('/budget', {'new_category': 'Fun', 'amount': '50'})
+        == f'{back}#line-{_cat(env, "Fun")}'
+    )
+    fun = _cat(env, 'Fun')
+    assert goes('/budget', {'amount': '50'}) == f'{back}#add-line'
+    assert goes('/budget/spend', {'category_id': str(fun), 'amount': '5'}) == f'{back}#spend'
+    with env.db() as db:
+        spend = db.execute(select(BudgetSpend.id)).scalar_one()
+    assert goes(f'/budget/spend/{spend}/delete', {}) == f'{back}#spent'
+    assert goes('/budget/groups', {'name': 'Bills'}).startswith(f'{back}#group-')
+    assert goes(f'/budget/{fun}/remove', {}) == f'{back}#lines'
+    # A back address that already carries an anchor gets this one instead.
+    resp = a.post(
+        '/budget', data={'back': f'{back}#elsewhere', 'category_id': str(fun), 'amount': '9'}
+    )
+    assert resp.headers['location'] == f'{back}#line-{fun}'
+    resp = a.post('/budget/start-day', data={'start_day': '15'})
+    assert resp.headers['location'] == '/budget#start-day'

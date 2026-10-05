@@ -52,7 +52,7 @@
   </div>
 
   {% if spend_cats %}
-    <form class="card mt" method="post" action="/budget/spend">
+    <form class="card mt" id="spend" method="post" action="/budget/spend">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="back" value="{{ back }}">
       <h2>Take off a budget</h2>
@@ -79,7 +79,7 @@
     </form>
   {% endif %}
 
-  <div class="card mt">
+  <div class="card mt" id="lines">
     <div class="table-wrap">
       <table class="stack-table cols-3 budget-table">
         <thead><tr><th>Category</th><th class="num">Left</th><th class="num">Spent</th><th class="num">Budget</th><th></th></tr></thead>
@@ -146,7 +146,7 @@
                   <div class="text-xs muted">Saved into <a href="/goals/{{ g.id }}">{{ g.name }}</a>, holding {{ goal_held.get(g.id, 0) | money }}</div>
                   <form method="post" action="/goals/{{ g.id }}/move" class="row mt-sm put-aside">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <input type="hidden" name="back" value="{{ back }}">
+                    <input type="hidden" name="back" value="{{ back }}#line-{{ r.category.id }}">
                     <input type="hidden" name="as_spent" value="true">
                     <input type="hidden" name="on" value="{{ (today if current else end).isoformat() }}">
                     <input class="input" name="amount" inputmode="decimal" value="{{ (r.budget_cents if r.saving or r.remaining_cents <= 0 else r.remaining_cents) | money_plain if r.has_budget else '' }}" aria-label="Put aside into {{ g.name }}">
@@ -229,7 +229,7 @@
     </div>
   </div>
 
-  <form class="card mt" method="post" action="/budget">
+  <form class="card mt" id="add-line" method="post" action="/budget">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="back" value="{{ back }}">
     <h2>Add a budget line</h2>
@@ -272,7 +272,7 @@
     <p class="muted text-xs mt">For something paid every few months or once a year (rego, insurance), choose how often. Its monthly share is saved up and what you spend comes out of that, so the month you pay it is not over budget.</p>
   </form>
 
-  <form class="card mt row" method="post" action="/budget/groups">
+  <form class="card mt row" id="add-group" method="post" action="/budget/groups">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="back" value="{{ back }}">
     <label class="label grow" for="group_name">Add a group</label>
@@ -281,7 +281,7 @@
     <p class="muted text-xs w-full">Groups put budget lines under headings with their own totals. Choose a line's group when you edit it, and use the arrows to put lines and groups in order.</p>
   </form>
 
-  <div class="card mt">
+  <div class="card mt" id="spent">
     <h2>Taken off this budget month</h2>
     <ul class="list">
       {% for s in spends %}
@@ -303,7 +303,7 @@
     </ul>
   </div>
 
-  <form class="card mt row" method="post" action="/budget/start-day">
+  <form class="card mt row" id="start-day" method="post" action="/budget/start-day">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label class="label grow" for="start_day">Budget month starts on day</label>
     <input class="input input-day" type="number" id="start_day" name="start_day" min="1" max="31" value="{{ start_day }}" required>

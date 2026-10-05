@@ -304,6 +304,12 @@ def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any
         '[data-flash]:has-text("Car rego renamed to Car registration")', state='attached'
     )
     page.wait_for_selector('tr.group-head:has-text("Bills") + tr:has-text("Car registration")')
+    # The save comes back to the line it changed, not wherever the page ends up.
+    assert page.url.endswith(f'#{row.get_attribute("id")}')
+    top = page.evaluate(
+        f"document.getElementById('{row.get_attribute('id')}').getBoundingClientRect().top"
+    )
+    assert 0 < top < 200, top
     page.goto(f'{base}/accounts')
     assert 'Unallocated $2,250.00' in page.inner_text('main table')
 

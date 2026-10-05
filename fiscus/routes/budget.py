@@ -93,8 +93,11 @@ def budget_page(
     )
 
 
-def _back(back: str) -> str:
-    return back if back.startswith('/budget') else '/budget'
+def _back(back: str, anchor: str = '') -> str:
+    """Back to the budget page, at `anchor` so a save does not leave the person
+    wherever the page's new height happens to put them."""
+    page = back.split('#', 1)[0] if back.startswith('/budget') else '/budget'
+    return f'{page}#{anchor}' if anchor else page
 
 
 @router.post('/budget')
@@ -111,7 +114,7 @@ def save_budget(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> Response:
-    target = _back(back)
+    target = _back(back, f'line-{category_id}' if category_id else 'add-line')
     group = maybe_owned(db, BudgetGroup, group_id, user) if group_id > 0 else None
     if cycle_months not in budgeting.CYCLES:
         return redirect(target, flash='Choose how often it is spent', request=request)
@@ -139,6 +142,7 @@ def save_budget(
         cat.name = new_name
     if group_id >= 0:
         budget_groups.put_in(db, user, cat, group)
+    target = _back(back, f'line-{cat.id}')
     today = ctx(request).clock.today()
     total, from_bills = budgeting.set_total(
         db,
@@ -153,6 +157,7 @@ def save_budget(
     )
     every = 'a month' if cycle_months == 1 else budgeting.CYCLES[cycle_months].lower()
     if total == 0 and cycle_months == 1:
+        target = _back(back, 'lines')
         msg = f'Budget for {cat.name} removed'
     elif cents < from_bills * cycle_months:
         msg = (
@@ -181,9 +186,9 @@ def add_group(
     try:
         clean = text(name, 'Group name', 80)
     except FormError as exc:
-        return redirect(_back(back), flash=str(exc), request=request)
-    budget_groups.add_group(db, user, clean)
-    return redirect(_back(back), flash=f'Group {clean} added', request=request)
+        return redirect(_back(back, 'add-group'), flash=str(exc), request=request)
+    group = budget_groups.add_group(db, user, clean)
+    return redirect(_back(back, f'group-{group.id}'), flash=f'Group {clean} added', request=request)
 
 
 @router.post('/budget/groups/{group_id}')
@@ -199,9 +204,11 @@ def rename_group(
     try:
         group.name = text(name, 'Group name', 80)
     except FormError as exc:
-        return redirect(_back(back), flash=str(exc), request=request)
+        return redirect(_back(back, f'group-{group.id}'), flash=str(exc), request=request)
     db.flush()
-    return redirect(_back(back), flash=f'Group renamed to {group.name}', request=request)
+    return redirect(
+        _back(back, f'group-{group.id}'), flash=f'Group renamed to {group.name}', request=request
+    )
 
 
 @router.post('/budget/groups/{group_id}/move')
@@ -215,7 +222,7 @@ def move_group(
 ) -> Response:
     group = get_owned(db, BudgetGroup, group_id, user)
     budget_groups.move_group(db, user, group, _step(direction))
-    return redirect(f'{_back(back)}#group-{group.id}', request=request)
+    return redirect(_back(back, f'group-{group.id}'), request=request)
 
 
 @router.post('/budget/groups/{group_id}/delete')
@@ -229,7 +236,9 @@ def delete_group(
     group = get_owned(db, BudgetGroup, group_id, user)
     budget_groups.delete_group(db, user, group)
     return redirect(
-        _back(back), flash=f'Group {group.name} removed; its lines are kept', request=request
+        _back(back, 'lines'),
+        flash=f'Group {group.name} removed; its lines are kept',
+        request=request,
     )
 
 
@@ -244,7 +253,7 @@ def move_line(
 ) -> Response:
     cat = get_owned(db, Category, category_id, user)
     budget_groups.move_line(db, user, cat, _step(direction))
-    return redirect(f'{_back(back)}#line-{cat.id}', request=request)
+    return redirect(_back(back, f'line-{cat.id}'), request=request)
 
 
 @router.post('/budget/{category_id}/remove')
@@ -261,7 +270,9 @@ def remove_budget(
         raise HTTPException(status_code=404)
     db.delete(row)
     db.flush()
-    return redirect(_back(back), flash=f'{cat.name} removed from the budget', request=request)
+    return redirect(
+        _back(back, 'lines'), flash=f'{cat.name} removed from the budget', request=request
+    )
 
 
 @router.post('/budget/spend')
@@ -276,7 +287,7 @@ def add_spend(
     db: Session = Depends(get_db),
 ) -> Response:
     cat = get_owned(db, Category, category_id, user)
-    target = _back(back)
+    target = _back(back, 'spend')
     c = ctx(request)
     try:
         cents = money(amount, 'Amount')
@@ -312,7 +323,7 @@ def delete_spend(
 ) -> Response:
     row = get_owned(db, BudgetSpend, spend_id, user)
     goals.remove_spend(db, user, row)
-    return redirect(_back(back), flash='Entry removed', request=request)
+    return redirect(_back(back, 'spent'), flash='Entry removed', request=request)
 
 
 @router.post('/budget/start-day')
@@ -323,11 +334,13 @@ def save_start_day(
     db: Session = Depends(get_db),
 ) -> Response:
     if not 1 <= start_day <= 31:
-        return redirect('/budget', flash='Pick a day from 1 to 31', request=request)
+        return redirect('/budget#start-day', flash='Pick a day from 1 to 31', request=request)
     settings_for(db, user).budget_start_day = start_day
     db.flush()
     return redirect(
-        '/budget', flash=f'Your budget month now starts on day {start_day}', request=request
+        '/budget#start-day',
+        flash=f'Your budget month now starts on day {start_day}',
+        request=request,
     )
 
 
