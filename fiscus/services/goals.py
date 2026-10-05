@@ -1,4 +1,5 @@
-"""Savings goals: what each holds, the split of an account, and their budget lines."""
+"""Savings goals: what each holds and the split of an account. Goals are not
+budget lines; what they keep aside only comes off the money free in accounts."""
 
 from __future__ import annotations
 
@@ -21,6 +22,23 @@ def goals(db: Session, user: User, *, include_archived: bool = False) -> list[Go
     if not include_archived:
         q = q.where(Goal.archived.is_(False))
     return list(db.execute(q.order_by(Goal.name)).scalars())
+
+
+def tax_goal(db: Session, user: User) -> Goal | None:
+    """The open goal that holds the person's tax money, if one is marked."""
+    q = owned(Goal, user).where(Goal.is_tax.is_(True), Goal.archived.is_(False))
+    return db.execute(q.order_by(Goal.id)).scalars().first()
+
+
+def set_tax(db: Session, user: User, goal: Goal, is_tax: bool) -> None:
+    """Mark or unmark `goal` as the tax money. Only one goal is: marking one
+    unmarks the rest."""
+    if is_tax:
+        for other in db.execute(owned(Goal, user).where(Goal.is_tax.is_(True))).scalars():
+            if other is not goal:
+                other.is_tax = False
+    goal.is_tax = is_tax
+    db.flush()
 
 
 def held(
@@ -69,7 +87,7 @@ def set_held(
 class GoalView:
     goal: Goal
     progress: calc.Progress
-    per_month_cents: int  # what the budget asks for this budget month
+    per_month_cents: int  # a guide: what to put in this budget month to reach the target
     months_left: int
 
     @property
@@ -107,39 +125,6 @@ def views(
             else 0
         )
         out.append(GoalView(g, progress, need, months))
-    return out
-
-
-@dataclass(frozen=True)
-class BudgetGoal:
-    """A goal's line in a budget month: an even share of what was left to save
-    at the start of the month, and what has gone in during it."""
-
-    goal: Goal
-    budget_cents: int
-    paid_cents: int
-    held_cents: int
-    months_left: int
-
-    @property
-    def remaining_cents(self) -> int:
-        return self.budget_cents - self.paid_cents
-
-
-def budget_lines(db: Session, user: User, start: date, end: date) -> list[BudgetGoal]:
-    """Every goal with a target and a date still ahead of the month's start."""
-    first = budgeting.start_day(db, user)
-    before = held(db, user, as_of=start - timedelta(days=1))
-    during = held(db, user, as_of=end, since=start)
-    out = []
-    for g in goals(db, user):
-        if g.target_cents is None or g.target_date is None:
-            continue
-        months = calc.months_left(start, g.target_date, first)
-        need = calc.per_month(g.target_cents - before.get(g.id, 0), months)
-        paid = during.get(g.id, 0)
-        if need or paid:
-            out.append(BudgetGoal(g, need, paid, before.get(g.id, 0) + paid, months))
     return out
 
 

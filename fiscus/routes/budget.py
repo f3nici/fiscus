@@ -49,14 +49,11 @@ def budget_page(
     in_goals = goals.held_outside(db, user, spend_accts)
     spendable = sum(bal.get(a.id, 0) for a in spend_accts) - in_goals
     loan_lines = loans.budget_lines(db, user, start, end, today)
-    goal_lines = goals.budget_lines(db, user, start, end)
     summary = budgeting.summary(
         rows,
         budgeting.expected_pay(db, user, start, end, today),
         loan_cents=sum(x.budget_cents for x in loan_lines),
         loan_paid_cents=sum(x.paid_cents for x in loan_lines),
-        goal_cents=sum(x.budget_cents for x in goal_lines),
-        goal_paid_cents=sum(x.paid_cents for x in goal_lines),
     )
     cats = ledger.categories(db, user)
     return render(
@@ -65,7 +62,6 @@ def budget_page(
         {
             'rows': rows,
             'loan_lines': loan_lines,
-            'goal_lines': goal_lines,
             'in_goals': in_goals,
             # A mortgage line of its own would count the loan twice.
             'doubled': {

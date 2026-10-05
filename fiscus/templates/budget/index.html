@@ -96,30 +96,6 @@
               <td><a class="text-sm" href="/loans/{{ x.loan.id }}">Loan</a></td>
             </tr>
           {% endfor %}
-          {% for x in goal_lines %}
-            <tr>
-              <td>
-                {{ x.goal.name }} <span class="pill pill-shared">Goal</span>
-                <div class="text-xs muted">{{ x.held_cents | money }} of {{ x.goal.target_cents | money }} by {{ x.goal.target_date | d }}, {{ x.months_left }} month{{ '' if x.months_left == 1 else 's' }} left</div>
-              </td>
-              <td class="num"><strong>{{ x.remaining_cents | money }}</strong></td>
-              <td class="num">{{ x.paid_cents | money }}<div class="text-xs muted">put in</div></td>
-              <td class="num">{{ x.budget_cents | money }}</td>
-              <td>
-                <details>
-                  <summary class="text-sm">Put in</summary>
-                  <form method="post" action="/goals/{{ x.goal.id }}/move" class="mt-sm">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <input type="hidden" name="back" value="{{ back }}">
-                    <input type="hidden" name="on" value="{{ (today if current else end).isoformat() }}">
-                    <input class="input" name="amount" inputmode="decimal" value="{{ x.remaining_cents | money_plain if x.remaining_cents > 0 else '' }}" aria-label="Put into {{ x.goal.name }}">
-                    <button class="btn btn-sm btn-primary mt-sm" type="submit">Put in</button>
-                  </form>
-                  <a class="text-sm" href="/goals/{{ x.goal.id }}">Goal</a>
-                </details>
-              </td>
-            </tr>
-          {% endfor %}
           {% for r in rows %}
             <tr>
               <td>
@@ -171,7 +147,7 @@
               </td>
             </tr>
           {% else %}
-            {% if not loan_lines and not goal_lines %}<tr><td colspan="5" class="muted">No budget lines yet. Add one below.</td></tr>{% endif %}
+            {% if not loan_lines %}<tr><td colspan="5" class="muted">No budget lines yet. Add one below.</td></tr>{% endif %}
           {% endfor %}
         </tbody>
       </table>
@@ -182,7 +158,7 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="back" value="{{ back }}">
     <h2>Add a budget line</h2>
-    <p class="muted text-sm">Saving for something once, like a holiday? <a href="/goals">Add a goal</a> with a target and a date, and its monthly share shows here.</p>
+    <p class="muted text-sm">Saving for something, like a holiday? Put it in a <a href="/goals">goal</a>: what a goal holds comes off what is free in your accounts, not out of the budget.</p>
     <div class="form-grid">
       <div class="field">
         <label class="label" for="add_category">Category</label>

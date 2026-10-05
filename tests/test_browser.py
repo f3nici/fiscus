@@ -256,7 +256,7 @@ def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any
     page.click('form[action="/accounts/balances"] button[type=submit]')
     page.wait_for_selector('tfoot th:has-text("$2,400.00")')
 
-    # A goal inside the account, put into from the budget.
+    # A goal inside the account, put into from the goal.
     page.goto(f'{base}/goals')
     page.fill('#goal_name', 'Japan trip')
     page.select_option('#goal_account', label='Everyday')
@@ -264,10 +264,14 @@ def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any
     page.fill('#goal_date', '2027-09-30')
     page.click('#new-goal button[type=submit]')
     page.wait_for_url(f'{base}/goals/*')
-    page.goto(f'{base}/budget')
-    page.click('summary:has-text("Put in")')
+    page.fill('#move_amount', '100')
     page.click('form[action$="/move"] button[type=submit]')
     page.wait_for_selector('[data-flash], .toast', state='attached')
+    page.check('form[action^="/goals/"]:has(#holds) input[name=is_tax]')
+    page.click('form[action^="/goals/"]:has(#holds) button[type=submit]')
+    page.wait_for_selector('h1 .pill:has-text("Tax")')
+    page.goto(f'{base}/tax')
+    assert 'in your Japan trip goal' in page.inner_text('main')
     page.goto(f'{base}/accounts')
     assert 'Unallocated $2,300.00' in page.inner_text('main table')
 

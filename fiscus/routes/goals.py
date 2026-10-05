@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
@@ -9,10 +10,11 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from fiscus.clock import utcnow_naive
+from fiscus.domain.tax import TaxConfigError
 from fiscus.forms import FormError, money, opt_date, text
 from fiscus.models import Account, Goal, GoalMove, User
 from fiscus.money import fmt
-from fiscus.services import budgeting, ledger
+from fiscus.services import budgeting, ledger, taxes
 from fiscus.services import goals as service
 from fiscus.services.access import get_owned, maybe_owned
 from fiscus.web import ctx, current_user, get_db, redirect, render
@@ -54,8 +56,13 @@ def show_goal(
     db: Session = Depends(get_db),
 ) -> Response:
     goal = get_owned(db, Goal, goal_id, user)
-    today = ctx(request).clock.today()
+    c = ctx(request)
+    today = c.clock.today()
     view = next(v for v in service.views(db, user, today, include_archived=True) if v.goal is goal)
+    tax_view = None
+    if goal.is_tax and not goal.archived:
+        with contextlib.suppress(TaxConfigError):
+            tax_view = taxes.view(db, user, today, c.tax_dir)
     return render(
         request,
         'goals/show.html',
@@ -65,6 +72,7 @@ def show_goal(
             'moves': sorted(goal.moves, key=lambda m: (m.date, m.id), reverse=True),
             'accounts': ledger.accounts(db, user),
             'account': db.get(Account, goal.account_id) if goal.account_id else None,
+            'tax': tax_view,
         },
     )
 
@@ -89,6 +97,7 @@ def create_goal(
     account_id: int = Form(0),
     saved: str = Form(''),
     keep_aside: bool = Form(False),
+    is_tax: bool = Form(False),
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> Response:
@@ -109,6 +118,7 @@ def create_goal(
     )
     db.add(goal)
     db.flush()
+    service.set_tax(db, user, goal, is_tax)
     if saved_cents:
         # An opening amount, not this budget month's saving: dated before it.
         start, _end = budgeting.period(db, user, c.clock.today())
@@ -128,6 +138,7 @@ def save_goal(
     account_id: int = Form(0),
     holds: str = Form(''),
     keep_aside: bool = Form(False),
+    is_tax: bool = Form(False),
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> Response:
@@ -143,7 +154,7 @@ def save_goal(
     goal.target_date = when
     goal.account_id = acct.id if acct else None
     goal.keep_aside = keep_aside
-    db.flush()
+    service.set_tax(db, user, goal, is_tax)
     if holds_cents is not None:
         service.set_held(db, c.clock, user, goal, holds_cents, c.clock.today())
     return redirect(f'/goals/{goal.id}', flash=f'{clean} saved', request=request)

@@ -1,9 +1,10 @@
 {% extends "base.html" %}
+{% from "_macros.html" import estimate %}
 {% block title %}{{ goal.name }}{% endblock %}
 {% block content %}
   <div class="page-head">
     <div>
-      <h1>{{ goal.name }}</h1>
+      <h1>{{ goal.name }}{% if goal.is_tax %} <span class="pill">Tax</span>{% endif %}</h1>
       <span class="muted text-sm">{% if account %}Held in <a href="/accounts/{{ account.id }}">{{ account.name }}</a>{% else %}Not in a particular account{% endif %}</span>
     </div>
     <div class="row">
@@ -24,21 +25,32 @@
       {% endif %}
     </div>
     <div class="card stat">
-      <div class="label">This budget month</div>
+      <div class="label">To put in this month</div>
       {% if v.state == 'saving' %}
         <div class="value">{{ v.per_month_cents | money }}</div>
-        <span class="text-sm muted">to put in, {{ v.months_left }} budget month{{ '' if v.months_left == 1 else 's' }} left to {{ goal.target_date | d }} · <a href="/budget">Budget</a></span>
+        <span class="text-sm muted">a month gets you there, {{ v.months_left }} month{{ '' if v.months_left == 1 else 's' }} left to {{ goal.target_date | d }}</span>
       {% elif v.state == 'reached' %}
         <div class="value pos">Reached</div><span class="text-sm muted">Nothing more to put in</span>
       {% elif v.state == 'passed' %}
         <div class="value">-</div><span class="text-sm muted">The date has passed. Move it, or mark the goal done.</span>
       {% elif v.state == 'done' %}
-        <div class="value">-</div><span class="text-sm muted">Done. It holds nothing aside and is out of the budget.</span>
+        <div class="value">-</div><span class="text-sm muted">Done. It holds nothing aside.</span>
       {% else %}
-        <div class="value">-</div><span class="text-sm muted">Give it a target and a date for a monthly amount in the budget.</span>
+        <div class="value">-</div><span class="text-sm muted">Give it a target and a date for a monthly amount to put in.</span>
       {% endif %}
     </div>
   </div>
+
+  {% if tax %}
+    {% set gap = tax.set_aside_gap_cents %}
+    <div class="card mt {{ 'alert-error' if gap < 0 else 'alert-ok' }}">
+      <h2>Tax {{ tax.year.label }} {{ estimate() }}</h2>
+      <p class="mb-0">This goal is your tax money. You need about <strong>{{ tax.year_end_set_aside_cents | money }}</strong> by 30 June, or <strong>{{ tax.should_set_aside_cents | money }}</strong> by today saved evenly; you have <strong>{{ tax.set_aside_actual_cents | money }}</strong> set aside for tax.
+        {% if gap < 0 %}That is {{ (-gap) | money }} short.{% endif %}
+        {% if tax.left_to_save_per_week_cents %}About <strong>{{ tax.left_to_save_per_week_cents | money }} a week</strong> gets you there.{% endif %}
+        <a href="/tax">Tax</a></p>
+    </div>
+  {% endif %}
 
   {% if not goal.archived %}
     <form class="card mt" method="post" action="/goals/{{ goal.id }}/move">
@@ -100,6 +112,7 @@
       </div>
       <div class="full">
         <label class="check"><input type="checkbox" name="keep_aside" value="true" {{ 'checked' if goal.keep_aside else '' }}> Keep this money out of what is free to spend</label>
+        <label class="check"><input type="checkbox" name="is_tax" value="true" {{ 'checked' if goal.is_tax else '' }}> This is my tax money (counted on the <a href="/tax">Tax</a> page)</label>
       </div>
     </div>
     <button class="btn btn-primary" type="submit">Save</button>

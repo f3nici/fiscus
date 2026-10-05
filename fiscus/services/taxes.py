@@ -9,9 +9,9 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from fiscus.domain import tax
-from fiscus.models import Account, Payslip, TaxDeduction, User
+from fiscus.models import Account, Goal, Payslip, TaxDeduction, User
 from fiscus.money import round_div
-from fiscus.services import ledger, pay
+from fiscus.services import goals, ledger, pay
 from fiscus.services.access import owned
 
 
@@ -23,6 +23,9 @@ class TaxView:
     set_aside_actual_cents: int
     days_elapsed: int
     days_in_year: int
+    # The goal holding tax money, and what of the actual figure it adds.
+    goal: Goal | None = None
+    goal_cents: int = 0
 
     @property
     def year_end_set_aside_cents(self) -> int:
@@ -107,9 +110,14 @@ def view(db: Session, user: User, today: date, tax_dir: Path | None = None) -> T
     elapsed = (today - fy_start).days + 1
     total_days = (fy_end - fy_start).days + 1
     projected = tax.position(year, proj_gross, proj_tax, deductions)
-    set_aside = ledger.balances(db, user, today)
-    actual = sum(
-        set_aside.get(a.id, 0)
-        for a in db.execute(owned(Account, user).where(Account.is_set_aside.is_(True))).scalars()
-    )
-    return TaxView(year, ytd, projected, actual, elapsed, total_days)
+    bal = ledger.balances(db, user, today)
+    set_aside = db.execute(owned(Account, user).where(Account.is_set_aside.is_(True))).scalars()
+    ids = {a.id for a in set_aside}
+    actual = sum(bal.get(i, 0) for i in ids)
+    # The tax goal counts too, unless it sits in a set-aside account whose
+    # balance already holds it.
+    goal = goals.tax_goal(db, user)
+    goal_cents = 0
+    if goal is not None and goal.account_id not in ids:
+        goal_cents = goals.held(db, user).get(goal.id, 0)
+    return TaxView(year, ytd, projected, actual + goal_cents, elapsed, total_days, goal, goal_cents)
