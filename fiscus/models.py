@@ -30,7 +30,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from fiscus.db import Base
 
 ACCOUNT_TYPES = ('transaction', 'offset', 'savings', 'credit_card')
-FREQUENCIES = ('weekly', 'fortnightly', 'monthly', 'quarterly', 'yearly', 'one_off')
+FREQUENCIES = ('weekly', 'fortnightly', 'monthly', 'bimonthly', 'quarterly', 'yearly', 'one_off')
 PAY_FREQUENCIES = ('weekly', 'fortnightly', 'monthly', 'quarterly')
 SPLIT_MODES = ('equal', 'percent', 'fixed')
 

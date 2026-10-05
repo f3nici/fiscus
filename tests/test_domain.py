@@ -305,3 +305,29 @@ def test_assignment_is_one_to_one_and_prefers_nearest() -> None:
 )
 def test_month_period(day: date, start_day: int, period: tuple[date, date]) -> None:
     assert recurrence.month_period(day, start_day) == period
+
+
+def test_bimonthly_is_every_two_months() -> None:
+    got = list(
+        recurrence.occurrences(date(2026, 1, 31), 'bimonthly', date(2026, 1, 1), date(2026, 9, 30))
+    )
+    assert got == [
+        date(2026, 1, 31),
+        date(2026, 3, 31),
+        date(2026, 5, 31),
+        date(2026, 7, 31),
+        date(2026, 9, 30),
+    ]
+    assert recurrence.monthly_equivalent(300_00, 'bimonthly') == 150_00
+
+
+def test_bill_import_reads_bimonthly() -> None:
+    from fiscus.domain import bill_import
+
+    data = b'name,amount,frequency\nWater,180,Bi-monthly\nPower,300,every 2 months\n'
+    parsed = bill_import.parse_csv(data)
+    assert not parsed.errors
+    assert [(b.name, b.frequency) for b in parsed.items] == [
+        ('Water', 'bimonthly'),
+        ('Power', 'bimonthly'),
+    ]

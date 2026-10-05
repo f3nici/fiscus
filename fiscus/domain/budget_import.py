@@ -4,7 +4,7 @@ Built for the shape household budgets usually take: a header row with Item,
 Amount and Frequency (and often Notes), section headings on rows of their own
 ("HOME & PROPERTY"), and total rows that are not lines. Each line becomes a
 monthly amount using the same normalisation as everywhere else (weekly x 52 /
-12 and so on). A line paid every 3, 6 or 12 months keeps that cycle, so its
+12 and so on). A line paid every 2, 3, 6 or 12 months keeps that cycle, so its
 budget is saved up. One-off costs are listed but never budgeted monthly.
 
 Cells arrive as whatever the reader produced: str, int, float, None. Numbers
@@ -35,6 +35,13 @@ FREQUENCIES = {
     'fortnight': 'fortnightly',
     'monthly': 'monthly',
     'month': 'monthly',
+    'bimonthly': 'bimonthly',
+    'bi monthly': 'bimonthly',
+    '2 monthly': 'bimonthly',
+    'two monthly': 'bimonthly',
+    'every 2 months': 'bimonthly',
+    'every two months': 'bimonthly',
+    'every second month': 'bimonthly',
     'quarterly': 'quarterly',
     'quarter': 'quarterly',
     '3 monthly': 'quarterly',
@@ -70,6 +77,7 @@ FREQ_LABELS = {
     'weekly': 'Weekly',
     'fortnightly': 'Fortnightly',
     'monthly': 'Monthly',
+    'bimonthly': 'Every 2 months',
     'quarterly': 'Quarterly',
     'half_yearly': 'Every 6 months',
     'yearly': 'Yearly',
@@ -78,7 +86,7 @@ FREQ_LABELS = {
 }
 
 # How often a line's budget is spent, in months: the rest are monthly.
-CYCLE_MONTHS = {'quarterly': 3, 'half_yearly': 6, 'yearly': 12}
+CYCLE_MONTHS = {'bimonthly': 2, 'quarterly': 3, 'half_yearly': 6, 'yearly': 12}
 
 MORTGAGE = re.compile(r'\bmortgage\b|home\s*loan\s*repayment', re.IGNORECASE)
 # A total row starts with the word; a heading may mention a total in passing

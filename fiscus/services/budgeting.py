@@ -30,8 +30,14 @@ from fiscus.services.access import owned
 from fiscus.services.users import settings_for
 
 # How often a budget line is spent, in months.
-CYCLES = {1: 'Every month', 3: 'Every 3 months', 6: 'Every 6 months', 12: 'Every year'}
-BILL_CYCLES = {'quarterly': 3, 'yearly': 12}
+CYCLES = {
+    1: 'Every month',
+    2: 'Every 2 months',
+    3: 'Every 3 months',
+    6: 'Every 6 months',
+    12: 'Every year',
+}
+BILL_CYCLES = {'bimonthly': 2, 'quarterly': 3, 'yearly': 12}
 
 
 @dataclass(frozen=True)

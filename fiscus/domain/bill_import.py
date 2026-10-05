@@ -25,6 +25,11 @@ FREQ_ALIASES = {
     'fortnightly': 'fortnightly',
     'month': 'monthly',
     'monthly': 'monthly',
+    'bimonthly': 'bimonthly',
+    'bi-monthly': 'bimonthly',
+    'bi monthly': 'bimonthly',
+    '2 monthly': 'bimonthly',
+    'every 2 months': 'bimonthly',
     'quarter': 'quarterly',
     'quarterly': 'quarterly',
     'year': 'yearly',
@@ -128,7 +133,7 @@ def _item(raw: dict[str, Any], where: str) -> BillSpec:
     if freq is None:
         raise ValueError(
             f'{where}: frequency "{freq_raw}" is not one of weekly, fortnightly, '
-            'monthly, quarterly, yearly, one-off'
+            'monthly, bimonthly, quarterly, yearly, one-off'
         )
     due_raw = str(raw.get('due_date') or '').strip()
     due: date | None = None

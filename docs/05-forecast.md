@@ -3,7 +3,7 @@
 ## Recurrence
 
 `domain/recurrence.py` expands a schedule (anchor date and frequency) into
-dates in a range. Weekly and fortnightly step by days. Monthly, quarterly and
+dates in a range. Weekly and fortnightly step by days. Monthly, bimonthly (every two months), quarterly and
 yearly keep the anchor's day of month and clamp to a shorter month's last day,
 returning to the 31st when the month allows. A schedule never runs before its
 anchor. A bill's "next due" is its anchor.

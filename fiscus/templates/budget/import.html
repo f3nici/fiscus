@@ -17,7 +17,7 @@
       </form>
     {% endif %}
   </div>
-  <p class="muted">Each ticked line becomes a budget for its category. A quarterly, six-monthly or yearly line is saved up a month at a time, so the month you pay it is not over budget; change How often if the file has it wrong. Lines that share a category are added together (the category is saved up if any of them is), and bills in a category are paid out of its budget, not added to it. Change a category, an amount or how often before importing; nothing is saved until you press Import.</p>
+  <p class="muted">Each ticked line becomes a budget for its category. A line paid every 2, 3 or 6 months or yearly is saved up a month at a time, so the month you pay it is not over budget; change How often if the file has it wrong. Lines that share a category are added together (the category is saved up if any of them is), and bills in a category are paid out of its budget, not added to it. Change a category, an amount or how often before importing; nothing is saved until you press Import.</p>
 
   <form method="post" action="/budget/import/{{ name }}/apply">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

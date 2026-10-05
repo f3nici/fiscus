@@ -126,6 +126,8 @@ def test_daily_and_unknown_frequencies() -> None:
 def test_every_few_months_keeps_its_cycle() -> None:
     rows: list[list[Any]] = [
         ['Item', 'Amount', 'Frequency'],
+        ['Water', 180, 'Bi-monthly'],
+        ['Power', 300, '2 monthly'],
         ['Rates', 600, 'Quarterly'],
         ['Water', 300, '3 monthly'],
         ['Pest control', 240, 'Every 3 months'],
@@ -137,6 +139,8 @@ def test_every_few_months_keeps_its_cycle() -> None:
     ]
     lines = dom.parse(rows, dom.find_header(rows))  # type: ignore[arg-type]
     assert [(line.name, line.monthly_cents, line.cycle_months) for line in lines] == [
+        ('Water', 90_00, 2),
+        ('Power', 150_00, 2),
         ('Rates', 200_00, 3),
         ('Water', 100_00, 3),
         ('Pest control', 80_00, 3),
