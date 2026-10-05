@@ -152,6 +152,25 @@ def test_every_few_months_keeps_its_cycle() -> None:
     ]
 
 
+def test_amount_per_cycle_and_per_year() -> None:
+    rows: list[list[Any]] = [
+        ['Item', 'Amount', 'Frequency'],
+        ['Water Bill', 2097.50, 'Annual'],
+        ['Groceries', 240, 'Weekly'],
+        ['Rates', 600, 'Quarterly'],
+        ['Phone', 50, 'Monthly'],
+        ['Stamp duty', None, 'One-off'],
+    ]
+    lines = dom.parse(rows, dom.find_header(rows))  # type: ignore[arg-type]
+    assert [(line.cycle_cents, line.yearly_cents) for line in lines] == [
+        (2097_50, 2097_50),
+        (1040_00, 12480_00),  # weekly: a month's worth, budgeted monthly
+        (600_00, 2400_00),
+        (50_00, 600_00),
+        (None, None),
+    ]
+
+
 def test_a_sheet_without_headings_is_refused() -> None:
     from fiscus.domain.csvimport import ImportError_
 
@@ -191,7 +210,7 @@ def test_import_end_to_end(env: Env) -> None:
     for line in lines:
         form[f'name_{line.index}'] = line.name
         form[f'category_{line.index}'] = line.name
-        form[f'monthly_{line.index}'] = f'{(line.monthly_cents or 0) / 100:.2f}'
+        form[f'amount_{line.index}'] = f'{(line.monthly_cents or 0) / 100:.2f}'
     for i, n in enumerate(['Groceries', 'Takeaway & eating out', 'Fuel', 'Council rates']):
         idx = next(line.index for line in lines if line.name == n)
         form[f'include_{idx}'] = 'on'
@@ -230,7 +249,7 @@ def test_import_saves_up_yearly_and_quarterly_lines(env: Env) -> None:
     for line in lines:
         form[f'name_{line.index}'] = line.name
         form[f'category_{line.index}'] = line.name
-        form[f'monthly_{line.index}'] = f'{(line.monthly_cents or 0) / 100:.2f}'
+        form[f'amount_{line.index}'] = f'{(line.cycle_cents or 0) / 100:.2f}'
         form[f'cycle_{line.index}'] = str(line.cycle_months)
     for n in ('Groceries', 'Council rates', 'Fuel', 'Vehicle registration & CTP'):
         form[f'include_{next(line.index for line in lines if line.name == n)}'] = 'on'
@@ -259,7 +278,7 @@ def test_import_refuses_an_unknown_cycle(env: Env) -> None:
         'include_0': 'on',
         'name_0': 'Groceries',
         'category_0': 'Groceries',
-        'monthly_0': '10',
+        'amount_0': '10',
         'cycle_0': '5',
     }
     resp = a.post(url + '/apply', data=data, follow_redirects=True)
@@ -281,7 +300,7 @@ def test_add_mode_and_forecast_flag(env: Env) -> None:
             'include_0': 'on',
             'name_0': 'Groceries',
             'category_0': 'groceries',
-            'monthly_0': '1040.00',
+            'amount_0': '1040.00',
             'mode': 'add',
             'use_in_forecast': 'on',
         },
@@ -309,7 +328,7 @@ def test_clear_mode_starts_the_budget_again(env: Env) -> None:
             'include_0': 'on',
             'name_0': 'Internet',
             'category_0': 'Internet',
-            'monthly_0': '79.00',
+            'amount_0': '79.00',
             'mode': 'clear',
         },
         follow_redirects=True,
@@ -336,7 +355,7 @@ def test_bad_amount_is_reported_not_saved(env: Env) -> None:
             'include_0': 'on',
             'name_0': 'Groceries',
             'category_0': 'Groceries',
-            'monthly_0': 'lots',
+            'amount_0': 'lots',
         },
     )
     assert resp.status_code == 303 and resp.headers['location'] == url

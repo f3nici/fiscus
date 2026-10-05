@@ -214,7 +214,7 @@ def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any
     page.select_option('#add_cycle', '12')
     page.click('form:has(#add_amount) button[type=submit]')
     page.wait_for_selector('text=Saving up $900.00 every year')
-    # Importing: changing how often a line is spent reworks its monthly amount.
+    # Importing: the amount is per How often, and changing it keeps the yearly cost.
     page.set_input_files(
         'input[name=file]',
         files=[{'name': 'b.csv', 'mimeType': 'text/csv', 'buffer': template_csv().encode()}],
@@ -222,20 +222,25 @@ def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any
     page.click('#import button[type=submit]')
     page.wait_for_url(f'{base}/budget/import/*')
     rates = 'tr:has(input[value="Council rates"])'
-    assert page.input_value(f'{rates} input[name^=monthly_]') == '246.67'
+    amount = f'{rates} input[name^=amount_]'
+    assert page.input_value(amount) == '2960.00'
+    assert '$246.67 a month' in page.inner_text(rates)
+    page.select_option(f'{rates} select', '2')
+    assert page.input_value(amount) == '493.33'
+    assert '$246.67 a month' in page.inner_text(rates)
     page.select_option(f'{rates} select', '1')
-    assert page.input_value(f'{rates} input[name^=monthly_]') == '2960.00'
-    page.select_option(f'{rates} select', '3')
-    assert page.input_value(f'{rates} input[name^=monthly_]') == '986.67'
-    assert 'Saving up $2,960.01 every 3 months' in page.inner_text(rates)
+    assert page.input_value(amount) == '246.67'
     page.select_option(f'{rates} select', '12')
-    assert page.input_value(f'{rates} input[name^=monthly_]') == '246.67'
-    # Weekly back to monthly returns the file's own monthly figure.
+    assert page.input_value(amount) == '2960.00'
+    # Weekly lines start as a month's worth; a typed amount becomes the base.
     groceries = 'tr:has(input[value="Groceries"])'
-    page.select_option(f'{groceries} select', '12')
-    assert page.input_value(f'{groceries} input[name^=monthly_]') == '20.00'
+    amount = f'{groceries} input[name^=amount_]'
+    assert page.input_value(amount) == '1040.00'
+    page.select_option(f'{groceries} select', '3')
+    assert page.input_value(amount) == '3120.00'
+    page.fill(amount, '600')
     page.select_option(f'{groceries} select', '1')
-    assert page.input_value(f'{groceries} input[name^=monthly_]') == '1040.00'
+    assert page.input_value(amount) == '200.00'
     page.check('input[name=mode][value=clear]')
     page.click('form[action$="/apply"] button[type=submit]')
     page.wait_for_url(f'{base}/budget')

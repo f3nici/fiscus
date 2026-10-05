@@ -87,6 +87,16 @@ FREQ_LABELS = {
 
 # How often a line's budget is spent, in months: the rest are monthly.
 CYCLE_MONTHS = {'bimonthly': 2, 'quarterly': 3, 'half_yearly': 6, 'yearly': 12}
+PER_YEAR = {
+    'daily': 365,
+    'weekly': 52,
+    'fortnightly': 26,
+    'monthly': 12,
+    'bimonthly': 6,
+    'quarterly': 4,
+    'half_yearly': 2,
+    'yearly': 1,
+}
 
 MORTGAGE = re.compile(r'\bmortgage\b|home\s*loan\s*repayment', re.IGNORECASE)
 # A total row starts with the word; a heading may mention a total in passing
@@ -123,6 +133,20 @@ class Line:
     @property
     def cycle_months(self) -> int:
         return CYCLE_MONTHS.get(self.frequency or '', 1)
+
+    @property
+    def yearly_cents(self) -> int | None:
+        if self.amount_cents is None or self.frequency not in PER_YEAR:
+            return None
+        return self.amount_cents * PER_YEAR[self.frequency]
+
+    @property
+    def cycle_cents(self) -> int | None:
+        """What is spent each `cycle_months`: the file's amount when that is its
+        own cycle, else (weekly, fortnightly, daily) its monthly figure."""
+        if self.frequency == 'monthly' or self.frequency in CYCLE_MONTHS:
+            return self.amount_cents
+        return self.monthly_cents
 
 
 def _text(value: Any) -> str:

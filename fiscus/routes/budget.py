@@ -15,7 +15,7 @@ from fiscus.domain import recurrence
 from fiscus.domain.csvimport import MAX_BYTES, ImportError_
 from fiscus.forms import FormError, money
 from fiscus.models import Budget, BudgetSpend, Category, Loan, User
-from fiscus.money import fmt
+from fiscus.money import fmt, round_div
 from fiscus.services import budget_import as importer
 from fiscus.services import budgeting, ledger
 from fiscus.services.access import get_owned, owned
@@ -316,12 +316,12 @@ async def budget_apply(
                 continue
             label = f(f'name_{i}') or 'Line'
             category = f(f'category_{i}')[:80] or label
-            cents = money(f(f'monthly_{i}'), f'{label}: monthly amount', allow_negative=False)
+            cents = money(f(f'amount_{i}'), f'{label}: amount', allow_negative=False)
             cycle = int(f(f'cycle_{i}') or 1)
             if cycle not in budgeting.CYCLES:
                 raise FormError(f'{label}: choose how often it is spent')
             if cents:
-                chosen.append(importer.Chosen(category, cents, cycle))
+                chosen.append(importer.Chosen(category, round_div(cents, cycle), cycle))
     except (FormError, ValueError) as exc:
         return redirect(f'/budget/import/{name}', flash=str(exc), request=request)
     if not chosen:
