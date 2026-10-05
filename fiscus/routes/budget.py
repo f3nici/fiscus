@@ -66,6 +66,7 @@ def budget_page(
             'unbudgeted': [cat for cat in cats if cat.id not in budgeted and not cat.is_transfer],
             'cycles': budgeting.CYCLES,
             'bill_cycles': budgeting.bill_cycles(db, user),
+            'spread_pay': budgeting.spread_pay(db, user, start, end, today),
         },
     )
 

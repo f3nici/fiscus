@@ -40,6 +40,8 @@
 
 | D29 | A category's budget is what is allocated to it; bills are paid out of it, not added to it (replaces the budget half of D21) | Adding a bill used to raise its category's budget. Now a bill shows beside the budget and, once marked paid, comes off it as spent; a saved-up line (D28) saves the allocation, not the allocation plus its bills. Migration 0009 added each person's recurring bills to their stored budgets, so totals were unchanged on upgrade. The forecast still adds only the part of a budget beyond its recurring bills, which are forecast from their dates. |
 
+| D30 | Quarterly pay is spread over the budget months | In the budget, a quarterly schedule counts its expected net x 4 / 12 every budget month from its first payday's month, and its paydays and payslips are not counted again. The calendar, forecast and tax keep the real paydays. |
+
 ## 2. Assumptions
 
 - One household, a handful of users. SQLite and an in-process rate limiter are

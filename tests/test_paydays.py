@@ -451,7 +451,7 @@ def test_another_persons_payslip_and_payday_are_out_of_reach(env: Env) -> None:
     assert len(slips(env)) == 1
 
 
-def test_a_quarterly_pay_lands_in_the_month_it_is_paid(env: Env) -> None:
+def test_a_quarterly_pay_is_spread_over_the_budget_months(env: Env) -> None:
     alex = env.user('alex')
     a = env.login(alex)
     acct = make_account(a)
@@ -475,8 +475,21 @@ def test_a_quarterly_pay_lands_in_the_month_it_is_paid(env: Env) -> None:
             start, end = budgeting.period_starting_in(db, user, date(2026, m, 1))
             months[m] = budgeting.expected_pay(db, user, start, end, TODAY)
         paydays = [i.when for i in pay.items(db, user, date(2026, 10, 1), date(2027, 6, 30), TODAY)]
-    assert months == {10: 3000_00, 11: 0, 12: 0}
+    # A third of the pay each budget month, not all of it in October.
+    assert months == {10: 1000_00, 11: 1000_00, 12: 1000_00}
+    # The calendar and forecast still see the real paydays.
     assert paydays == [date(2026, 10, 15), date(2027, 1, 15), date(2027, 4, 15)]
+    assert 'includes $1,000.00 a month of quarterly pay' in a.get('/budget').text
+    # A payslip for the payday does not add the whole pay to October.
+    put_in(a, '2026-10-15', '3300', schedule=str(schedule_id(env)))
+    with env.db() as db:
+        user = db.get(User, alex.id)
+        assert user is not None
+        start, end = budgeting.period_starting_in(db, user, date(2026, 10, 1))
+        assert budgeting.expected_pay(db, user, start, end, TODAY) == 1000_00
+        # Before the first payday's month, nothing.
+        start, end = budgeting.period_starting_in(db, user, date(2026, 6, 1))
+        assert budgeting.expected_pay(db, user, start, end, TODAY) == 0
 
 
 def test_a_varying_quarterly_pay_averages_over_a_year() -> None:
