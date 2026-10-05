@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Goals{% endblock %}
+{% block content %}
+  <div class="page-head">
+    <h1>Goals</h1>
+    <a class="btn btn-primary" href="#new-goal" hx-boost="false">Add a goal</a>
+  </div>
+  <p class="muted text-sm">Money set aside inside your accounts for something: a trip, an emergency fund, a new car. It stays in the account (an offset keeps saving you interest) but is not counted as free to spend. A goal with a target and a date gets a line in your budget each month.</p>
+
+  <div class="grid grid-2 mt">
+    {% for v in views %}
+      <a class="card goal-card" href="/goals/{{ v.goal.id }}">
+        <div class="row between">
+          <h2 class="mb-0">{{ v.goal.name }}</h2>
+          {% include "goals/_status.html" %}
+        </div>
+        <div class="stat mt-sm">
+          <div class="value">{{ v.held_cents | money }}</div>
+          <span class="text-sm muted">
+            {% if v.goal.target_cents %}of {{ v.goal.target_cents | money }}{% if v.goal.target_date %} by {{ v.goal.target_date | d }}{% endif %}{% else %}set aside{% endif %}{% if v.goal.account_id %} · in {{ account_names.get(v.goal.account_id, '') }}{% endif %}
+          </span>
+        </div>
+        {% if v.goal.target_cents %}<meter class="mt-sm" min="0" max="{{ v.goal.target_cents }}" optimum="{{ v.goal.target_cents }}" low="{{ (v.goal.target_cents * 0.5) | int }}" value="{{ [[v.held_cents, 0] | max, v.goal.target_cents] | min }}">{{ v.progress.pct }}%</meter>{% endif %}
+      </a>
+    {% else %}
+      <div class="card muted">No goals yet. Add one below.</div>
+    {% endfor %}
+  </div>
+
+  <form class="card mt" id="new-goal" method="post" action="/goals">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <h2>Add a goal</h2>
+    <div class="form-grid">
+      <div class="field">
+        <label class="label" for="goal_name">Name</label>
+        <input class="input" id="goal_name" name="name" required maxlength="80" placeholder="Japan trip, Savings...">
+      </div>
+      <div class="field">
+        <label class="label" for="goal_account">Held in</label>
+        <select class="input" id="goal_account" name="account_id">
+          <option value="0">No particular account</option>
+          {% for a in accounts %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label class="label" for="goal_target">Target (optional)</label>
+        <input class="input" id="goal_target" name="target" inputmode="decimal" placeholder="6000.00">
+      </div>
+      <div class="field">
+        <label class="label" for="goal_date">Save by (optional)</label>
+        <input class="input" type="date" id="goal_date" name="target_date">
+      </div>
+      <div class="field">
+        <label class="label" for="goal_saved">Already saved (optional)</label>
+        <input class="input" id="goal_saved" name="saved" inputmode="decimal" placeholder="0.00">
+      </div>
+      <div class="full">
+        <label class="check"><input type="checkbox" name="keep_aside" value="true" checked> Keep this money out of what is free to spend</label>
+      </div>
+    </div>
+    <button class="btn btn-primary" type="submit">Add goal</button>
+    <p class="muted text-xs mt">Leave the target and date blank for a bucket with no end, like general savings. With both, the budget works out how much to put in each month to get there.</p>
+  </form>
+{% endblock %}

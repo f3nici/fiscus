@@ -138,6 +138,7 @@ def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any
         '/tax',
         '/bills/import',
         '/square',
+        '/goals',
     ]:
         page.goto(f'{base}{path}')
         page.wait_for_load_state('networkidle')
@@ -254,6 +255,21 @@ def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any
     page.fill('input[name^=balance_]', '2400')
     page.click('form[action="/accounts/balances"] button[type=submit]')
     page.wait_for_selector('tfoot th:has-text("$2,400.00")')
+
+    # A goal inside the account, put into from the budget.
+    page.goto(f'{base}/goals')
+    page.fill('#goal_name', 'Japan trip')
+    page.select_option('#goal_account', label='Everyday')
+    page.fill('#goal_target', '1200')
+    page.fill('#goal_date', '2027-09-30')
+    page.click('#new-goal button[type=submit]')
+    page.wait_for_url(f'{base}/goals/*')
+    page.goto(f'{base}/budget')
+    page.click('summary:has-text("Put in")')
+    page.click('form[action$="/move"] button[type=submit]')
+    page.wait_for_selector('[data-flash], .toast', state='attached')
+    page.goto(f'{base}/accounts')
+    assert 'Unallocated $2,300.00' in page.inner_text('main table')
 
     # Narrow screen: the calendar opens on the agenda.
     page.goto(f'{base}/calendar')

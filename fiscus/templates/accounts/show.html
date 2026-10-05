@@ -26,4 +26,21 @@
       <p class="muted text-xs mt-sm">Credit cards owing money are negative.</p>
     </form>
   </div>
+  <div class="card mt">
+    <div class="row between"><h2 class="mb-0">What is in it</h2><a class="text-sm" href="/goals#new-goal">Add a goal</a></div>
+    {% if split %}
+      <ul class="list">
+        {% for v in split.views %}
+          <li>
+            <a class="title grow" href="/goals/{{ v.goal.id }}">{{ v.goal.name }}{% if not v.goal.keep_aside %} <span class="text-xs muted">(counted as free)</span>{% endif %}</a>
+            <span class="num">{{ v.held_cents | money }}</span>
+          </li>
+        {% endfor %}
+        <li><span class="title grow">Unallocated</span><span class="num {{ 'neg' if split.unallocated_cents < 0 else '' }}">{{ split.unallocated_cents | money }}</span></li>
+      </ul>
+      {% if split.unallocated_cents < 0 %}<p class="text-sm neg mt-sm">Your goals here add up to more than the account holds. Update the balance or take some out of a goal.</p>{% endif %}
+    {% else %}
+      <p class="muted text-sm">All of it is unallocated. Split it into goals (a trip, savings) to keep track of what each part is for.</p>
+    {% endif %}
+  </div>
 {% endblock %}

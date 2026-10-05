@@ -18,7 +18,7 @@ from fiscus.forms import FormError, money
 from fiscus.models import Budget, BudgetSpend, Category, Loan, User
 from fiscus.money import fmt, round_div
 from fiscus.services import budget_import as importer
-from fiscus.services import budgeting, ledger, loans
+from fiscus.services import budgeting, goals, ledger, loans
 from fiscus.services.access import get_owned, owned
 from fiscus.services.users import settings_for
 from fiscus.web import ctx, current_user, get_db, redirect, render
@@ -43,14 +43,20 @@ def budget_page(
     budgeted = {r.category.id for r in rows if r.has_budget}
     accts = ledger.accounts(db, user)
     bal = ledger.balances(db, user, today)
-    # Money that can be spent: not the tax set-aside, not a loan offset's job to guess.
-    spendable = sum(bal.get(a.id, 0) for a in accts if not a.is_set_aside)
+    # Money that can be spent: not the tax set-aside, not a loan offset's job to
+    # guess, and not what goals keep aside inside the accounts.
+    spend_accts = [a for a in accts if not a.is_set_aside]
+    in_goals = goals.held_outside(db, user, spend_accts)
+    spendable = sum(bal.get(a.id, 0) for a in spend_accts) - in_goals
     loan_lines = loans.budget_lines(db, user, start, end, today)
+    goal_lines = goals.budget_lines(db, user, start, end)
     summary = budgeting.summary(
         rows,
         budgeting.expected_pay(db, user, start, end, today),
         loan_cents=sum(x.budget_cents for x in loan_lines),
         loan_paid_cents=sum(x.paid_cents for x in loan_lines),
+        goal_cents=sum(x.budget_cents for x in goal_lines),
+        goal_paid_cents=sum(x.paid_cents for x in goal_lines),
     )
     cats = ledger.categories(db, user)
     return render(
@@ -59,6 +65,8 @@ def budget_page(
         {
             'rows': rows,
             'loan_lines': loan_lines,
+            'goal_lines': goal_lines,
+            'in_goals': in_goals,
             # A mortgage line of its own would count the loan twice.
             'doubled': {
                 r.category.id

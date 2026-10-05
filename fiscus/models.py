@@ -543,6 +543,49 @@ class BudgetSpend(Base, Owned):
     created_at: Mapped[datetime] = mapped_column(DateTime)
 
 
+class Goal(Base, Owned):
+    """Money set aside for something (a holiday, an emergency fund), usually
+    inside one of the person's accounts. What it holds is its moves added up."""
+
+    __tablename__ = 'goals'
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    account_id: Mapped[int | None] = mapped_column(
+        ForeignKey('accounts.id', ondelete='SET NULL'), nullable=True
+    )
+    # Both optional: a goal without them is a bucket with no budget line.
+    target_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    target_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Its money is not free to spend: the budget leaves it out of the accounts.
+    keep_aside: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Done: kept for its history, no longer holding money or in the budget.
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+
+    moves: Mapped[list[GoalMove]] = relationship(
+        back_populates='goal', cascade='all, delete-orphan', order_by='GoalMove.date'
+    )
+
+
+class GoalMove(Base, Owned):
+    """Money put into a goal (positive) or taken out (negative), by hand."""
+
+    __tablename__ = 'goal_moves'
+    __table_args__ = (Index('ix_goal_moves_user_date', 'user_id', 'date'),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'))
+    goal_id: Mapped[int] = mapped_column(ForeignKey('goals.id', ondelete='CASCADE'), index=True)
+    date: Mapped[date] = mapped_column(Date)
+    amount_cents: Mapped[int] = mapped_column(Integer)
+    note: Mapped[str] = mapped_column(String(120), default='')
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+
+    goal: Mapped[Goal] = relationship(back_populates='moves')
+
+
 class TaxDeduction(Base, Owned):
     """Total deductions a person claims for one financial year, typed in."""
 

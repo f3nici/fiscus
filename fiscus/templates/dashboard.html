@@ -129,5 +129,22 @@
         <p class="text-sm neg mt">Over budget: {% for r in over %}{{ r.category.name }}{{ ', ' if not loop.last else '' }}{% endfor %}</p>
       {% endif %}
     </div>
+
+    {% if goals %}
+      <div class="card">
+        <div class="row between"><h2 class="mb-0">Goals</h2><a class="text-sm" href="/goals">All</a></div>
+        <ul class="list">
+          {% for v in goals %}
+            <li>
+              <span class="grow">
+                <a class="title" href="/goals/{{ v.goal.id }}">{{ v.goal.name }}</a>
+                {% if v.goal.target_cents %}<meter min="0" max="{{ v.goal.target_cents }}" optimum="{{ v.goal.target_cents }}" low="{{ (v.goal.target_cents * 0.5) | int }}" value="{{ [[v.held_cents, 0] | max, v.goal.target_cents] | min }}">{{ v.progress.pct }}%</meter>{% endif %}
+              </span>
+              <span class="num">{{ v.held_cents | money }}{% if v.goal.target_cents %} <span class="text-xs muted">of {{ v.goal.target_cents | money }}</span>{% endif %}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
   </div>
 {% endblock %}
