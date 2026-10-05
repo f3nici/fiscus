@@ -104,14 +104,14 @@ def test_housing_items_become_plain_bills_and_budgets_keep_their_totals(tmp_path
     # bill. Groceries: unchanged. Insurance: zero and not in the forecast, gone.
     assert left == {11: 5000, 12: 80000}
 
-    # 0008: a budget is the whole allocation, bills paid out of it, so each
+    # 0009: a budget is the whole allocation, bills paid out of it, so each
     # gets its bills back and housing, budgeted only by its bill, gets one.
     command.upgrade(cfg, 'head')
     with engine.connect() as c:
         budget_rows = c.execute(text('SELECT category_id, monthly_cents FROM budgets'))
         left = {r[0]: r[1] for r in budget_rows}
     assert left == {10: 8667, 11: 25000, 12: 80000}
-    command.downgrade(cfg, '0007')
+    command.downgrade(cfg, '0008')
     with engine.connect() as c:
         budget_rows = c.execute(text('SELECT category_id, monthly_cents FROM budgets'))
         left = {r[0]: r[1] for r in budget_rows}

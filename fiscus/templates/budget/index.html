@@ -30,7 +30,7 @@
     </div>
     <div class="card stat">
       <div class="label">Spent so far</div>
-      <div class="value {{ 'neg' if summary.spent_cents > summary.budget_cents and summary.budget_cents else '' }}">{{ summary.spent_cents | money }}</div>
+      <div class="value {{ 'neg' if summary.over else '' }}">{{ summary.spent_cents | money }}</div>
       <span class="text-sm muted">{% if summary.over %}<span class="neg">{{ summary.over }} categor{{ 'y' if summary.over == 1 else 'ies' }} over</span>{% else %}nothing over{% endif %}</span>
     </div>
     <div class="card stat">
@@ -88,15 +88,22 @@
             <tr>
               <td>
                 {{ r.category.name }}{% if r.category.is_income %} <span class="pill pill-ok">Income</span>{% endif %}
-                {% if r.has_budget %}<meter min="0" max="{{ r.budget_cents }}" low="{{ (r.budget_cents * 0.9) | int }}" high="{{ r.budget_cents }}" optimum="0" value="{{ [r.actual_cents, r.budget_cents] | min }}">{{ r.pct }}%</meter>{% endif %}
+                {% if r.has_budget and not r.saving %}<meter min="0" max="{{ r.budget_cents }}" low="{{ (r.budget_cents * 0.9) | int }}" high="{{ r.budget_cents }}" optimum="0" value="{{ [r.actual_cents, r.budget_cents] | min }}">{{ r.pct }}%</meter>{% endif %}
+                {% if r.saving %}<div class="text-xs muted">Saving up {{ (r.budget_cents * r.cycle_months) | money }} {{ cycles[r.cycle_months] | lower }}</div>{% endif %}
                 {% if r.bills_cents %}<div class="text-xs muted"><a href="/bills?category={{ r.category.id }}">{{ r.bills_cents | money }} of bills</a></div>{% endif %}
               </td>
-              <td class="num {{ 'neg' if r.state == 'over' else '' }}"><strong>{{ r.remaining_cents | money if r.has_budget else '' }}</strong></td>
+              <td class="num {{ 'neg' if r.state == 'over' else '' }}">
+                <strong>{{ r.remaining_cents | money if r.has_budget else '' }}</strong>
+                {% if r.saving %}<div class="text-xs muted">saved</div>{% endif %}
+              </td>
               <td class="num">
                 {{ r.actual_cents | money }}
                 {% if r.bills_paid_cents %}<div class="text-xs muted">{{ r.bills_paid_cents | money }} bills paid</div>{% endif %}
               </td>
-              <td class="num">{{ r.budget_cents | money if r.has_budget else '-' }}</td>
+              <td class="num">
+                {{ r.budget_cents | money if r.has_budget else '-' }}
+                {% if r.saving %}<div class="text-xs muted">a month</div>{% endif %}
+              </td>
               <td>
                 <details>
                   <summary class="text-sm">Set</summary>
@@ -104,7 +111,15 @@
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <input type="hidden" name="category_id" value="{{ r.category.id }}">
                     <input type="hidden" name="back" value="{{ back }}">
-                    <input class="input" name="amount" inputmode="decimal" value="{{ r.budget_cents | money_plain if r.has_budget else '' }}" aria-label="Monthly budget for {{ r.category.name }}">
+                    {% set cycle = 1 if r.category.is_income else (r.cycle_months if r.budget else bill_cycles.get(r.category.id, 1)) %}
+                    <input class="input" name="amount" inputmode="decimal" value="{{ (r.budget_cents * cycle) | money_plain if r.has_budget else ((r.bills_cents * cycle) | money_plain if r.bills_cents else '') }}" aria-label="Budget for {{ r.category.name }}">
+                    {% if not r.category.is_income %}
+                      <select class="input mt-sm" name="cycle_months" aria-label="How often {{ r.category.name }} is spent">
+                        {% for months, label in cycles.items() %}<option value="{{ months }}" {{ 'selected' if months == cycle else '' }}>{{ label }}</option>{% endfor %}
+                      </select>
+                      <input class="input mt-sm" name="saved" inputmode="decimal" placeholder="Saved so far (optional)" aria-label="Saved so far for {{ r.category.name }}">
+                      {% if bill_cycles.get(r.category.id, 1) > 1 and r.cycle_months == 1 %}<p class="text-xs muted mt-sm">Some of its bills are not monthly. Choose how often, and their monthly share is saved up so paying one does not put a month over.</p>{% endif %}
+                    {% endif %}
                     {% if r.bills_cents %}<p class="text-xs muted mt-sm">Bills here come to {{ r.bills_cents | money }} a month and are paid out of this.</p>{% endif %}
                     <button class="btn btn-sm btn-primary mt-sm" type="submit">Save</button>
                   </form>
@@ -136,11 +151,20 @@
         <input class="input" id="new_category" name="new_category" maxlength="80" placeholder="Only for a new category">
       </div>
       <div class="field">
-        <label class="label" for="add_amount">Monthly amount</label>
+        <label class="label" for="add_amount">Amount</label>
         <input class="input" id="add_amount" name="amount" inputmode="decimal" required>
+      </div>
+      <div class="field">
+        <label class="label" for="add_cycle">How often</label>
+        <select class="input" id="add_cycle" name="cycle_months">{% for months, label in cycles.items() %}<option value="{{ months }}">{{ label }}</option>{% endfor %}</select>
+      </div>
+      <div class="field">
+        <label class="label" for="add_saved">Saved so far (optional)</label>
+        <input class="input" id="add_saved" name="saved" inputmode="decimal" placeholder="For a yearly or quarterly cost">
       </div>
     </div>
     <button class="btn btn-primary" type="submit">Add budget line</button>
+    <p class="muted text-xs mt">For something paid every few months or once a year (rego, insurance), choose how often. Its monthly share is saved up and what you spend comes out of that, so the month you pay it is not over budget.</p>
   </form>
 
   <div class="card mt">

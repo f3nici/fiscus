@@ -141,8 +141,14 @@ def open_paydays(
         ).scalars()
         if s.id != except_slip
     }
+    employers: dict[int, set[str]] = {}
+    for slip in db.execute(
+        owned(Payslip, user).where(Payslip.schedule_id.is_not(None), Payslip.source != '')
+    ).scalars():
+        if slip.schedule_id is not None and slip.id != except_slip:
+            employers.setdefault(slip.schedule_id, set()).add(slip.source)
     out = [
-        OpenPayday(ps.id, d, ps.name)
+        OpenPayday(ps.id, d, ps.name, tuple(sorted(employers.get(ps.id, ()))))
         for ps in found
         for d in recurrence.occurrences(ps.anchor_date, ps.frequency, start, end, until=ps.end_date)
         if (ps.id, d) not in taken

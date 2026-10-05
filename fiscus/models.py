@@ -520,6 +520,12 @@ class Budget(Base, Owned):
     monthly_cents: Mapped[int] = mapped_column(Integer)
     # Use this amount instead of the rolling average in the forecast.
     use_in_forecast: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Spent every few months (rego, insurance): the monthly share is saved up
+    # from saved_since, starting from saved_opening_cents, and spending comes
+    # out of what is saved. 1 is an ordinary monthly budget.
+    cycle_months: Mapped[int] = mapped_column(Integer, default=1)
+    saved_since: Mapped[date | None] = mapped_column(Date, nullable=True)
+    saved_opening_cents: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class BudgetSpend(Base, Owned):

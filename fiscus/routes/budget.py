@@ -64,6 +64,8 @@ def budget_page(
             'spendable': spendable,
             'has_accounts': bool(accts),
             'unbudgeted': [cat for cat in cats if cat.id not in budgeted and not cat.is_transfer],
+            'cycles': budgeting.CYCLES,
+            'bill_cycles': budgeting.bill_cycles(db, user),
         },
     )
 
@@ -78,31 +80,50 @@ def save_budget(
     category_id: int = Form(0),
     new_category: str = Form(''),
     amount: str = Form(...),
+    cycle_months: int = Form(1),
+    saved: str = Form(''),
     back: str = Form('/budget'),
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> Response:
     target = _back(back)
+    if cycle_months not in budgeting.CYCLES:
+        return redirect(target, flash='Choose how often it is spent', request=request)
     if category_id:
         cat = get_owned(db, Category, category_id, user)
     elif new_category.strip():
         cat = ledger.category_named(db, user, new_category)
     else:
         return redirect(target, flash='Choose or name a category', request=request)
+    if cat.is_income:
+        cycle_months = 1
     try:
         cents = money(amount, 'Amount', allow_negative=False)
+        saved_cents = money(saved, 'Saved so far') if saved.strip() else None
     except FormError as exc:
         return redirect(target, flash=str(exc), request=request)
+    today = ctx(request).clock.today()
     total, from_bills = budgeting.set_total(
-        db, user, cat, cents, ctx(request).clock.today(), use_in_forecast=False
+        db,
+        user,
+        cat,
+        cents,
+        today,
+        use_in_forecast=False,
+        cycle_months=cycle_months,
+        saved_cents=saved_cents if cycle_months > 1 else None,
+        today=today,
     )
-    if total == 0:
+    every = 'a month' if cycle_months == 1 else budgeting.CYCLES[cycle_months].lower()
+    if total == 0 and cycle_months == 1:
         msg = f'Budget for {cat.name} removed'
-    elif total < from_bills:
+    elif cents < from_bills * cycle_months:
         msg = (
-            f'Budget for {cat.name} saved. Your bills in it come to {fmt(from_bills)}'
-            ' a month, more than this'
+            f'Budget for {cat.name} saved. Your bills in it come to'
+            f' {fmt(from_bills * cycle_months)} {every}, more than this'
         )
+    elif cycle_months > 1:
+        msg = f'Saving up {fmt(total)} a month for {cat.name}, spent {every}'
     else:
         msg = f'Budget for {cat.name} saved'
     return redirect(target, flash=msg, request=request)

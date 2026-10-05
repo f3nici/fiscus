@@ -6,9 +6,9 @@ top of the bills) gets the person's recurring bills in the category added, and
 a category budgeted only by its bills gets a budget of that, so the budget a
 person sees is unchanged.
 
-Revision ID: 0008
-Revises: 0007
-Create Date: 2026-10-05 12:00:00
+Revision ID: 0009
+Revises: 0008
+Create Date: 2026-10-05 13:00:00
 """
 
 from collections import defaultdict
@@ -20,8 +20,8 @@ from alembic import op
 
 from fiscus.domain import recurrence, splits
 
-revision: str = '0008'
-down_revision: str | None = '0007'
+revision: str = '0009'
+down_revision: str | None = '0008'
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
