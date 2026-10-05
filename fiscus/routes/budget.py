@@ -66,6 +66,7 @@ def budget_page(
             'unbudgeted': [cat for cat in cats if cat.id not in budgeted and not cat.is_transfer],
             'cycles': budgeting.CYCLES,
             'bill_cycles': budgeting.bill_cycles(db, user),
+            'spread_pay': budgeting.spread_pay(db, user, start, end, today),
         },
     )
 
@@ -271,6 +272,7 @@ def budget_preview(
             'cats': cats,
             'current': current,
             'included': sum(line.monthly_cents or 0 for line in parsed.lines if line.include),
+            'cycles': budgeting.CYCLES,
         },
     )
 
@@ -298,8 +300,11 @@ async def budget_apply(
             label = f(f'name_{i}') or 'Line'
             category = f(f'category_{i}')[:80] or label
             cents = money(f(f'monthly_{i}'), f'{label}: monthly amount', allow_negative=False)
+            cycle = int(f(f'cycle_{i}') or 1)
+            if cycle not in budgeting.CYCLES:
+                raise FormError(f'{label}: choose how often it is spent')
             if cents:
-                chosen.append(importer.Chosen(category, cents))
+                chosen.append(importer.Chosen(category, cents, cycle))
     except (FormError, ValueError) as exc:
         return redirect(f'/budget/import/{name}', flash=str(exc), request=request)
     if not chosen:

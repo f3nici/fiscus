@@ -4,7 +4,8 @@ Built for the shape household budgets usually take: a header row with Item,
 Amount and Frequency (and often Notes), section headings on rows of their own
 ("HOME & PROPERTY"), and total rows that are not lines. Each line becomes a
 monthly amount using the same normalisation as everywhere else (weekly x 52 /
-12 and so on). One-off costs are listed but never budgeted monthly.
+12 and so on). A line paid every 2, 3, 6 or 12 months keeps that cycle, so its
+budget is saved up. One-off costs are listed but never budgeted monthly.
 
 Cells arrive as whatever the reader produced: str, int, float, None. Numbers
 are turned into cents through Decimal straight away and never kept as floats.
@@ -34,8 +35,32 @@ FREQUENCIES = {
     'fortnight': 'fortnightly',
     'monthly': 'monthly',
     'month': 'monthly',
+    'bimonthly': 'bimonthly',
+    'bi monthly': 'bimonthly',
+    '2 monthly': 'bimonthly',
+    'two monthly': 'bimonthly',
+    'every 2 months': 'bimonthly',
+    'every two months': 'bimonthly',
+    'every second month': 'bimonthly',
     'quarterly': 'quarterly',
     'quarter': 'quarterly',
+    '3 monthly': 'quarterly',
+    'three monthly': 'quarterly',
+    'every 3 months': 'quarterly',
+    'every three months': 'quarterly',
+    'half yearly': 'half_yearly',
+    'halfyearly': 'half_yearly',
+    '6 monthly': 'half_yearly',
+    'six monthly': 'half_yearly',
+    'every 6 months': 'half_yearly',
+    'every six months': 'half_yearly',
+    'biannually': 'half_yearly',
+    'semiannually': 'half_yearly',
+    '12 monthly': 'yearly',
+    'every 12 months': 'yearly',
+    'every year': 'yearly',
+    'per annum': 'yearly',
+    'pa': 'yearly',
     'annual': 'yearly',
     'annually': 'yearly',
     'yearly': 'yearly',
@@ -52,11 +77,16 @@ FREQ_LABELS = {
     'weekly': 'Weekly',
     'fortnightly': 'Fortnightly',
     'monthly': 'Monthly',
+    'bimonthly': 'Every 2 months',
     'quarterly': 'Quarterly',
+    'half_yearly': 'Every 6 months',
     'yearly': 'Yearly',
     'daily': 'Daily',
     'one_off': 'One-off',
 }
+
+# How often a line's budget is spent, in months: the rest are monthly.
+CYCLE_MONTHS = {'bimonthly': 2, 'quarterly': 3, 'half_yearly': 6, 'yearly': 12}
 
 MORTGAGE = re.compile(r'\bmortgage\b|home\s*loan\s*repayment', re.IGNORECASE)
 # A total row starts with the word; a heading may mention a total in passing
@@ -90,6 +120,10 @@ class Line:
     def frequency_label(self) -> str:
         return FREQ_LABELS.get(self.frequency or '', '')
 
+    @property
+    def cycle_months(self) -> int:
+        return CYCLE_MONTHS.get(self.frequency or '', 1)
+
 
 def _text(value: Any) -> str:
     if value is None:
@@ -98,7 +132,8 @@ def _text(value: Any) -> str:
 
 
 def _norm(value: Any) -> str:
-    return re.sub(r'[^a-z ]', '', _text(value).lower()).strip()
+    # Digits stay: "6 monthly" is not "monthly".
+    return ' '.join(re.sub(r'[^a-z0-9 ]', '', _text(value).lower()).split())
 
 
 def find_header(rows: list[list[Any]], scan: int = 40) -> Header | None:
@@ -138,8 +173,8 @@ def to_cents(value: Any) -> int | None:
 
 
 def monthly(amount_cents: int, frequency: str) -> int:
-    if frequency == 'daily':
-        q, r = divmod(amount_cents * 365, 12)
+    if frequency in ('daily', 'half_yearly'):
+        q, r = divmod(amount_cents * (365 if frequency == 'daily' else 2), 12)
         return q + (1 if r * 2 >= 12 else 0)
     return recurrence.monthly_equivalent(amount_cents, frequency)
 

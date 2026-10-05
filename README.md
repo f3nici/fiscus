@@ -279,7 +279,7 @@ Water,310.00,quarterly,Utilities,,partner,50
 | --- | --- | --- |
 | name | yes | How a re-import matches a bill you own |
 | amount | yes | The whole bill each time it is due |
-| frequency | yes | weekly, fortnightly, monthly, quarterly, yearly or one-off |
+| frequency | yes | weekly, fortnightly, monthly, bimonthly (every 2 months), quarterly, yearly or one-off |
 | category | no | Created if it does not exist |
 | due_date | no (yes for one-off) | YYYY-MM-DD, the next time it is due; left out, an existing bill keeps its own |
 | shared_with | no | Another Fiscus user's username |

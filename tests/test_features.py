@@ -914,3 +914,28 @@ def test_loan_list_cards_and_a_loan_not_yet_settled(env: Env) -> None:
     assert '$3,772.88' in page and 'Loan starts 4 Jan 2027' in page
     assert 'Savings count from then' in a.get(f'/loans/{loan}').text
     assert 'Loan starts 4 Jan 2027' in a.get('/').text
+
+
+def test_a_bimonthly_bill_in_bills_and_budget(env: Env) -> None:
+    alex = env.user('alex')
+    a = env.login(alex)
+    utilities = cat_id(env, alex, 'Utilities')
+    bill = create_bill(
+        a,
+        name='Water',
+        amount='180',
+        frequency='bimonthly',
+        next_due='2026-10-20',
+        category_id=str(utilities),
+    )
+    assert 'Every 2 months' in a.get(f'/bills/{bill}').text
+    cal = a.get('/calendar?view=agenda&date=2026-12-01').text
+    assert 'Water' in cal
+    # 90 a month; the budget form suggests saving it up every 2 months.
+    page = a.get('/budget?month=2026-10').text
+    assert 'Bills here come to $90.00 a month' in page
+    assert 'value="180.00"' in page and '<option value="2" selected>' in page
+    a.post('/budget', data={'category_id': str(utilities), 'amount': '180', 'cycle_months': '2'})
+    with env.db() as db:
+        row = db.execute(select(Budget)).scalar_one()
+        assert (row.monthly_cents, row.cycle_months) == (90_00, 2)

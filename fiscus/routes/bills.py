@@ -33,6 +33,7 @@ FREQ_LABELS = {
     'weekly': 'Weekly',
     'fortnightly': 'Fortnightly',
     'monthly': 'Monthly',
+    'bimonthly': 'Every 2 months',
     'quarterly': 'Quarterly',
     'yearly': 'Yearly',
     'one_off': 'One-off',

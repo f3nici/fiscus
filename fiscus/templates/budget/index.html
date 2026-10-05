@@ -16,7 +16,7 @@
     <div class="card stat">
       <div class="label">Expected to earn</div>
       <div class="value">{{ summary.expected_cents | money }}</div>
-      <span class="text-sm muted">{% if summary.pay_cents %}{{ summary.pay_cents | money }} pay{% if summary.expected_cents != summary.pay_cents %}, {{ (summary.expected_cents - summary.pay_cents) | money }} other income{% endif %}{% else %}<a href="/pay">Add your pay</a>{% endif %}</span>
+      <span class="text-sm muted">{% if summary.pay_cents %}{{ summary.pay_cents | money }} pay{% if summary.expected_cents != summary.pay_cents %}, {{ (summary.expected_cents - summary.pay_cents) | money }} other income{% endif %}{% else %}<a href="/pay">Add your pay</a>{% endif %}{% if spread_pay %}<br>includes {{ spread_pay | money }} a month of quarterly pay{% endif %}</span>
     </div>
     <div class="card stat">
       <div class="label">Budgeted</div>

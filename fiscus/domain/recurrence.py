@@ -3,9 +3,9 @@
 One expansion is shared by the calendar, the forecast, bill status and the
 reminders, so the four can never disagree about when something is due.
 
-Monthly, quarterly and yearly keep the anchor's day of month and clamp to the
-last day of a shorter month: an anchor on 31 January falls on 28 or 29
-February, then back on 31 March.
+Monthly, bimonthly (every two months), quarterly and yearly keep the
+anchor's day of month and clamp to the last day of a shorter month: an anchor
+on 31 January falls on 28 or 29 February, then back on 31 March.
 """
 
 from __future__ import annotations
@@ -15,13 +15,14 @@ from collections.abc import Iterator
 from datetime import date, timedelta
 
 DAYS = {'weekly': 7, 'fortnightly': 14}
-MONTHS = {'monthly': 1, 'quarterly': 3, 'yearly': 12}
+MONTHS = {'monthly': 1, 'bimonthly': 2, 'quarterly': 3, 'yearly': 12}
 
 # Occurrences per year, for normalising amounts to a month.
 PER_YEAR = {
     'weekly': 52,
     'fortnightly': 26,
     'monthly': 12,
+    'bimonthly': 6,
     'quarterly': 4,
     'yearly': 1,
 }

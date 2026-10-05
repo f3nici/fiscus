@@ -30,8 +30,14 @@ from fiscus.services.access import owned
 from fiscus.services.users import settings_for
 
 # How often a budget line is spent, in months.
-CYCLES = {1: 'Every month', 3: 'Every 3 months', 6: 'Every 6 months', 12: 'Every year'}
-BILL_CYCLES = {'quarterly': 3, 'yearly': 12}
+CYCLES = {
+    1: 'Every month',
+    2: 'Every 2 months',
+    3: 'Every 3 months',
+    6: 'Every 6 months',
+    12: 'Every year',
+}
+BILL_CYCLES = {'bimonthly': 2, 'quarterly': 3, 'yearly': 12}
 
 
 @dataclass(frozen=True)
@@ -300,14 +306,32 @@ def rows(db: Session, user: User, start: date, end: date, today: date) -> list[B
     return out
 
 
+# Pay this far apart is spread over the budget months rather than landing in one.
+SPREAD_PAY = ('quarterly',)
+
+
+def spread_pay(db: Session, user: User, start: date, end: date, today: date) -> int:
+    """Quarterly pay as a monthly amount (its expected net x 4 / 12), for every
+    such schedule running in the period."""
+    return sum(
+        recurrence.monthly_equivalent(net, ps.frequency)
+        for ps, net in pay.schedules(db, user, today)
+        if ps.frequency in SPREAD_PAY
+        and ps.anchor_date <= end
+        and (ps.end_date is None or ps.end_date >= start)
+    )
+
+
 def expected_pay(db: Session, user: User, start: date, end: date, today: date) -> int:
     """Net pay in the period: every payday (its payslip's net once recorded), and
     one-off payslips still to come. Past one-offs are left out: before paydays
-    were recorded, a past payslip was usually a regular pay already counted."""
-    return sum(
+    were recorded, a past payslip was usually a regular pay already counted.
+    Quarterly pay counts a month's share each month (`spread_pay`)."""
+    return spread_pay(db, user, start, end, today) + sum(
         i.net_cents
         for i in pay.items(db, user, start, end, today)
-        if i.schedule is not None or i.when > today
+        if (i.schedule is not None and i.schedule.frequency not in SPREAD_PAY)
+        or (i.schedule is None and i.when > today)
     )
 
 

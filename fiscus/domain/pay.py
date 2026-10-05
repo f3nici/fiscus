@@ -1,6 +1,7 @@
 """Pay: what a casual job is expected to pay, and which payday a payslip records.
 
-The average received per payday over a recent window. Paydays with no
+The average received per payday over a recent window (thirteen weeks, or a
+year for a quarterly pay). Paydays with no
 deposit count as nothing paid, so a week without shifts lowers the average
 rather than being ignored. The window starts at the first deposit seen in it,
 so a job that began recently is not averaged over weeks it did not exist.
@@ -18,6 +19,14 @@ from datetime import date, timedelta
 from fiscus.domain import recurrence
 
 WINDOW_DAYS = 91  # thirteen weeks
+# Paid every few months: a year, so the average covers four paydays.
+LONG_WINDOW_DAYS = 365
+
+
+def window_days(frequency: str) -> int:
+    return LONG_WINDOW_DAYS if frequency == 'quarterly' else WINDOW_DAYS
+
+
 # A deposit can land a day or two either side of the payday.
 SLACK_DAYS = 3
 
@@ -32,7 +41,7 @@ def expected_pay(
     """Average net pay per payday, or `fallback_cents` when nothing has been paid yet."""
     # Up to yesterday: today's pay may not have landed or been imported yet.
     end = today - timedelta(days=1)
-    window_start = today - timedelta(days=WINDOW_DAYS)
+    window_start = today - timedelta(days=window_days(frequency))
     seen = [(d, c) for d, c in deposits if window_start < d <= end and c > 0]
     if not seen or frequency == 'one_off':
         return fallback_cents
