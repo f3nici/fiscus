@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block title %}{{ goal.name }}{% endblock %}
+{% block content %}
+  <div class="page-head">
+    <div>
+      <h1>{{ goal.name }}</h1>
+      <span class="muted text-sm">{% if account %}Held in <a href="/accounts/{{ account.id }}">{{ account.name }}</a>{% else %}Not in a particular account{% endif %}</span>
+    </div>
+    <div class="row">
+      {% include "goals/_status.html" %}
+      <a class="btn btn-sm" href="/goals">All goals</a>
+    </div>
+  </div>
+
+  <div class="grid grid-2">
+    <div class="card stat">
+      <div class="label">Holds</div>
+      <div class="value">{{ v.held_cents | money }}</div>
+      {% if goal.target_cents %}
+        <meter class="mt-sm" min="0" max="{{ goal.target_cents }}" optimum="{{ goal.target_cents }}" low="{{ (goal.target_cents * 0.5) | int }}" value="{{ [[v.held_cents, 0] | max, goal.target_cents] | min }}">{{ v.progress.pct }}%</meter>
+        <span class="text-sm muted">{{ v.progress.pct }}% of {{ goal.target_cents | money }}{% if v.progress.remaining_cents %}, {{ v.progress.remaining_cents | money }} to go{% endif %}</span>
+      {% else %}
+        <span class="text-sm muted">No target</span>
+      {% endif %}
+    </div>
+    <div class="card stat">
+      <div class="label">This budget month</div>
+      {% if v.state == 'saving' %}
+        <div class="value">{{ v.per_month_cents | money }}</div>
+        <span class="text-sm muted">to put in, {{ v.months_left }} budget month{{ '' if v.months_left == 1 else 's' }} left to {{ goal.target_date | d }} · <a href="/budget">Budget</a></span>
+      {% elif v.state == 'reached' %}
+        <div class="value pos">Reached</div><span class="text-sm muted">Nothing more to put in</span>
+      {% elif v.state == 'passed' %}
+        <div class="value">-</div><span class="text-sm muted">The date has passed. Move it, or mark the goal done.</span>
+      {% elif v.state == 'done' %}
+        <div class="value">-</div><span class="text-sm muted">Done. It holds nothing aside and is out of the budget.</span>
+      {% else %}
+        <div class="value">-</div><span class="text-sm muted">Give it a target and a date for a monthly amount in the budget.</span>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if not goal.archived %}
+    <form class="card mt" method="post" action="/goals/{{ goal.id }}/move">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <h2>Put money in or take it out</h2>
+      <div class="form-grid">
+        <div class="field">
+          <label class="label" for="move_direction">Direction</label>
+          <select class="input" id="move_direction" name="direction">
+            <option value="in">Put in</option>
+            <option value="out">Take out</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="label" for="move_amount">Amount</label>
+          <input class="input" id="move_amount" name="amount" inputmode="decimal" required placeholder="0.00">
+        </div>
+        <div class="field">
+          <label class="label" for="move_note">Note (optional)</label>
+          <input class="input" id="move_note" name="note" maxlength="120" placeholder="Flights, pay day...">
+        </div>
+        <div class="field">
+          <label class="label" for="move_on">Date</label>
+          <input class="input" type="date" id="move_on" name="on" value="{{ today.isoformat() }}">
+        </div>
+      </div>
+      <button class="btn btn-primary" type="submit">Save</button>
+      <p class="muted text-xs mt">The money does not move between accounts here: it is marked as set aside inside {{ account.name if account else 'your accounts' }}. Taking it out (for flights, say) frees it to spend.</p>
+    </form>
+  {% endif %}
+
+  <form class="card mt" method="post" action="/goals/{{ goal.id }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <h2>Edit</h2>
+    <div class="form-grid">
+      <div class="field">
+        <label class="label" for="name">Name</label>
+        <input class="input" id="name" name="name" required maxlength="80" value="{{ goal.name }}">
+      </div>
+      <div class="field">
+        <label class="label" for="account_id">Held in</label>
+        <select class="input" id="account_id" name="account_id">
+          <option value="0">No particular account</option>
+          {% for a in accounts %}<option value="{{ a.id }}" {{ 'selected' if goal.account_id == a.id else '' }}>{{ a.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label class="label" for="target">Target (optional)</label>
+        <input class="input" id="target" name="target" inputmode="decimal" value="{{ goal.target_cents | money_plain if goal.target_cents else '' }}">
+      </div>
+      <div class="field">
+        <label class="label" for="target_date">Save by (optional)</label>
+        <input class="input" type="date" id="target_date" name="target_date" value="{{ goal.target_date.isoformat() if goal.target_date else '' }}">
+      </div>
+      <div class="field">
+        <label class="label" for="holds">Holds now</label>
+        <input class="input" id="holds" name="holds" inputmode="decimal" value="{{ v.held_cents | money_plain }}">
+        <small>Change it to correct what is set aside. The difference is recorded below.</small>
+      </div>
+      <div class="full">
+        <label class="check"><input type="checkbox" name="keep_aside" value="true" {{ 'checked' if goal.keep_aside else '' }}> Keep this money out of what is free to spend</label>
+      </div>
+    </div>
+    <button class="btn btn-primary" type="submit">Save</button>
+  </form>
+
+  <div class="card mt">
+    <h2>History</h2>
+    <ul class="list">
+      {% for m in moves %}
+        <li>
+          <span class="grow">
+            <span class="title">{{ 'Put in' if m.amount_cents > 0 else 'Taken out' }}{% if m.note %} · {{ m.note }}{% endif %}</span>
+            <span class="text-xs muted">{{ m.date | d('dm') }}</span>
+          </span>
+          <span class="num {{ 'neg' if m.amount_cents < 0 else '' }}">{{ m.amount_cents | money }}</span>
+          <form class="inline" method="post" action="/goals/{{ goal.id }}/moves/{{ m.id }}/delete" data-confirm="Remove this entry?">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="btn btn-sm" type="submit" aria-label="Remove">✕</button>
+          </form>
+        </li>
+      {% else %}
+        <li class="muted">Nothing put in yet.</li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <div class="row mt">
+    <form method="post" action="/goals/{{ goal.id }}/done">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn" type="submit">{{ 'Reopen' if goal.archived else 'Mark done' }}</button>
+    </form>
+    <form method="post" action="/goals/{{ goal.id }}/delete" data-confirm="Delete {{ goal.name }} and its history? This cannot be undone.">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn btn-danger" type="submit">Delete goal</button>
+    </form>
+  </div>
+{% endblock %}

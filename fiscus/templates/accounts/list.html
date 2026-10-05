@@ -17,6 +17,7 @@
       <button class="btn btn-primary" type="submit">Save balances</button>
     </form>
   {% endif %}
+  <p class="muted text-sm mt">One account can hold several things: a trip, general savings, an emergency fund. Keep the account's real balance here and split it into <a href="/goals">goals</a>; what is left over shows as unallocated.</p>
 {% endblock %}
 {% block content %}
   <div class="page-head">
@@ -37,6 +38,13 @@
                 {% if a.is_set_aside %}<span class="pill">Tax set-aside</span>{% endif %}
                 {% if a.loan_id and loans.get(a.loan_id) %}<span class="pill pill-shared">Offsets {{ loans[a.loan_id].name }}</span>{% endif %}
                 {% if a.archived %}<span class="pill">Archived</span>{% endif %}
+                {% set split = splits.get(a.id) %}
+                {% if split %}
+                  <div class="text-xs muted">
+                    {% for v in split.views %}<a href="/goals/{{ v.goal.id }}">{{ v.goal.name }}</a> {{ v.held_cents | money }} · {% endfor %}
+                    <span class="{{ 'neg' if split.unallocated_cents < 0 else '' }}">Unallocated {{ split.unallocated_cents | money }}</span>
+                  </div>
+                {% endif %}
               </td>
               <td>{{ labels[a.type] }}</td>
               <td class="num">{{ money_cell(balances.get(a.id, 0)) }}</td>

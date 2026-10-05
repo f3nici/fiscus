@@ -20,6 +20,8 @@ from fiscus.models import (
     Bill,
     BudgetSpend,
     Category,
+    Goal,
+    GoalMove,
     Import,
     Loan,
     LoanRate,
@@ -52,6 +54,8 @@ OWNED_TABLES = [
     'budgets',
     'budget_spends',
     'tax_deductions',
+    'goals',
+    'goal_moves',
     'scenarios',
     'scenario_adjustments',
     'recurring_transfers',
@@ -89,6 +93,8 @@ class Ids:
     adjustment: int
     transfer: int
     spend: int
+    goal: int
+    goal_move: int
 
 
 @pytest.fixture
@@ -171,6 +177,17 @@ def seeded(env: Env) -> tuple[CsrfClient, CsrfClient, Ids, User, User]:
         a.post(
             '/budget/spend', data={'category_id': str(cat.id), 'amount': '42', 'note': 'Bunnings'}
         )
+        a.post(
+            '/goals',
+            data={
+                'name': 'Hokkaido trip',
+                'account_id': str(savings),
+                'target': '6000',
+                'target_date': '2027-03-15',
+                'saved': '1000',
+                'keep_aside': 'true',
+            },
+        )
 
         def one(model: Any) -> int:
             found = db.execute(select(model.id).where(model.user_id == alex.id)).scalars().first()
@@ -197,6 +214,8 @@ def seeded(env: Env) -> tuple[CsrfClient, CsrfClient, Ids, User, User]:
             adjustment=one(ScenarioAdjustment),
             transfer=one(RecurringTransfer),
             spend=one(BudgetSpend),
+            goal=one(Goal),
+            goal_move=one(GoalMove),
         )
     return a, b, ids, alex, blake
 
@@ -216,6 +235,7 @@ READS = [
     '/pay?slip={payslip}',
     '/pay?payday={schedule}:2026-10-02',
     '/bills/import/{staged}',
+    '/goals/{goal}',
 ]
 
 WRITES: list[tuple[str, dict[str, Any]]] = [
@@ -286,6 +306,12 @@ WRITES: list[tuple[str, dict[str, Any]]] = [
     ('/budget/spend/{spend}/delete', {}),
     ('/budget/{category}/remove', {}),
     ('/accounts/{account}/balance', {'balance': '1'}),
+    ('/goals/{goal}', {'name': 'pwned'}),
+    ('/goals/{goal}/move', {'amount': '1'}),
+    ('/goals/{goal}/moves/{goal_move}/delete', {}),
+    ('/goals/{goal}/done', {}),
+    ('/goals/{goal}/delete', {}),
+    ('/goals', {'name': 'x', 'account_id': '{account}'}),
     ('/square', {'account_id': '{account}', 'start_date': '2026-10-01'}),
     ('/square', {'fee_category_id': '{category}', 'start_date': '2026-10-01'}),
 ]
@@ -339,6 +365,7 @@ def test_b_lists_show_none_of_a(seeded: tuple[CsrfClient, CsrfClient, Ids, User,
         '/import',
         '/recategorise',
         '/square',
+        '/goals',
     ]
     markers = [
         'Everyday',
@@ -349,6 +376,7 @@ def test_b_lists_show_none_of_a(seeded: tuple[CsrfClient, CsrfClient, Ids, User,
         'What if',
         'Stirling council',
         'Bunnings',
+        'Hokkaido',
         '$2,500',
     ]
     for page in pages:

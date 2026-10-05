@@ -44,6 +44,8 @@
 
 | D31 | Tax is on income less a typed-in deductions total; no business lines and no LITO | Sole trader income comes in as pay, so the tax page shows income (payslips and expected pays) less one deductions figure per financial year that the person types in and updates. Business categories no longer feed it. The low income tax offset is left out: on a part year it showed an offset the full year would not get. The set-aside target is the projected amount owing at 30 June, saved evenly: the share of it due by today, and what a week is still needed to reach it. |
 
+| D32 | Savings goals live inside real accounts, not as extra accounts | A bank may allow one offset, so an account keeps the one balance the bank shows, and goals split it: what each holds is its moves added up, and the rest is unallocated. A goal with a target and a date is budgeted each month at what was left to save at the start of the month over the budget months left (rounded up), and money put in during the month counts as spent against it. A goal kept aside (the default) is left out of "free in accounts". The money never leaves its account, so the forecast and offset interest do not change. An amount already saved when the goal is made is dated before the budget month, so it is not that month's saving. |
+
 ## 2. Assumptions
 
 - One household, a handful of users. SQLite and an in-process rate limiter are

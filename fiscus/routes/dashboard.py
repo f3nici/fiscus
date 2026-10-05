@@ -11,7 +11,16 @@ from sqlalchemy.orm import Session
 
 from fiscus.domain.tax import TaxConfigError
 from fiscus.models import Loan, User
-from fiscus.services import budgeting, calendar_events, forecasting, ledger, loans, pay, taxes
+from fiscus.services import (
+    budgeting,
+    calendar_events,
+    forecasting,
+    goals,
+    ledger,
+    loans,
+    pay,
+    taxes,
+)
 from fiscus.services.access import owned
 from fiscus.web import ctx, current_user, get_db, render
 
@@ -50,11 +59,14 @@ def dashboard(
     start, end = budgeting.period(db, user, today)
     rows = budgeting.rows(db, user, start, end, today)
     loan_lines = loans.budget_lines(db, user, start, end, today)
+    goal_lines = goals.budget_lines(db, user, start, end)
     summary = budgeting.summary(
         rows,
         budgeting.expected_pay(db, user, start, end, today),
         loan_cents=sum(x.budget_cents for x in loan_lines),
         loan_paid_cents=sum(x.paid_cents for x in loan_lines),
+        goal_cents=sum(x.budget_cents for x in goal_lines),
+        goal_paid_cents=sum(x.paid_cents for x in goal_lines),
     )
     base = forecasting.base(db, c.clock, user, 3)
     try:
@@ -84,6 +96,7 @@ def dashboard(
             'forecast': base,
             'spark': sparkline(base.combined),
             'tax': tax_view,
+            'goals': goals.views(db, user, today),
             'loans': loan_rows,
             'has_any': has_any,
         },

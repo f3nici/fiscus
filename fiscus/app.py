@@ -230,6 +230,7 @@ def create_app(
         calendar,
         dashboard,
         forecast,
+        goals,
         health,
         imports,
         loans,
@@ -263,6 +264,7 @@ def create_app(
         loans,
         forecast,
         budget,
+        goals,
         tax,
         square,
     ):

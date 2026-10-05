@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from fiscus.clock import utcnow_naive
 from fiscus.forms import FormError, choice, money, text
 from fiscus.models import ACCOUNT_TYPES, Account, Loan, User
-from fiscus.services import ledger
+from fiscus.services import goals, ledger
 from fiscus.services.access import get_owned, maybe_owned, owned
 from fiscus.web import ctx, current_user, get_db, redirect, render
 
@@ -35,6 +35,7 @@ def list_accounts(
         'accounts/list.html',
         {
             'accounts': accts,
+            'splits': goals.splits(db, user, bal, ctx(request).clock.today()),
             'balances': bal,
             'loans': loans,
             'labels': TYPE_LABELS,
@@ -174,12 +175,14 @@ def show_account(
     db: Session = Depends(get_db),
 ) -> Response:
     acct = get_owned(db, Account, account_id, user)
+    bal = ledger.balances(db, user)
     return render(
         request,
         'accounts/show.html',
         {
             'account': acct,
-            'balance': ledger.balances(db, user).get(acct.id, 0),
+            'balance': bal.get(acct.id, 0),
+            'split': goals.splits(db, user, bal, ctx(request).clock.today()).get(acct.id),
             'labels': TYPE_LABELS,
         },
     )

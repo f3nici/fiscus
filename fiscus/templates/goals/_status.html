@@ -1,0 +1,5 @@
+{% if v.state == 'done' %}<span class="pill">Done</span>
+{% elif v.state == 'reached' %}<span class="pill pill-ok">Reached</span>
+{% elif v.state == 'passed' %}<span class="pill pill-over">Date passed</span>
+{% elif v.state == 'saving' %}<span class="pill pill-upcoming">{{ v.per_month_cents | money }} a month</span>
+{% endif %}
