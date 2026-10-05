@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from datetime import date
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from fiscus.domain import goals as calc
-from fiscus.models import Account, Goal, GoalMove
+from fiscus.models import Account, BudgetSpend, Category, Goal, GoalMove
 from tests.conftest import Env
 from tests.test_imports_bills import make_account
 
@@ -169,3 +169,65 @@ def test_a_move_from_another_goal_is_not_found(env: Env) -> None:
         mid = db.execute(select(GoalMove.id).where(GoalMove.goal_id == one)).scalar_one()
     assert a.post(f'/goals/{two}/moves/{mid}/delete').status_code == 404
     assert a.post(f'/goals/{one}/moves/{mid}/delete').status_code == 303
+
+
+def test_putting_aside_from_a_budget_line_spends_it_and_keeps_it_aside(env: Env) -> None:
+    a = env.login(env.user('alex'))
+    main = make_account(a, 'Main', 'transaction', '5000')
+    a.post('/budget', data={'new_category': 'Utilities', 'amount': '250'})
+    with env.db() as db:
+        cid = db.execute(select(Category.id).where(Category.name == 'Utilities')).scalar_one()
+    goal = _goal(a, name='Utilities', account_id=str(main), category_id=str(cid), keep_aside='true')
+    budget = a.get('/budget').text
+    assert 'Put aside' in budget and '$4,750.00' in budget
+
+    # One click: spent on the line and into the goal, free money unchanged.
+    resp = a.post(
+        f'/goals/{goal}/move',
+        data={'amount': '250', 'as_spent': 'true', 'back': '/budget'},
+        follow_redirects=True,
+    )
+    assert '$250.00 put aside into Utilities' in resp.text
+    assert '$4,750.00' in resp.text and '$250.00 kept in' in resp.text
+    with env.db() as db:
+        spend = db.execute(select(BudgetSpend)).scalar_one()
+        move = db.execute(select(GoalMove)).scalar_one()
+        assert (spend.category_id, spend.amount_cents) == (cid, 25_000)
+        assert (move.amount_cents, move.spend_id) == (25_000, spend.id)
+
+    # Paying the bill comes out of the goal and is not spent again.
+    a.post(f'/goals/{goal}/move', data={'amount': '200', 'direction': 'out', 'as_spent': 'true'})
+    with env.db() as db:
+        assert db.execute(select(func.count(BudgetSpend.id))).scalar() == 1
+
+    # Removing the spend takes the goal move with it, and the other way round.
+    a.post(f'/budget/spend/{spend.id}/delete')
+    with env.db() as db:
+        assert db.get(GoalMove, move.id) is None
+    a.post(f'/goals/{goal}/move', data={'amount': '100', 'as_spent': 'true'})
+    with env.db() as db:
+        again = db.execute(select(GoalMove).where(GoalMove.spend_id.is_not(None))).scalar_one()
+        sid = again.spend_id
+    a.post(f'/goals/{goal}/moves/{again.id}/delete')
+    with env.db() as db:
+        assert db.get(BudgetSpend, sid) is None
+
+    # Deleting the category leaves the goal holding what was put aside.
+    a.post(f'/goals/{goal}/move', data={'amount': '50', 'as_spent': 'true'})
+    a.post(f'/categories/{cid}/delete')
+    with env.db() as db:
+        g = db.get(Goal, goal)
+        assert g is not None and g.category_id is None
+        assert sum(m.amount_cents for m in g.moves) == -200_00 + 50_00
+
+
+def test_a_goal_saves_only_from_a_spending_line(env: Env) -> None:
+    a = env.login(env.user('alex'))
+    a.post('/budget', data={'new_category': 'Wages', 'amount': '100'})
+    with env.db() as db:
+        cat = db.execute(select(Category).where(Category.name == 'Wages')).scalar_one()
+        cat.is_income = True
+        db.commit()
+        cid = cat.id
+    resp = a.post('/goals', data={'name': 'X', 'category_id': str(cid)}, follow_redirects=True)
+    assert 'Choose a spending category to save from' in resp.text

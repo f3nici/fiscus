@@ -104,6 +104,18 @@
                 {% if r.saving %}<div class="text-xs muted">Saving up {{ (r.budget_cents * r.cycle_months) | money }} {{ cycles[r.cycle_months] | lower }}</div>{% endif %}
                 {% if r.bills_cents %}<div class="text-xs muted"><a href="/bills?category={{ r.category.id }}">{{ r.bills_cents | money }} of bills</a></div>{% endif %}
                 {% if r.category.id in doubled %}<div class="text-xs neg">Your home loan repayments are already in the budget. Remove this line so they are not counted twice.</div>{% endif %}
+                {% set g = goal_for.get(r.category.id) %}
+                {% if g %}
+                  <div class="text-xs muted">Saved into <a href="/goals/{{ g.id }}">{{ g.name }}</a>, holding {{ goal_held.get(g.id, 0) | money }}</div>
+                  <form method="post" action="/goals/{{ g.id }}/move" class="row mt-sm put-aside">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input type="hidden" name="back" value="{{ back }}">
+                    <input type="hidden" name="as_spent" value="true">
+                    <input type="hidden" name="on" value="{{ (today if current else end).isoformat() }}">
+                    <input class="input" name="amount" inputmode="decimal" value="{{ (r.budget_cents if r.saving or r.remaining_cents <= 0 else r.remaining_cents) | money_plain if r.has_budget else '' }}" aria-label="Put aside into {{ g.name }}">
+                    <button class="btn btn-sm btn-primary" type="submit">Put aside</button>
+                  </form>
+                {% endif %}
               </td>
               <td class="num {{ 'neg' if r.state == 'over' else '' }}">
                 <strong>{{ r.remaining_cents | money if r.has_budget else '' }}</strong>
@@ -158,7 +170,7 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="back" value="{{ back }}">
     <h2>Add a budget line</h2>
-    <p class="muted text-sm">Saving for something, like a holiday? Put it in a <a href="/goals">goal</a>: what a goal holds comes off what is free in your accounts, not out of the budget.</p>
+    <p class="muted text-sm">Saving for something, like a holiday? Put it in a <a href="/goals">goal</a>: what a goal holds comes off what is free in your accounts, not out of the budget. For money you budget each month but pay every few months (utilities), give the goal this budget line to save from, and a Put aside button here spends it from the line and puts it in the goal at once.</p>
     <div class="form-grid">
       <div class="field">
         <label class="label" for="add_category">Category</label>

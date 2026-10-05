@@ -63,6 +63,8 @@ def budget_page(
             'rows': rows,
             'loan_lines': loan_lines,
             'in_goals': in_goals,
+            'goal_for': goals.by_category(db, user),
+            'goal_held': goals.held(db, user),
             # A mortgage line of its own would count the loan twice.
             'doubled': {
                 r.category.id
@@ -212,7 +214,7 @@ def delete_spend(
     db: Session = Depends(get_db),
 ) -> Response:
     row = get_owned(db, BudgetSpend, spend_id, user)
-    db.delete(row)
+    goals.remove_spend(db, user, row)
     return redirect(_back(back), flash='Entry removed', request=request)
 
 

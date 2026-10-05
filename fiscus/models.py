@@ -564,6 +564,10 @@ class Goal(Base, Owned):
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
     # Holds the person's tax money: counted as set aside for tax. One per person.
     is_tax: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Saved from this budget line: putting money aside counts as spent on it.
+    category_id: Mapped[int | None] = mapped_column(
+        ForeignKey('categories.id', ondelete='SET NULL'), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime)
 
     moves: Mapped[list[GoalMove]] = relationship(
@@ -584,6 +588,11 @@ class GoalMove(Base, Owned):
     amount_cents: Mapped[int] = mapped_column(Integer)
     note: Mapped[str] = mapped_column(String(120), default='')
     created_at: Mapped[datetime] = mapped_column(DateTime)
+    # The budget spend recorded with it, when put aside from a budget line.
+    # Removing either removes both (`goals.remove_move`, `goals.remove_spend`).
+    spend_id: Mapped[int | None] = mapped_column(
+        ForeignKey('budget_spends.id', ondelete='SET NULL'), nullable=True
+    )
 
     goal: Mapped[Goal] = relationship(back_populates='moves')
 

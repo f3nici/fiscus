@@ -11,10 +11,10 @@ from sqlalchemy.orm import Session
 
 from fiscus.clock import Clock, utcnow_naive
 from fiscus.domain import goals as calc
-from fiscus.models import Account, Goal, GoalMove, User
+from fiscus.models import Account, BudgetSpend, Category, Goal, GoalMove, User
 from fiscus.money import fmt
 from fiscus.services import budgeting
-from fiscus.services.access import owned
+from fiscus.services.access import maybe_owned, owned
 
 
 def goals(db: Session, user: User, *, include_archived: bool = False) -> list[Goal]:
@@ -71,6 +71,57 @@ def move(
     db.add(row)
     db.flush()
     return row
+
+
+def put_aside(
+    db: Session, clock: Clock, user: User, goal: Goal, cents: int, day: date, note: str = ''
+) -> GoalMove:
+    """Money saved from the goal's budget line: spent on the line and put into
+    the goal at once, so the budget counts it used and the goal keeps it out of
+    what is free. Without a line it is an ordinary move in."""
+    cat = maybe_owned(db, Category, goal.category_id, user)
+    if cat is None:
+        return move(db, clock, user, goal, cents, day, note)
+    spend = BudgetSpend(
+        user_id=user.id,
+        category_id=cat.id,
+        date=day,
+        amount_cents=cents,
+        note=(note.strip() or f'Into {goal.name}')[:120],
+        created_at=utcnow_naive(clock),
+    )
+    db.add(spend)
+    db.flush()
+    row = move(db, clock, user, goal, cents, day, note or f'From {cat.name} budget')
+    row.spend_id = spend.id
+    db.flush()
+    return row
+
+
+def remove_move(db: Session, user: User, row: GoalMove) -> None:
+    """Remove a goal move and the budget spend recorded with it."""
+    spend = maybe_owned(db, BudgetSpend, row.spend_id, user)
+    db.delete(row)
+    if spend is not None:
+        db.delete(spend)
+    db.flush()
+
+
+def remove_spend(db: Session, user: User, spend: BudgetSpend) -> None:
+    """Remove a budget spend and the goal move recorded with it."""
+    for row in db.execute(owned(GoalMove, user).where(GoalMove.spend_id == spend.id)).scalars():
+        db.delete(row)
+    db.delete(spend)
+    db.flush()
+
+
+def by_category(db: Session, user: User) -> dict[int, Goal]:
+    """Open goals saved from a budget line, by the line's category."""
+    out: dict[int, Goal] = {}
+    for g in goals(db, user):
+        if g.category_id is not None:
+            out.setdefault(g.category_id, g)
+    return out
 
 
 def set_held(

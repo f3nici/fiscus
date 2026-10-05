@@ -50,8 +50,8 @@ user's `data_version` (the forecast cache key).
 | recurring_transfers (owned) | from, to, amount, frequency, tax set-aside flag |
 | budgets (owned) | per category, the monthly amount allocated to it; this person's bills in it are paid out of it (D29), `use_in_forecast` (no longer read: every budget is used in the forecast), `cycle_months` (1, 3, 6 or 12; above 1 the line is saved up), `saved_since` and `saved_opening_cents` (where the saving starts) |
 | budget_spends (owned) | money taken off a category's budget by hand: category, date, amount (negative for a refund), note |
-| goals (owned) | name, the account it sits in (optional), target amount and date (both optional; with both it shows a monthly amount to put in), `keep_aside` (its money is not free to spend), `is_tax` (holds the tax money; one per person), archived (done) |
-| goal_moves (owned) | money put into (positive) or taken out of (negative) a goal by hand: date, amount, note. What a goal holds is the sum |
+| goals (owned) | name, the account it sits in (optional), target amount and date (both optional; with both it shows a monthly amount to put in), `keep_aside` (its money is not free to spend), `is_tax` (holds the tax money; one per person), the budget line (category) it is saved from (optional), archived (done) |
+| goal_moves (owned) | money put into (positive) or taken out of (negative) a goal by hand: date, amount, note, and the budget spend recorded with it when put aside from a budget line (removed together). What a goal holds is the sum |
 | tax_deductions (owned) | one total of deductions per person per financial year (`year` like "2026-27"), typed in on the tax page (D31) |
 | scenarios, scenario_adjustments (owned) | named what-ifs; adjustments are a kind plus JSON parameters |
 | forecast_cache | one row per user: key and serialised result |

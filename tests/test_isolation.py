@@ -312,6 +312,7 @@ WRITES: list[tuple[str, dict[str, Any]]] = [
     ('/goals/{goal}/done', {}),
     ('/goals/{goal}/delete', {}),
     ('/goals', {'name': 'x', 'account_id': '{account}'}),
+    ('/goals', {'name': 'x', 'category_id': '{category}'}),
     ('/square', {'account_id': '{account}', 'start_date': '2026-10-01'}),
     ('/square', {'fee_category_id': '{category}', 'start_date': '2026-10-01'}),
 ]

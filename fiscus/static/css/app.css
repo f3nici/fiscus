@@ -234,6 +234,8 @@ button.btn-link .title { color: #fff; }
 .w-money { width: 7.5rem; text-align: right; }
 .import-table input[list] { min-width: 13rem; }
 .budget-import select.input { min-width: 11rem; }
+.put-aside .input { max-width: 8rem; min-height: 34px; padding: 5px 10px; }
+.put-aside .btn { white-space: nowrap; }
 .budget-import .in-file { white-space: nowrap; }
 .budget-import .in-file .pill { display: flex; width: max-content; margin-top: 4px; }
 @media (max-width: 699px) {

@@ -272,8 +272,17 @@ def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any
     page.wait_for_selector('h1 .pill:has-text("Tax")')
     page.goto(f'{base}/tax')
     assert 'in your Japan trip goal' in page.inner_text('main')
+    # Saved from a budget line: Put aside spends it and fills the goal at once.
+    page.go_back()
+    page.select_option('#category_id', label='Car rego')
+    page.click('form[action^="/goals/"]:has(#holds) button[type=submit]')
+    page.wait_for_selector('h1 .pill:has-text("Tax")')
+    page.goto(f'{base}/budget')
+    page.fill('.put-aside input[name=amount]', '50')
+    page.click('.put-aside button[type=submit]')
+    page.wait_for_selector('main li:has-text("Into Japan trip")')
     page.goto(f'{base}/accounts')
-    assert 'Unallocated $2,300.00' in page.inner_text('main table')
+    assert 'Unallocated $2,250.00' in page.inner_text('main table')
 
     # Narrow screen: the calendar opens on the agenda.
     page.goto(f'{base}/calendar')
