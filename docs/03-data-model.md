@@ -28,7 +28,8 @@ user's `data_version` (the forecast cache key).
 | transactions (owned) | date, signed amount, description, category, import, `dedup_hash` unique per account |
 | imports (owned) | file name, status (`pending`, `committed`, `undone`), counts, staged file path |
 | import_mappings (owned) | one column mapping per account, for non-ANZ files; a PDF statement's mapping sits under its `pdf` key |
-| categories (owned) | name unique per user; income, business, deductible, transfer flags |
+| categories (owned) | name unique per user; income, business, deductible, transfer flags; the budget group its line sits in and its place there (0 until moved) |
+| budget_groups (owned) | a heading on the budget page: name, position |
 | rules (owned) | pattern, regex flag, category, priority |
 
 ## Bills

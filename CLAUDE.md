@@ -9,7 +9,7 @@ accounts and ANZ/mapped CSV import with dedup and undo; categories, rules and
 recategorising; bills with shares, matching and states; pay schedules and
 payslips; the calendar; home loan and offset; forecasting with scenarios;
 the budget (bills paid out of it); bill import; the tax estimate; the dashboard; ntfy reminders;
-backups; PDF statement import; payslip PDFs, single or in bulk, recording schedule paydays; casual pay; Square sync; savings goals inside accounts, out of the budget, one of them the tax money, any of them saved from a budget line (D32 to D34). Since D25 the budget is
+backups; PDF statement import; payslip PDFs, single or in bulk, recording schedule paydays; casual pay; Square sync; savings goals inside accounts, out of the budget, one of them the tax money, any of them saved from a budget line (D32 to D34); budget lines in groups and in an order set by hand (D35). Since D25 the budget is
 kept by hand (spending taken off, balances typed in) and transactions, import,
 rules and Square are hidden from the menus but not removed. Next steps are in `docs/10-decisions.md` §3.
 

@@ -96,8 +96,45 @@
               <td><a class="text-sm" href="/loans/{{ x.loan.id }}">Loan</a></td>
             </tr>
           {% endfor %}
-          {% for r in rows %}
-            <tr>
+          {% for sec in sections %}
+          {% if sec.group or groups %}
+            <tr class="group-head" id="{{ 'group-%d' % sec.group.id if sec.group else 'group-none' }}">
+              <th>{{ sec.group.name if sec.group else 'Not in a group' }}</th>
+              <th class="num">{{ sec.remaining_cents | money }}</th>
+              <th class="num">{{ sec.spent_cents | money }}</th>
+              <th class="num">{{ sec.budget_cents | money }}</th>
+              <th>
+                {% if sec.group %}
+                  <div class="row order-btns">
+                    {% for dir, arrow in (('up', '↑'), ('down', '↓')) %}
+                      <form class="inline" method="post" action="/budget/groups/{{ sec.group.id }}/move">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <input type="hidden" name="back" value="{{ back }}">
+                        <input type="hidden" name="direction" value="{{ dir }}">
+                        <button class="btn btn-sm" type="submit" aria-label="Move {{ sec.group.name }} {{ dir }}">{{ arrow }}</button>
+                      </form>
+                    {% endfor %}
+                  </div>
+                  <details>
+                    <summary class="text-sm">Group</summary>
+                    <form method="post" action="/budget/groups/{{ sec.group.id }}" class="mt-sm">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                      <input type="hidden" name="back" value="{{ back }}">
+                      <input class="input" name="name" maxlength="80" required value="{{ sec.group.name }}" aria-label="Name of {{ sec.group.name }}">
+                      <button class="btn btn-sm btn-primary mt-sm" type="submit">Rename</button>
+                    </form>
+                    <form method="post" action="/budget/groups/{{ sec.group.id }}/delete" class="mt-sm" data-confirm="Remove the group {{ sec.group.name }}? Its lines stay in the budget.">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                      <input type="hidden" name="back" value="{{ back }}">
+                      <button class="btn btn-sm btn-danger" type="submit">Remove group</button>
+                    </form>
+                  </details>
+                {% endif %}
+              </th>
+            </tr>
+          {% endif %}
+          {% for r in sec.rows %}
+            <tr id="line-{{ r.category.id }}">
               <td>
                 {{ r.category.name }}{% if r.category.is_income %} <span class="pill pill-ok">Income</span>{% endif %}
                 {% if r.has_budget and not r.saving %}<meter min="0" max="{{ r.budget_cents }}" low="{{ (r.budget_cents * 0.9) | int }}" high="{{ r.budget_cents }}" optimum="0" value="{{ [r.actual_cents, r.budget_cents] | min }}">{{ r.pct }}%</meter>{% endif %}
@@ -130,6 +167,18 @@
                 {% if r.saving %}<div class="text-xs muted">a month</div>{% endif %}
               </td>
               <td>
+                {% if r.has_budget %}
+                  <div class="row order-btns">
+                    {% for dir, arrow in (('up', '↑'), ('down', '↓')) %}
+                      <form class="inline" method="post" action="/budget/{{ r.category.id }}/move">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <input type="hidden" name="back" value="{{ back }}">
+                        <input type="hidden" name="direction" value="{{ dir }}">
+                        <button class="btn btn-sm" type="submit" aria-label="Move {{ r.category.name }} {{ dir }}">{{ arrow }}</button>
+                      </form>
+                    {% endfor %}
+                  </div>
+                {% endif %}
                 <details>
                   <summary class="text-sm">{{ 'Edit' if r.has_budget else 'Set' }}</summary>
                   <form method="post" action="/budget" class="mt-sm">
@@ -145,6 +194,12 @@
                       <input class="input mt-sm" name="saved" inputmode="decimal" placeholder="Saved so far (optional)" aria-label="Saved so far for {{ r.category.name }}">
                       {% if bill_cycles.get(r.category.id, 1) > 1 and r.cycle_months == 1 %}<p class="text-xs muted mt-sm">Some of its bills are not monthly. Choose how often, and their monthly share is saved up so paying one does not put a month over.</p>{% endif %}
                     {% endif %}
+                    {% if groups %}
+                      <select class="input mt-sm" name="group_id" aria-label="Group for {{ r.category.name }}">
+                        <option value="0">No group</option>
+                        {% for gr in groups %}<option value="{{ gr.id }}" {{ 'selected' if r.category.budget_group_id == gr.id else '' }}>{{ gr.name }}</option>{% endfor %}
+                      </select>
+                    {% endif %}
                     {% if r.bills_cents %}<p class="text-xs muted mt-sm">Bills here come to {{ r.bills_cents | money }} a month and are paid out of this.</p>{% endif %}
                     <button class="btn btn-sm btn-primary mt-sm" type="submit">Save</button>
                   </form>
@@ -159,7 +214,9 @@
               </td>
             </tr>
           {% else %}
-            {% if not loan_lines %}<tr><td colspan="5" class="muted">No budget lines yet. Add one below.</td></tr>{% endif %}
+            {% if sec.group %}<tr><td colspan="5" class="muted text-sm">Nothing in it yet.</td></tr>
+            {% elif not loan_lines and not groups %}<tr><td colspan="5" class="muted">No budget lines yet. Add one below.</td></tr>{% endif %}
+          {% endfor %}
           {% endfor %}
         </tbody>
       </table>
@@ -195,9 +252,27 @@
         <label class="label" for="add_saved">Saved so far (optional)</label>
         <input class="input" id="add_saved" name="saved" inputmode="decimal" placeholder="For a yearly or quarterly cost">
       </div>
+      {% if groups %}
+        <div class="field">
+          <label class="label" for="add_group">Group</label>
+          <select class="input" id="add_group" name="group_id">
+            <option value="0">No group</option>
+            {% for gr in groups %}<option value="{{ gr.id }}">{{ gr.name }}</option>{% endfor %}
+          </select>
+        </div>
+      {% endif %}
     </div>
     <button class="btn btn-primary" type="submit">Add budget line</button>
     <p class="muted text-xs mt">For something paid every few months or once a year (rego, insurance), choose how often. Its monthly share is saved up and what you spend comes out of that, so the month you pay it is not over budget.</p>
+  </form>
+
+  <form class="card mt row" method="post" action="/budget/groups">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="back" value="{{ back }}">
+    <label class="label grow" for="group_name">Add a group</label>
+    <input class="input w-group" id="group_name" name="name" required maxlength="80" placeholder="Bills, Living, Fun...">
+    <button class="btn" type="submit">Add group</button>
+    <p class="muted text-xs w-full">Groups put budget lines under headings with their own totals. Choose a line's group when you edit it, and use the arrows to put lines and groups in order.</p>
   </form>
 
   <div class="card mt">

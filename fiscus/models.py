@@ -299,6 +299,23 @@ class Category(Base, Owned):
     is_income: Mapped[bool] = mapped_column(Boolean, default=False)
     # Moves between the user's own accounts: never spending, never income.
     is_transfer: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Where its line sits on the budget page: a group, and its place in it
+    # (0 until moved by hand, then ordered before the budget-size fallback).
+    budget_group_id: Mapped[int | None] = mapped_column(
+        ForeignKey('budget_groups.id', ondelete='SET NULL'), nullable=True
+    )
+    budget_position: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class BudgetGroup(Base, Owned):
+    """A heading on the budget page that budget lines are grouped under."""
+
+    __tablename__ = 'budget_groups'
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    position: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class Transaction(Base, Owned):
