@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from fiscus.domain import tax
 from fiscus.models import Account, Payslip, TaxDeduction, User
+from fiscus.money import round_div
 from fiscus.services import ledger, pay
 from fiscus.services.access import owned
 
@@ -24,9 +25,21 @@ class TaxView:
     days_in_year: int
 
     @property
+    def year_end_set_aside_cents(self) -> int:
+        """Projected tax still to pay at 30 June, beyond what withholding covers."""
+        return max(0, self.projected.owing_cents)
+
+    @property
     def should_set_aside_cents(self) -> int:
-        """Tax owing on the year so far, beyond what salary withholding covered."""
-        return max(0, self.ytd.owing_cents)
+        """The year-end amount saved evenly over the year, as far as today."""
+        return round_div(self.year_end_set_aside_cents * self.days_elapsed, self.days_in_year)
+
+    @property
+    def left_to_save_per_week_cents(self) -> int:
+        """What still has to go in each week to reach the year-end amount by 30 June."""
+        weeks = max(1, (self.days_in_year - self.days_elapsed + 6) // 7)
+        short = self.year_end_set_aside_cents - self.set_aside_actual_cents
+        return max(0, round_div(short, weeks))
 
     @property
     def set_aside_gap_cents(self) -> int:

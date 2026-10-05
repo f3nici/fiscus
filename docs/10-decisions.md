@@ -42,7 +42,7 @@
 
 | D30 | Quarterly pay is spread over the budget months | In the budget, a quarterly schedule counts its expected net x 4 / 12 every budget month from its first payday's month, and its paydays and payslips are not counted again. The calendar, forecast and tax keep the real paydays. |
 
-| D31 | Tax is on income less a typed-in deductions total; no business lines and no LITO | Sole trader income comes in as pay, so the tax page shows income (payslips and expected pays) less one deductions figure per financial year that the person types in and updates. Business categories no longer feed it. The low income tax offset is left out: on a part year it showed an offset the full year would not get. |
+| D31 | Tax is on income less a typed-in deductions total; no business lines and no LITO | Sole trader income comes in as pay, so the tax page shows income (payslips and expected pays) less one deductions figure per financial year that the person types in and updates. Business categories no longer feed it. The low income tax offset is left out: on a part year it showed an offset the full year would not get. The set-aside target is the projected amount owing at 30 June, saved evenly: the share of it due by today, and what a week is still needed to reach it. |
 
 ## 2. Assumptions
 

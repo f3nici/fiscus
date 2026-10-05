@@ -908,6 +908,26 @@ def test_tax_page_estimates_and_set_aside(env: Env) -> None:
     assert 'That covers it' in page
 
 
+def test_set_aside_targets_the_projected_year_end() -> None:
+    from fiscus.domain import tax
+
+    fy = tax.load_year('2026-27')
+    est = tax.estimate(fy, 100_000_00)
+    # 7,300 still to pay at 30 June beyond withholding.
+    projected = tax.position(fy, 100_000_00, est.total_cents - 7_300_00, 0)
+    ytd = tax.position(fy, 25_000_00, 5_000_00, 0)
+    v = taxes.TaxView(fy, ytd, projected, 1_000_00, 73, 365)
+    assert v.year_end_set_aside_cents == 7_300_00
+    assert v.should_set_aside_cents == 1_460_00  # 73 of 365 days
+    assert v.set_aside_gap_cents == -460_00
+    # 6,300 left over 42 weeks.
+    assert v.left_to_save_per_week_cents == 150_00
+    # A refund needs nothing put away.
+    refund = tax.position(fy, 100_000_00, est.total_cents + 1_00, 0)
+    v = taxes.TaxView(fy, ytd, refund, 0, 73, 365)
+    assert v.should_set_aside_cents == 0 and v.left_to_save_per_week_cents == 0
+
+
 def test_tax_deductions_are_saved_and_come_off_income(env: Env) -> None:
     a = env.login(env.user('alex'))
     b = env.login(env.user('blake'))
