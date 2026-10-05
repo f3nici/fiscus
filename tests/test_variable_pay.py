@@ -7,7 +7,7 @@ from datetime import date
 from sqlalchemy import select
 
 from fiscus.domain.pay import expected_pay
-from fiscus.models import PaySchedule, Transaction
+from fiscus.models import PaySchedule
 from fiscus.services import forecasting
 from tests.conftest import CsrfClient, Env
 from tests.test_imports_bills import import_csv, make_account
@@ -78,10 +78,13 @@ def test_forecast_uses_the_average_of_imported_pays(env: Env) -> None:
     assert '~$375.00' in page and 'recent average' in page
 
 
-def test_varying_pay_needs_match_text(env: Env) -> None:
+def test_varying_pay_without_match_text_expects_the_typical_pay(env: Env) -> None:
     a = env.login(env.user('alice'))
     acct = make_account(a)
     _casual(a, acct, match_text='  ')
     with env.db() as db:
-        assert db.execute(select(PaySchedule)).first() is None
-        assert db.execute(select(Transaction)).first() is None
+        ps = db.execute(select(PaySchedule)).scalar_one()
+        assert ps.varies and ps.match_text == ''
+    page = a.get('/pay').text
+    assert 'ps-match' not in page
+    assert '~$450.00' in page and 'your typical pay' in page

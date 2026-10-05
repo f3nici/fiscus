@@ -28,7 +28,7 @@ Rate limited: everything under `/auth/` and `/setup/`, by IP and by username.
 | Transactions | `/transactions`, `POST /transactions`, `POST /transactions/{id}/category`, `/delete`, `/transactions/export.csv` |
 | Categories and rules | `/categories`, `POST /categories[/{id}]`, `/delete`, `POST /rules[/{id}]`, `/delete`, `POST /rules/rerun`, `/recategorise`, `POST /recategorise/bulk` |
 | Bills | `/bills`, `/bills/new`, `/bills/{id}`, `/edit`, `POST /bills[/{id}]`, `/delete`, `/my-share`, `POST /bills/rematch`, `/bills/{id}/occurrence/{date}`, `POST .../paid`, `POST .../unpaid` |
-| Pay | `/pay`, `POST /pay/schedules[/{id}]`, `/delete`, `POST /payslips`, `/payslips/{id}/delete` |
+| Pay | `/pay`, `POST /pay/schedules[/{id}]`, `/delete`, `/pay?slip={id}` and `/pay?payday={schedule}:{date}` (the payslip form), `POST /payslips[/{id}]`, `POST /payslips/read` (PDFs fill the form or the review list), `POST /payslips/bulk`, `POST /pay/schedules/{id}/no-pay`, `/payslips/{id}/delete` |
 | Calendar | `/calendar?view=month\|week\|day\|agenda&date=` (HTMX partial when `HX-Target: cal`) |
 | Loans | `/loans`, `/loans/new`, `/loans/{id}`, `/edit`, `POST /loans[/{id}]`, `/rates`, `/rates/{id}/delete`, `/offsets`, `/offsets/{account}/unlink`, `/delete` |
 | Forecast | `/forecast?months=&scenario_id=`, `POST /transfers`, `/transfers/{id}/delete`, `/scenarios`, `POST /scenarios`, `/scenarios/{id}`, `/delete`, `/adjustments`, `/adjustments/{id}/delete` |

@@ -12,13 +12,13 @@ that falls due in the period. The budget month starts on the day they choose.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from fiscus.domain import recurrence
-from fiscus.models import Budget, BudgetSpend, Category, Payslip, User
+from fiscus.models import Budget, BudgetSpend, Category, User
 from fiscus.services import bills, ledger, pay
 from fiscus.services.access import owned
 from fiscus.services.users import settings_for
@@ -212,24 +212,14 @@ def rows(db: Session, user: User, start: date, end: date, today: date) -> list[B
 
 
 def expected_pay(db: Session, user: User, start: date, end: date, today: date) -> int:
-    """Net pay due in the period: every pay schedule's paydays, and payslips still to come."""
-    total = 0
-    for ps, net in pay.schedules(db, user, today):
-        for _d in recurrence.occurrences(
-            ps.anchor_date, ps.frequency, start, end, until=ps.end_date
-        ):
-            total += net
-    # A payslip dated after today is a one-off pay still to come, as in the forecast.
-    first = max(start, today + timedelta(days=1))
-    total += int(
-        db.scalar(
-            select(func.coalesce(func.sum(Payslip.net_cents), 0)).where(
-                Payslip.user_id == user.id, Payslip.date >= first, Payslip.date <= end
-            )
-        )
-        or 0
+    """Net pay in the period: every payday (its payslip's net once recorded), and
+    one-off payslips still to come. Past one-offs are left out: before paydays
+    were recorded, a past payslip was usually a regular pay already counted."""
+    return sum(
+        i.net_cents
+        for i in pay.items(db, user, start, end, today)
+        if i.schedule is not None or i.when > today
     )
-    return total
 
 
 def summary(rs: list[BudgetRow], pay_cents: int) -> Summary:

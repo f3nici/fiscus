@@ -220,6 +220,8 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-
 .mt { margin-top: 16px; }
 .mt-sm { margin-top: 8px; }
 .mb-0 { margin-bottom: 0; }
+.mb { margin-bottom: 16px; }
+.nowrap { white-space: nowrap; }
 .center { text-align: center; }
 .recat-row form { grid-column: 2; }
 button.btn-link { font: inherit; color: inherit; text-align: left; cursor: pointer; display: block; }

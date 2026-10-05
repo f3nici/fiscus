@@ -23,6 +23,8 @@ import uvicorn
 from fiscus.app import create_app
 from fiscus.services import auth as auth_service
 from tests.conftest import settings_for
+from tests.test_paydays import simple_slip
+from tests.test_payslip_pdf import payslip_pdf
 from tests.test_pdf_import import statement
 
 pytestmark = pytest.mark.browser
@@ -156,10 +158,43 @@ def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any
     page.goto(f'{base}/pay')
     page.check('input[name=varies]')
     page.fill('#ps-net', '450')
-    page.fill('#ps-match', 'CAFE CO')
     page.click('form[action="/pay/schedules"] button[type=submit]')
     page.wait_for_url(f'{base}/pay')
     assert 'varies' in page.content()
+    page.wait_for_selector('ul.list .title:has-text("Salary")')
+    # A payslip PDF fills in the payslip form, then it is added.
+    page.set_input_files(
+        '#slip-file',
+        files=[{'name': 'slip.pdf', 'mimeType': 'application/pdf', 'buffer': payslip_pdf()}],
+    )
+    page.click('#slip-read button[type=submit]')
+    page.wait_for_selector('#slip-read-note')
+    assert page.input_value('#slip-gross') == '803.85'
+    assert page.input_value('#slip-net') == '618.85'
+    page.click('#slip-form button[type=submit]')
+    page.wait_for_url(f'{base}/pay')
+    page.wait_for_selector('[data-flash]:has-text("Payslip saved")', state='attached')
+    # Today's payday asks for its payslip; several PDFs go through a review.
+    page.wait_for_selector('#put-in')
+    page.set_input_files(
+        '#slip-file',
+        files=[
+            {
+                'name': f'{day}.pdf',
+                'mimeType': 'application/pdf',
+                'buffer': simple_slip(f'{day}/09/2026', '650.00', '150.00', '500.00'),
+            }
+            for day in ('10', '17')
+        ],
+    )
+    page.click('#slip-read button[type=submit]')
+    page.wait_for_selector('#bulk-form')
+    page.uncheck('#bulk-form input[name=include] >> nth=1')
+    page.click('#bulk-form button[type=submit]')
+    page.wait_for_url(f'{base}/pay')
+    page.wait_for_selector('[data-flash]:has-text("1 payslip saved")', state='attached')
+    page.click('#put-in form[action$="/no-pay"] button')
+    page.wait_for_selector('td:has-text("no pay")')
 
     # The weekly routine: a budget line, money taken off it, balances typed in.
     page.goto(f'{base}/budget')

@@ -8,6 +8,7 @@ through `services.access.owned` so that column is always in the WHERE clause.
 
 from __future__ import annotations
 
+import datetime as dt
 from datetime import date, datetime
 from typing import Any
 
@@ -426,6 +427,8 @@ class PaySchedule(Base, Owned):
 
 class Payslip(Base, Owned):
     __tablename__ = 'payslips'
+    # One payslip per payday of a schedule. Unlinked payslips are one-offs.
+    __table_args__ = (UniqueConstraint('schedule_id', 'payday'),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'), index=True)
@@ -438,6 +441,12 @@ class Payslip(Base, Owned):
     account_id: Mapped[int | None] = mapped_column(
         ForeignKey('accounts.id', ondelete='SET NULL'), nullable=True
     )
+    # The schedule payday this payslip records; it then stands in for that
+    # payday's expected pay. Both null for a one-off (bonus, back pay).
+    schedule_id: Mapped[int | None] = mapped_column(
+        ForeignKey('pay_schedules.id', ondelete='SET NULL'), nullable=True, index=True
+    )
+    payday: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
 
 
 # ------------------------------------------------------------------------ loans

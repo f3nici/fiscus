@@ -19,6 +19,13 @@
     </div>
   {% endif %}
 
+  {% if put_in %}
+    <div class="alert alert-info" id="put-in-note">
+      {{ put_in | length }} payslip{{ '' if put_in | length == 1 else 's' }} to put in, the latest for {{ put_in[0].name }} on {{ put_in[0].payday | d('dm') }}.
+      <a href="/pay#put-in">Put {{ 'it' if put_in | length == 1 else 'them' }} in</a>.
+    </div>
+  {% endif %}
+
   {% if forecast.low_balance %}
     <div class="alert alert-warn">
       Low balance ahead: <strong>{{ forecast.low_balance.account }}</strong> is projected to reach

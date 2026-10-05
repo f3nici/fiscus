@@ -1,0 +1,10 @@
+{% macro payday_select(id, options, selected, schedules, name='payday') -%}
+  <select class="input" id="{{ id }}" name="{{ name }}">
+    <option value="auto" {{ 'selected' if selected == 'auto' else '' }}>Match to a payday by date</option>
+    <option value="" {{ 'selected' if selected == '' else '' }}>One-off payment (bonus, back pay)</option>
+    {% for o in options %}
+      <option value="{{ o.key }}" {{ 'selected' if selected == o.key else '' }}>{{ o.name }}, {{ o.payday.strftime('%a') }} {{ o.payday | d }}</option>
+    {% endfor %}
+  </select>
+  {% if not schedules %}<small>Add a pay schedule and its paydays show here.</small>{% endif %}
+{%- endmacro %}

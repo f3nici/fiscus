@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from fiscus.domain.tax import TaxConfigError
 from fiscus.models import Loan, User
-from fiscus.services import budgeting, calendar_events, forecasting, ledger, loans, taxes
+from fiscus.services import budgeting, calendar_events, forecasting, ledger, loans, pay, taxes
 from fiscus.services.access import owned
 from fiscus.web import ctx, current_user, get_db, render
 
@@ -58,6 +58,7 @@ def dashboard(
     loan_rows = [
         loans.summarise(db, user, loan, today) for loan in db.execute(owned(Loan, user)).scalars()
     ]
+    put_in = pay.to_put_in(db, user, today)
     has_any = bool(accts) or bool(
         db.execute(select(Loan.id).where(Loan.user_id == user.id)).first()
     )
@@ -66,6 +67,7 @@ def dashboard(
         'dashboard.html',
         {
             'accounts': accts,
+            'put_in': put_in,
             'balances': bal,
             'total': sum(bal.get(a.id, 0) for a in accts),
             'spending': [r for r in rows if r.has_budget and not r.category.is_income][:8],

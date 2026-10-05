@@ -33,7 +33,8 @@ anchor. A bill's "next due" is its anchor.
 `domain/forecast.run(ForecastInput) -> ForecastResult` is pure. Day 0 is
 today with real balances. Each later day applies:
 
-1. flows: pay (net, from schedules and from payslips dated after today),
+1. flows: pay (net, from `services/pay.items`: each schedule payday, or the
+   payslip recording it on that payslip's date, and one-off payslips),
    bills at this person's share, planned transfers (both
    legs), scenario one-offs. Unpaid bills overdue within the last two months
    are assumed to go out tomorrow;

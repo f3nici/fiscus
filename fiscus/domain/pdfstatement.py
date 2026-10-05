@@ -109,7 +109,7 @@ def is_pdf(data: bytes) -> bool:
 # ---------------------------------------------------------------- extraction
 
 
-def extract_chars(data: bytes) -> list[list[Char]]:
+def extract_chars(data: bytes, max_pages: int = MAX_PAGES) -> list[list[Char]]:
     """Every visible character, page by page."""
     from pdfminer.high_level import extract_pages
     from pdfminer.layout import LTChar
@@ -128,7 +128,7 @@ def extract_chars(data: bytes) -> list[list[Char]]:
 
     pages: list[list[Char]] = []
     try:
-        for page in extract_pages(io.BytesIO(data), maxpages=MAX_PAGES, laparams=None):
+        for page in extract_pages(io.BytesIO(data), maxpages=max_pages, laparams=None):
             chars = [
                 Char(c.get_text(), c.x0, c.x1, round(c.y0, 1), c.size or 1.0)
                 for c in walk(page)
