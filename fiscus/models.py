@@ -555,13 +555,15 @@ class Goal(Base, Owned):
     account_id: Mapped[int | None] = mapped_column(
         ForeignKey('accounts.id', ondelete='SET NULL'), nullable=True
     )
-    # Both optional: a goal without them is a bucket with no budget line.
+    # Both optional: a goal without them is a bucket with no end.
     target_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
     target_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     # Its money is not free to spend: the budget leaves it out of the accounts.
     keep_aside: Mapped[bool] = mapped_column(Boolean, default=True)
-    # Done: kept for its history, no longer holding money or in the budget.
+    # Done: kept for its history, no longer holding money aside.
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Holds the person's tax money: counted as set aside for tax. One per person.
+    is_tax: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime)
 
     moves: Mapped[list[GoalMove]] = relationship(

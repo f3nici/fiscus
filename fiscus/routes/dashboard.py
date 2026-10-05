@@ -59,14 +59,11 @@ def dashboard(
     start, end = budgeting.period(db, user, today)
     rows = budgeting.rows(db, user, start, end, today)
     loan_lines = loans.budget_lines(db, user, start, end, today)
-    goal_lines = goals.budget_lines(db, user, start, end)
     summary = budgeting.summary(
         rows,
         budgeting.expected_pay(db, user, start, end, today),
         loan_cents=sum(x.budget_cents for x in loan_lines),
         loan_paid_cents=sum(x.paid_cents for x in loan_lines),
-        goal_cents=sum(x.budget_cents for x in goal_lines),
-        goal_paid_cents=sum(x.paid_cents for x in goal_lines),
     )
     base = forecasting.base(db, c.clock, user, 3)
     try:

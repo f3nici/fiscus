@@ -341,21 +341,18 @@ def summary(
     *,
     loan_cents: int = 0,
     loan_paid_cents: int = 0,
-    goal_cents: int = 0,
-    goal_paid_cents: int = 0,
 ) -> Summary:
     """Totals for the month. Home loan repayments (`loans.budget_lines`) are
-    always budgeted, and spent as each one falls due. A goal's monthly share
-    (`goals.budget_lines`) is budgeted and counts as spent as it goes in."""
+    always budgeted, and spent as each one falls due. Goals are not budgeted:
+    what they hold only comes off the money free in accounts."""
     spend = [r for r in rs if not r.category.is_income]
     income = sum(r.budget_cents for r in rs if r.category.is_income)
     return Summary(
         expected_cents=pay_cents + income,
         pay_cents=pay_cents,
-        budget_cents=sum(r.budget_cents for r in spend) + loan_cents + goal_cents,
-        spent_cents=sum(r.actual_cents for r in spend) + loan_paid_cents + goal_paid_cents,
+        budget_cents=sum(r.budget_cents for r in spend) + loan_cents,
+        spent_cents=sum(r.actual_cents for r in spend) + loan_paid_cents,
         to_spend_cents=sum(max(0, r.remaining_cents) for r in spend if r.has_budget)
-        + max(0, loan_cents - loan_paid_cents)
-        + max(0, goal_cents - goal_paid_cents),
+        + max(0, loan_cents - loan_paid_cents),
         over=sum(1 for r in spend if r.state == 'over'),
     )

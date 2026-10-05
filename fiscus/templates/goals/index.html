@@ -5,13 +5,13 @@
     <h1>Goals</h1>
     <a class="btn btn-primary" href="#new-goal" hx-boost="false">Add a goal</a>
   </div>
-  <p class="muted text-sm">Money set aside inside your accounts for something: a trip, an emergency fund, a new car. It stays in the account (an offset keeps saving you interest) but is not counted as free to spend. A goal with a target and a date gets a line in your budget each month.</p>
+  <p class="muted text-sm">Money set aside inside your accounts for something: a trip, an emergency fund, a new car. It stays in the account (an offset keeps saving you interest) but is not counted as free to spend. Goals are not in the budget: what they hold only comes off what is free in your accounts.</p>
 
   <div class="grid grid-2 mt">
     {% for v in views %}
       <a class="card goal-card" href="/goals/{{ v.goal.id }}">
         <div class="row between">
-          <h2 class="mb-0">{{ v.goal.name }}</h2>
+          <h2 class="mb-0">{{ v.goal.name }}{% if v.goal.is_tax %} <span class="pill">Tax</span>{% endif %}</h2>
           {% include "goals/_status.html" %}
         </div>
         <div class="stat mt-sm">
@@ -56,9 +56,10 @@
       </div>
       <div class="full">
         <label class="check"><input type="checkbox" name="keep_aside" value="true" checked> Keep this money out of what is free to spend</label>
+        <label class="check"><input type="checkbox" name="is_tax" value="true"> This is my tax money (counted on the <a href="/tax">Tax</a> page)</label>
       </div>
     </div>
     <button class="btn btn-primary" type="submit">Add goal</button>
-    <p class="muted text-xs mt">Leave the target and date blank for a bucket with no end, like general savings. With both, the budget works out how much to put in each month to get there.</p>
+    <p class="muted text-xs mt">Leave the target and date blank for a bucket with no end, like general savings. With both, the goal shows how much to put in each month to get there.</p>
   </form>
 {% endblock %}

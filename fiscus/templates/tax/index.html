@@ -13,10 +13,10 @@
   {% set gap = v.set_aside_gap_cents %}
   <div class="card {{ 'alert-error' if gap < 0 else 'alert-ok' }}">
     <h2>Set aside</h2>
-    <p>To have nothing to pay when you lodge, you need about <strong>{{ v.year_end_set_aside_cents | money }}</strong> saved by 30 June, from the projection below. Saved evenly, that is <strong>{{ v.should_set_aside_cents | money }}</strong> by today. You have <strong>{{ v.set_aside_actual_cents | money }}</strong> in your tax set-aside accounts.</p>
+    <p>To have nothing to pay when you lodge, you need about <strong>{{ v.year_end_set_aside_cents | money }}</strong> saved by 30 June, from the projection below. Saved evenly, that is <strong>{{ v.should_set_aside_cents | money }}</strong> by today. You have <strong>{{ v.set_aside_actual_cents | money }}</strong> set aside for tax{% if v.goal %} ({{ v.goal_cents | money }} of it in your <a href="/goals/{{ v.goal.id }}">{{ v.goal.name }}</a> goal){% endif %}.</p>
     <p class="mb-0">{% if gap < 0 %}That is <strong>{{ (-gap) | money }} short</strong> today.{% else %}That covers it, with {{ gap | money }} to spare.{% endif %}
       {% if v.left_to_save_per_week_cents %}Putting away about <strong>{{ v.left_to_save_per_week_cents | money }} a week</strong> gets you there by 30 June.{% endif %}
-      {% if not v.set_aside_actual_cents %}Mark an account as your tax set-aside on the <a href="/accounts">Accounts</a> page.{% endif %}</p>
+      {% if not v.set_aside_actual_cents and not v.goal %}Mark a <a href="/goals">goal</a> as your tax money, or an account as your tax set-aside on the <a href="/accounts">Accounts</a> page.{% endif %}</p>
   </div>
 
   <form class="card mt row" method="post" action="/tax/deductions">
