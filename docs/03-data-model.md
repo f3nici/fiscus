@@ -48,7 +48,7 @@ user's `data_version` (the forecast cache key).
 | loans (owned) | principal, start, term, repayment frequency, current balance and its date, optional repayment override, repayment account |
 | loan_rates (owned) | rate from an effective date; the history |
 | recurring_transfers (owned) | from, to, amount, frequency, tax set-aside flag |
-| budgets (owned) | per category, the monthly amount set aside on top of this person's bills in it (the budget shown is the bills' monthly equivalent plus this), `use_in_forecast` (no longer read: every budget is used in the forecast) |
+| budgets (owned) | per category, the monthly amount set aside on top of this person's bills in it (the budget shown is the bills' monthly equivalent plus this), `use_in_forecast` (no longer read: every budget is used in the forecast), `cycle_months` (1, 3, 6 or 12; above 1 the line is saved up), `saved_since` and `saved_opening_cents` (where the saving starts) |
 | budget_spends (owned) | money taken off a category's budget by hand: category, date, amount (negative for a refund), note |
 | scenarios, scenario_adjustments (owned) | named what-ifs; adjustments are a kind plus JSON parameters |
 | forecast_cache | one row per user: key and serialised result |
