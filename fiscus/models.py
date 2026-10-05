@@ -31,7 +31,7 @@ from fiscus.db import Base
 
 ACCOUNT_TYPES = ('transaction', 'offset', 'savings', 'credit_card')
 FREQUENCIES = ('weekly', 'fortnightly', 'monthly', 'quarterly', 'yearly', 'one_off')
-PAY_FREQUENCIES = ('weekly', 'fortnightly', 'monthly')
+PAY_FREQUENCIES = ('weekly', 'fortnightly', 'monthly', 'quarterly')
 SPLIT_MODES = ('equal', 'percent', 'fixed')
 
 

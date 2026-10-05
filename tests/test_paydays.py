@@ -449,3 +449,45 @@ def test_another_persons_payslip_and_payday_are_out_of_reach(env: Env) -> None:
     )
     assert resp.status_code == 404
     assert len(slips(env)) == 1
+
+
+def test_a_quarterly_pay_lands_in_the_month_it_is_paid(env: Env) -> None:
+    alex = env.user('alex')
+    a = env.login(alex)
+    acct = make_account(a)
+    resp = a.post(
+        '/pay/schedules',
+        data={
+            'name': 'Bonus',
+            'frequency': 'quarterly',
+            'anchor_date': '2026-07-15',
+            'net': '3000',
+            'account_id': str(acct),
+        },
+    )
+    assert resp.status_code == 303
+    assert '<option value="quarterly"' in a.get('/pay').text
+    with env.db() as db:
+        user = db.get(User, alex.id)
+        assert user is not None
+        months = {}
+        for m in (10, 11, 12):
+            start, end = budgeting.period_starting_in(db, user, date(2026, m, 1))
+            months[m] = budgeting.expected_pay(db, user, start, end, TODAY)
+        paydays = [i.when for i in pay.items(db, user, date(2026, 10, 1), date(2027, 6, 30), TODAY)]
+    assert months == {10: 3000_00, 11: 0, 12: 0}
+    assert paydays == [date(2026, 10, 15), date(2027, 1, 15), date(2027, 4, 15)]
+
+
+def test_a_varying_quarterly_pay_averages_over_a_year() -> None:
+    from fiscus.domain.pay import expected_pay
+
+    deposits = [
+        (date(2025, 10, 15), 2000_00),
+        (date(2026, 1, 15), 4000_00),
+        (date(2026, 4, 15), 3000_00),
+        (date(2026, 7, 15), 3000_00),
+    ]
+    assert expected_pay(date(2025, 10, 15), 'quarterly', deposits, TODAY, 1_00) == 3000_00
+    # Weekly still looks back thirteen weeks only.
+    assert expected_pay(date(2026, 7, 15), 'weekly', deposits, TODAY, 1_00) == 3000_00 // 12

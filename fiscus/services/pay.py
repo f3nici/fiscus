@@ -15,17 +15,18 @@ from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from fiscus.domain import recurrence
-from fiscus.domain.pay import ASK_DAYS, LINK_DAYS, WINDOW_DAYS, OpenPayday, expected_pay
+from fiscus.domain.pay import ASK_DAYS, LINK_DAYS, OpenPayday, expected_pay, window_days
 from fiscus.models import PaySchedule, Payslip, Transaction, User
 from fiscus.services.access import owned
 
 
 def deposits(db: Session, user: User, ps: PaySchedule, today: date) -> list[tuple[date, int]]:
     """Recent pay for a varying schedule: its payslips, else deposits matching its text."""
+    since = today - timedelta(days=window_days(ps.frequency))
     slips = db.execute(
         owned(Payslip, user).where(
             Payslip.schedule_id == ps.id,
-            Payslip.date > today - timedelta(days=WINDOW_DAYS),
+            Payslip.date > since,
             Payslip.date <= today,
         )
     ).scalars()
@@ -37,7 +38,7 @@ def deposits(db: Session, user: User, ps: PaySchedule, today: date) -> list[tupl
         return []
     rows = db.execute(
         owned(Transaction, user).where(
-            Transaction.date > today - timedelta(days=WINDOW_DAYS),
+            Transaction.date > since,
             Transaction.date <= today,
             Transaction.amount_cents > 0,
             func.instr(func.lower(Transaction.description), needle) > 0,

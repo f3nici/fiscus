@@ -123,6 +123,31 @@ def test_daily_and_unknown_frequencies() -> None:
     assert not lines[1].include and 'not recognised' in lines[1].reason
 
 
+def test_every_few_months_keeps_its_cycle() -> None:
+    rows: list[list[Any]] = [
+        ['Item', 'Amount', 'Frequency'],
+        ['Rates', 600, 'Quarterly'],
+        ['Water', 300, '3 monthly'],
+        ['Pest control', 240, 'Every 3 months'],
+        ['Car service', 600, '6 monthly'],
+        ['Gutters', 300, 'Half-yearly'],
+        ['Rego', 1200, 'Annual'],
+        ['Insurance', 1200, 'p.a.'],
+        ['Phone', 50, 'Monthly'],
+    ]
+    lines = dom.parse(rows, dom.find_header(rows))  # type: ignore[arg-type]
+    assert [(line.name, line.monthly_cents, line.cycle_months) for line in lines] == [
+        ('Rates', 200_00, 3),
+        ('Water', 100_00, 3),
+        ('Pest control', 80_00, 3),
+        ('Car service', 100_00, 6),
+        ('Gutters', 50_00, 6),
+        ('Rego', 100_00, 12),
+        ('Insurance', 100_00, 12),
+        ('Phone', 50_00, 1),
+    ]
+
+
 def test_a_sheet_without_headings_is_refused() -> None:
     from fiscus.domain.csvimport import ImportError_
 
@@ -183,6 +208,57 @@ def test_import_end_to_end(env: Env) -> None:
     }
     # The staged file is gone after applying.
     assert a.get(url).status_code == 404
+
+
+def test_import_saves_up_yearly_and_quarterly_lines(env: Env) -> None:
+    alex = env.user('alex')
+    a = env.login(alex)
+    url = upload(a, household_xlsx())
+    page = a.get(url).text
+    lines = svc.parse(household_xlsx(), 'x.xlsx', None, has_loan=False).lines
+    rates = next(line for line in lines if line.name == 'Council rates')
+    assert f'name="cycle_{rates.index}"' in page
+    assert '<option value="12" selected>Every year</option>' in page
+    form: dict[str, str] = {'count': '9', 'mode': 'replace'}
+    for line in lines:
+        form[f'name_{line.index}'] = line.name
+        form[f'category_{line.index}'] = line.name
+        form[f'monthly_{line.index}'] = f'{(line.monthly_cents or 0) / 100:.2f}'
+        form[f'cycle_{line.index}'] = str(line.cycle_months)
+    for n in ('Groceries', 'Council rates', 'Fuel', 'Vehicle registration & CTP'):
+        form[f'include_{next(line.index for line in lines if line.name == n)}'] = 'on'
+    # Fuel (weekly) and rego (yearly) share a category: it is saved up.
+    for n in ('Fuel', 'Vehicle registration & CTP'):
+        form[f'category_{next(line.index for line in lines if line.name == n)}'] = 'Car'
+    assert a.post(url + '/apply', data=form).status_code == 303
+    with env.db() as db:
+        budgets = {
+            db.get(Category, b.category_id).name: (b.monthly_cents, b.cycle_months)  # type: ignore[union-attr]
+            for b in db.execute(select(Budget).where(Budget.user_id == alex.id)).scalars()
+        }
+    assert budgets == {
+        'Groceries': (1040_00, 1),
+        'Council rates': (246_67, 12),
+        'Car': (433_33 + 92_42, 12),
+    }
+    assert 'Saving up $2,960.04 every year' in a.get('/budget').text
+
+
+def test_import_refuses_an_unknown_cycle(env: Env) -> None:
+    a = env.login(env.user('alex'))
+    url = upload(a, svc.template_csv().encode(), 'b.csv')
+    data = {
+        'count': '1',
+        'include_0': 'on',
+        'name_0': 'Groceries',
+        'category_0': 'Groceries',
+        'monthly_0': '10',
+        'cycle_0': '5',
+    }
+    resp = a.post(url + '/apply', data=data, follow_redirects=True)
+    assert 'choose how often' in resp.text
+    with env.db() as db:
+        assert db.execute(select(Budget)).first() is None
 
 
 def test_add_mode_and_forecast_flag(env: Env) -> None:
