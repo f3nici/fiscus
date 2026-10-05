@@ -84,6 +84,18 @@
       <table>
         <thead><tr><th>Category</th><th class="num">Left</th><th class="num">Spent</th><th class="num">Budget</th><th></th></tr></thead>
         <tbody>
+          {% for x in loan_lines %}
+            <tr>
+              <td>
+                {{ x.loan.name }} repayments <span class="pill pill-upcoming">Home loan</span>
+                <div class="text-xs muted">{{ x.paid_count }} of {{ x.count }} repayment{{ '' if x.count == 1 else 's' }} made this month. Always in the budget while you have the loan.</div>
+              </td>
+              <td class="num"><strong>{{ x.remaining_cents | money }}</strong></td>
+              <td class="num">{{ x.paid_cents | money }}</td>
+              <td class="num">{{ x.budget_cents | money }}</td>
+              <td><a class="text-sm" href="/loans/{{ x.loan.id }}">Loan</a></td>
+            </tr>
+          {% endfor %}
           {% for r in rows %}
             <tr>
               <td>
@@ -91,6 +103,7 @@
                 {% if r.has_budget and not r.saving %}<meter min="0" max="{{ r.budget_cents }}" low="{{ (r.budget_cents * 0.9) | int }}" high="{{ r.budget_cents }}" optimum="0" value="{{ [r.actual_cents, r.budget_cents] | min }}">{{ r.pct }}%</meter>{% endif %}
                 {% if r.saving %}<div class="text-xs muted">Saving up {{ (r.budget_cents * r.cycle_months) | money }} {{ cycles[r.cycle_months] | lower }}</div>{% endif %}
                 {% if r.bills_cents %}<div class="text-xs muted"><a href="/bills?category={{ r.category.id }}">{{ r.bills_cents | money }} of bills</a></div>{% endif %}
+                {% if r.category.id in doubled %}<div class="text-xs neg">Your home loan repayments are already in the budget. Remove this line so they are not counted twice.</div>{% endif %}
               </td>
               <td class="num {{ 'neg' if r.state == 'over' else '' }}">
                 <strong>{{ r.remaining_cents | money if r.has_budget else '' }}</strong>
@@ -134,7 +147,7 @@
               </td>
             </tr>
           {% else %}
-            <tr><td colspan="5" class="muted">No budget lines yet. Add one below.</td></tr>
+            {% if not loan_lines %}<tr><td colspan="5" class="muted">No budget lines yet. Add one below.</td></tr>{% endif %}
           {% endfor %}
         </tbody>
       </table>

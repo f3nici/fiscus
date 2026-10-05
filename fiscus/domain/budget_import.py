@@ -244,6 +244,6 @@ def parse(rows: list[list[Any]], header: Header, *, has_loan: bool = False) -> l
             line.monthly_cents = monthly(amount, freq)
             if has_loan and MORTGAGE.search(name):
                 line.include = False
-                line.reason = 'Your home loan already tracks this repayment'
+                line.reason = 'Your home loan is already in the budget'
         lines.append(line)
     return lines

@@ -5,7 +5,7 @@ from __future__ import annotations
 import html
 import json
 import re
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -24,6 +24,7 @@ from fiscus.models import (
 )
 from fiscus.services import budgeting, forecasting, ledger, taxes
 from tests.conftest import CsrfClient, Env
+from tests.test_budget_import import upload as _upload
 from tests.test_imports_bills import ANZ_SEPT, create_bill, import_csv, make_account
 
 
@@ -338,6 +339,56 @@ def test_a_budget_line_can_be_removed(env: Env) -> None:
         assert len(db.execute(select(BudgetSpend)).scalars().all()) == 1
     # Nothing left to remove.
     assert a.post(f'/budget/{groceries}/remove').status_code == 404
+
+
+def test_home_loan_repayments_stay_in_the_budget(env: Env) -> None:
+    a, alex, acct = setup_household(env)
+    a.post(
+        '/loans',
+        data={
+            'name': 'Mortgage',
+            'principal': '600000',
+            'start_date': '2024-07-10',
+            'term_years': '30',
+            'initial_rate': '6.0',
+            'balance': '560000',
+            'balance_date': '2026-10-01',
+            'repayment_account_id': str(acct),
+        },
+    )
+    groceries = _groceries(env, alex)
+    a.post('/budget', data={'category_id': str(groceries), 'amount': '400'})
+    a.post('/budget', data={'new_category': 'Mortgage repayment', 'amount': '3600'})
+    page = a.get('/budget?month=2026-10').text
+    # First in the table, ahead of every other line, with no way to remove it.
+    body = page[page.index('<tbody>') :]
+    assert body.index('Mortgage repayments') < body.index('Groceries')
+    assert '0 of 1 repayment made' in page
+    assert 'Always in the budget while you have the loan' in page
+    # Budgeted: groceries, the stray mortgage line and the loan.
+    assert '$7,597.30' in page
+    assert 'Remove this line so they are not counted twice' in page
+    # Once the repayment day passes it is spent.
+    env.clock.set(env.clock.now() + timedelta(days=10))
+    page = a.get('/budget?month=2026-10').text
+    assert '1 of 1 repayment made' in page
+    # Clearing the budget on import leaves the loan in it.
+    url = _upload(a, b'Item,Amount,Frequency\nInternet,79,Monthly\nMortgage,3597.30,Monthly\n')
+    preview = a.get(url).text
+    assert 'Your home loan is already in the budget' in preview
+    a.post(
+        url + '/apply',
+        data={
+            'count': '1',
+            'include_0': 'on',
+            'name_0': 'Internet',
+            'category_0': 'Internet',
+            'amount_0': '79',
+            'mode': 'clear',
+        },
+    )
+    page = a.get('/budget?month=2026-10').text
+    assert 'Mortgage repayments' in page and '$3,676.30' in page
 
 
 def test_budget_shows_expected_earnings_against_budgeted(env: Env) -> None:
