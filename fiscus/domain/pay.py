@@ -58,35 +58,62 @@ class OpenPayday:
     schedule_id: int
     payday: date
     name: str
+    # Employers on the schedule's earlier payslips; they name it as well.
+    employers: tuple[str, ...] = ()
 
     @property
     def key(self) -> str:
         return f'{self.schedule_id}:{self.payday.isoformat()}'
 
 
+@dataclass(frozen=True)
+class Unsure:
+    """Several jobs are paid around a payslip's date and its employer names none."""
+
+    choices: tuple[OpenPayday, ...]
+
+
+def _names(employer: str, op: OpenPayday) -> bool:
+    emp = employer.casefold().strip()
+    for n in (op.name, *op.employers):
+        name = n.casefold().strip()
+        if emp and name and (name in emp or emp in name):
+            return True
+    return False
+
+
 def match_paydays(
     slips: Sequence[tuple[date, str]], open_paydays: Sequence[OpenPayday]
-) -> list[OpenPayday | None]:
+) -> list[OpenPayday | Unsure | None]:
     """The open payday each payslip (date, employer) records, or None for a one-off.
 
-    Within MATCH_DAYS of the payslip's date; a schedule whose name and the
-    employer contain one another comes first, then the nearest. Each payday is
-    taken once.
+    Within MATCH_DAYS of the payslip's date; a schedule named like the
+    employer (or by an earlier payslip's employer) comes first, then the
+    nearest. Each payday is taken once. When the nearest open paydays belong
+    to more than one job and none is named, the payslip is Unsure rather
+    than given to whichever job sorts first.
     """
     pairs: list[tuple[bool, int, int, int]] = []
     for i, (when, employer) in enumerate(slips):
-        emp = employer.casefold().strip()
         for j, op in enumerate(open_paydays):
             gap = abs((op.payday - when).days)
             if gap > MATCH_DAYS:
                 continue
-            name = op.name.casefold().strip()
-            named = bool(emp and name and (name in emp or emp in name))
-            pairs.append((not named, gap, i, j))
-    out: list[OpenPayday | None] = [None] * len(slips)
+            pairs.append((not _names(employer, op), gap, i, j))
+    out: list[OpenPayday | Unsure | None] = [None] * len(slips)
     used: set[int] = set()
-    for _named, _gap, i, j in sorted(pairs):
-        if out[i] is None and j not in used:
-            out[i] = open_paydays[j]
-            used.add(j)
+    for unnamed, gap, i, j in sorted(pairs):
+        if out[i] is not None or j in used:
+            continue
+        if unnamed:
+            rivals = tuple(
+                open_paydays[k]
+                for u, g, i2, k in sorted(pairs)
+                if i2 == i and u and g == gap and k not in used
+            )
+            if len({r.schedule_id for r in rivals}) > 1:
+                out[i] = Unsure(rivals)
+                continue
+        out[i] = open_paydays[j]
+        used.add(j)
     return out

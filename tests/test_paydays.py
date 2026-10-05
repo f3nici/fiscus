@@ -6,7 +6,7 @@ from datetime import date
 
 from sqlalchemy import select
 
-from fiscus.domain.pay import OpenPayday, match_paydays
+from fiscus.domain.pay import OpenPayday, Unsure, match_paydays
 from fiscus.models import PaySchedule, Payslip, User
 from fiscus.services import budgeting, calendar_events, forecasting, pay, taxes
 from tests.conftest import CsrfClient, Env
@@ -99,6 +99,18 @@ def test_match_takes_the_nearest_payday_once_and_prefers_the_named_job() -> None
         [a1, a2, b1],
     )
     assert hits == [b1, a2, None, None]
+
+
+def test_two_jobs_paid_the_same_day_are_not_guessed() -> None:
+    cafe = OpenPayday(1, date(2026, 9, 24), 'Cafe')
+    shed = OpenPayday(2, date(2026, 9, 24), 'Warehouse', ('Bigco Logistics',))
+    when = date(2026, 9, 24)
+    assert match_paydays([(when, 'Someone Else')], [cafe, shed]) == [Unsure((cafe, shed))]
+    # Named by an earlier payslip's employer, the Warehouse is taken first.
+    hits = match_paydays([(when, 'Someone Else'), (when, 'BIGCO LOGISTICS PTY LTD')], [cafe, shed])
+    assert hits == [cafe, shed]
+    # Once one job's payday is taken, the other is the only one left.
+    assert match_paydays([(when, '')], [shed]) == [shed]
 
 
 # ---------------------------------------------------------------- asking
@@ -241,6 +253,75 @@ def test_a_varying_schedule_averages_its_payslips(env: Env) -> None:
         [(_ps, net)] = pay.schedules(db, user, TODAY)
     assert net == 375_00
     assert '~$375.00' in a.get('/pay').text
+
+
+def test_a_second_job_paid_the_same_day_can_be_put_in(env: Env) -> None:
+    a = env.login(env.user('alex'))
+    acct = make_account(a)
+    weekly(a, acct, name='Cafe')
+    weekly(a, acct, name='Warehouse')
+    with env.db() as db:
+        sid = {p.name: p.id for p in db.execute(select(PaySchedule)).scalars()}
+    day = '2026-09-24'
+    slip = {'date': day, 'gross': '650', 'tax_withheld': '150', 'net': '500'}
+    # The employer names neither job: asked which, not given to the first.
+    resp = a.post('/payslips', data={**slip, 'source': 'Bigco Logistics', 'payday': 'auto'})
+    assert resp.status_code == 200
+    assert 'Cafe and Warehouse are both paid around then' in resp.text
+    resp = a.post(
+        '/payslips/read',
+        files=[
+            (
+                'file',
+                (
+                    'b.pdf',
+                    simple_slip('24/09/2026', '650.00', '150.00', '500.00', 'Bigco Logistics'),
+                    'application/pdf',
+                ),
+            )
+        ],
+    )
+    assert 'Choose which pay this is' in resp.text
+    assert 'value="auto" selected' in resp.text
+    put_in(a, day, '500', schedule=str(sid['Warehouse']), source='Bigco Logistics')
+    # The other job's payslip goes in against its own payday.
+    resp = a.post('/payslips', data={**slip, 'net': '420', 'source': 'Little Cafe'})
+    assert resp.status_code == 303, resp.text
+    assert sorted((s.schedule_id, s.payday) for s in slips(env)) == [
+        (sid['Cafe'], date(2026, 9, 24)),
+        (sid['Warehouse'], date(2026, 9, 24)),
+    ]
+    # Next week Bigco is known to be the Warehouse.
+    resp = a.post(
+        '/payslips/read',
+        files=[
+            (
+                'file',
+                (
+                    'b.pdf',
+                    simple_slip('01/10/2026', '650.00', '150.00', '510.00', 'Bigco Logistics'),
+                    'application/pdf',
+                ),
+            )
+        ],
+    )
+    assert f'value="{sid["Warehouse"]}:2026-10-01" selected' in resp.text
+    # A payday already taken says by which payslip, and how to move it.
+    resp = a.post('/payslips', data={**slip, 'payday': f'{sid["Cafe"]}:{day}'})
+    assert 'already has a payslip (Little Cafe, net $420.00)' in resp.text
+    assert 'edit it and choose its pay first' in resp.text
+
+
+def test_an_older_payday_this_financial_year_can_be_chosen(env: Env) -> None:
+    a = env.login(env.user('alex'))
+    weekly(a, make_account(a), anchor_date='2026-07-02')
+    sid = schedule_id(env)
+    page = a.get('/pay').text
+    # 2 July is more than eight weeks back: not asked for, but offered.
+    assert 'Thu 2 Jul 2026' not in page.split('id="slip-form"')[0]
+    assert f'value="{sid}:2026-07-02"' in page
+    put_in(a, '2026-07-02', '500', schedule=str(sid))
+    assert [s.payday for s in slips(env)] == [date(2026, 7, 2)]
 
 
 # ---------------------------------------------------------------- bulk

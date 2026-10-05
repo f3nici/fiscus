@@ -18,11 +18,11 @@ from sqlalchemy.orm import Session
 from fiscus.domain import payslip as payslip_pdf
 from fiscus.domain import recurrence
 from fiscus.domain.csvimport import MAX_BYTES, ImportError_
-from fiscus.domain.pay import ASK_DAYS, LINK_DAYS, MATCH_DAYS, OpenPayday, match_paydays
+from fiscus.domain.pay import ASK_DAYS, LINK_DAYS, MATCH_DAYS, OpenPayday, Unsure, match_paydays
 from fiscus.domain.tax import fy_bounds
 from fiscus.forms import FormError, choice, money, opt_date, opt_money, req_date, text
 from fiscus.models import PAY_FREQUENCIES, Account, PaySchedule, Payslip, User
-from fiscus.money import fmt_plain
+from fiscus.money import fmt, fmt_plain
 from fiscus.services import ledger, pay
 from fiscus.services.access import get_owned, maybe_owned, owned
 from fiscus.web import ctx, current_user, get_db, redirect, render
@@ -57,13 +57,10 @@ def _plain(cents: int | None) -> str:
 def _options(
     db: Session, user: User, today: Date, except_slip: int | None = None
 ) -> list[OpenPayday]:
-    return pay.open_paydays(
-        db,
-        user,
-        today - timedelta(days=ASK_DAYS),
-        today + timedelta(days=AHEAD_DAYS),
-        except_slip,
-    )
+    # Back to the start of the financial year, so an older pay can be chosen
+    # even though only the last eight weeks are asked for.
+    start = min(today - timedelta(days=ASK_DAYS), fy_bounds(today)[0])
+    return pay.open_paydays(db, user, start, today + timedelta(days=AHEAD_DAYS), except_slip)
 
 
 def _with(options: list[OpenPayday], extra: list[OpenPayday]) -> list[OpenPayday]:
@@ -267,6 +264,8 @@ def _link(
         hit = match_paydays([(when, source)], near)[0]
         if hit is None:
             return None
+        if isinstance(hit, Unsure):
+            raise FormError(_unsure(hit))
         value = hit.key
     found = _parse_payday(db, user, value)
     if found is None:
@@ -277,9 +276,22 @@ def _link(
     clash = db.execute(
         owned(Payslip, user).where(Payslip.schedule_id == ps.id, Payslip.payday == day)
     ).scalar_one_or_none()
-    if (clash is not None and clash.id != except_slip) or value in taken:
+    if clash is not None and clash.id != except_slip:
+        raise FormError(
+            f'{ps.name} on {day.strftime("%d %b")} already has a payslip'
+            f' ({clash.source or "no employer"}, net {fmt(clash.net_cents)}).'
+            ' If that one is for another job, edit it and choose its pay first.'
+        )
+    if value in taken:
         raise FormError(f'{ps.name} on {day.strftime("%d %b")} already has a payslip')
     return ps, day
+
+
+def _unsure(hit: Unsure) -> str:
+    names = sorted({o.name for o in hit.choices})
+    jobs = ', '.join(names[:-1]) + ' and ' + names[-1]
+    every = 'all' if len(names) > 2 else 'both'
+    return f'{jobs} are {every} paid around then. Choose which pay this is.'
 
 
 def _fill(
@@ -378,7 +390,11 @@ async def _read_files(files: list[UploadFile]) -> list[tuple[str, payslip_pdf.Re
 
 
 def _form_from(
-    db: Session, user: User, name: str, slip: payslip_pdf.ReadPayslip, hit: OpenPayday | None
+    db: Session,
+    user: User,
+    name: str,
+    slip: payslip_pdf.ReadPayslip,
+    hit: OpenPayday | Unsure | None,
 ) -> SlipForm:
     when = slip.pay_date or slip.period_end
     notes = slip.notes()
@@ -392,6 +408,8 @@ def _form_from(
     )
     if duplicate:
         notes.append('You already have a payslip for this date and net pay.')
+    elif isinstance(hit, Unsure):
+        notes.append(_unsure(hit))
     elif hit is None:
         notes.append(
             'No payday of your schedules matched, so it is a one-off unless you choose one.'
@@ -402,7 +420,7 @@ def _form_from(
         gross=_plain(slip.gross_cents),
         tax_withheld=_plain(slip.tax_withheld_cents),
         net=_plain(slip.net_cents),
-        payday=hit.key if hit else '',
+        payday=hit.key if isinstance(hit, OpenPayday) else 'auto' if hit else '',
         file_name=name,
         notes=notes,
         duplicate=duplicate,
@@ -431,13 +449,13 @@ async def read_payslips(
             return redirect('/pay', flash=result, request=request)
         # Read for a payday the person chose to put in, else matched by date.
         context = _parse_payday(db, user, payday) if payday else None
-        hit = (
+        hit: OpenPayday | Unsure | None = (
             OpenPayday(context[0].id, context[1], context[0].name)
             if context is not None
             else _match(db, user, [result])[0]
         )
         form = _form_from(db, user, name, result, hit)
-        if hit is not None:
+        if isinstance(hit, OpenPayday):
             linked = maybe_owned(db, PaySchedule, hit.schedule_id, user)
             form.account_id = (linked.account_id or 0) if linked else 0
         return _page(request, user, db, form)
@@ -458,7 +476,7 @@ async def read_payslips(
 
 def _match(
     db: Session, user: User, slips: list[payslip_pdf.ReadPayslip]
-) -> list[OpenPayday | None]:
+) -> list[OpenPayday | Unsure | None]:
     dated = [(s.pay_date or s.period_end, s.employer) for s in slips]
     known = [d for d, _e in dated if d is not None]
     if not known:
