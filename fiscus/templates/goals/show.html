@@ -5,7 +5,7 @@
   <div class="page-head">
     <div>
       <h1>{{ goal.name }}{% if goal.is_tax %} <span class="pill">Tax</span>{% endif %}</h1>
-      <span class="muted text-sm">{% if account %}Held in <a href="/accounts/{{ account.id }}">{{ account.name }}</a>{% else %}Not in a particular account{% endif %}</span>
+      <span class="muted text-sm">{% if account %}Held in <a href="/accounts/{{ account.id }}">{{ account.name }}</a>{% else %}Not in a particular account{% endif %}{% if line %} · saved from the <a href="/budget">{{ line.name }}</a> budget line{% endif %}</span>
     </div>
     <div class="row">
       {% include "goals/_status.html" %}
@@ -77,6 +77,7 @@
           <input class="input" type="date" id="move_on" name="on" value="{{ today.isoformat() }}">
         </div>
       </div>
+      {% if line %}<label class="check"><input type="checkbox" name="as_spent" value="true" checked> Putting in counts as spent on the {{ line.name }} budget line</label>{% endif %}
       <button class="btn btn-primary" type="submit">Save</button>
       <p class="muted text-xs mt">The money does not move between accounts here: it is marked as set aside inside {{ account.name if account else 'your accounts' }}. Taking it out (for flights, say) frees it to spend.</p>
     </form>
@@ -106,6 +107,14 @@
         <input class="input" type="date" id="target_date" name="target_date" value="{{ goal.target_date.isoformat() if goal.target_date else '' }}">
       </div>
       <div class="field">
+        <label class="label" for="category_id">Saved from budget line</label>
+        <select class="input" id="category_id" name="category_id">
+          <option value="0">None</option>
+          {% for c in lines %}<option value="{{ c.id }}" {{ 'selected' if goal.category_id == c.id else '' }}>{{ c.name }}</option>{% endfor %}
+        </select>
+        <small>Money put aside from that line counts as spent on it and goes into this goal. Taking money out to pay the bill does not count again.</small>
+      </div>
+      <div class="field">
         <label class="label" for="holds">Holds now</label>
         <input class="input" id="holds" name="holds" inputmode="decimal" value="{{ v.held_cents | money_plain }}">
         <small>Change it to correct what is set aside. The difference is recorded below.</small>
@@ -124,11 +133,11 @@
       {% for m in moves %}
         <li>
           <span class="grow">
-            <span class="title">{{ 'Put in' if m.amount_cents > 0 else 'Taken out' }}{% if m.note %} · {{ m.note }}{% endif %}</span>
+            <span class="title">{{ 'Put in' if m.amount_cents > 0 else 'Taken out' }}{% if m.note %} · {{ m.note }}{% endif %}{% if m.spend_id %} <span class="pill">Spent from budget</span>{% endif %}</span>
             <span class="text-xs muted">{{ m.date | d('dm') }}</span>
           </span>
           <span class="num {{ 'neg' if m.amount_cents < 0 else '' }}">{{ m.amount_cents | money }}</span>
-          <form class="inline" method="post" action="/goals/{{ goal.id }}/moves/{{ m.id }}/delete" data-confirm="Remove this entry?">
+          <form class="inline" method="post" action="/goals/{{ goal.id }}/moves/{{ m.id }}/delete" data-confirm="{{ 'Remove this entry? Its spend on the budget goes too.' if m.spend_id else 'Remove this entry?' }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button class="btn btn-sm" type="submit" aria-label="Remove">✕</button>
           </form>

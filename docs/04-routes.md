@@ -32,7 +32,7 @@ Rate limited: everything under `/auth/` and `/setup/`, by IP and by username.
 | Calendar | `/calendar?view=month\|week\|day\|agenda&date=` (HTMX partial when `HX-Target: cal`) |
 | Loans | `/loans`, `/loans/new`, `/loans/{id}`, `/edit`, `POST /loans[/{id}]`, `/rates`, `/rates/{id}/delete`, `/offsets`, `/offsets/{account}/unlink`, `/delete` |
 | Forecast | `/forecast?months=&scenario_id=`, `POST /transfers`, `/transfers/{id}/delete`, `/scenarios`, `POST /scenarios`, `/scenarios/{id}`, `/delete`, `/adjustments`, `/adjustments/{id}/delete` |
-| Budget | `/budget?month=YYYY-MM`, `POST /budget`, `/budget/template.csv`, `POST /budget/import`, `/budget/import/{file}?sheet=`, `POST .../apply` |
+| Budget | `/budget?month=YYYY-MM`, `POST /budget`, `POST /budget/{category}/move`, `POST /budget/groups`, `POST /budget/groups/{id}`, `/move`, `/delete`, `/budget/template.csv`, `POST /budget/import`, `/budget/import/{file}?sheet=`, `POST .../apply` |
 | Bill import | `/bills/import`, `POST /bills/import`, `/bills/template.csv`, `/bills/template.json`, `/bills/import/{file}`, `POST .../apply`; `/housing` redirects to `/bills` |
 | Goals | `/goals`, `POST /goals`, `/goals/{id}`, `POST /goals/{id}`, `/move`, `/moves/{move}/delete`, `/done`, `/delete` |
 | Tax | `/tax` |

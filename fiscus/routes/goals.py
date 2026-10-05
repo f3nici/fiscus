@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from fiscus.clock import utcnow_naive
 from fiscus.domain.tax import TaxConfigError
 from fiscus.forms import FormError, money, opt_date, text
-from fiscus.models import Account, Goal, GoalMove, User
+from fiscus.models import Account, Category, Goal, GoalMove, User
 from fiscus.money import fmt
 from fiscus.services import budgeting, ledger, taxes
 from fiscus.services import goals as service
@@ -20,6 +20,11 @@ from fiscus.services.access import get_owned, maybe_owned
 from fiscus.web import ctx, current_user, get_db, redirect, render
 
 router = APIRouter()
+
+
+def _lines(db: Session, user: User) -> list[Category]:
+    """Categories a goal can be saved from: spending ones."""
+    return [c for c in ledger.categories(db, user) if not c.is_income and not c.is_transfer]
 
 
 def _back(back: str, goal: Goal | None = None) -> str:
@@ -41,6 +46,7 @@ def list_goals(
         {
             'views': service.views(db, user, today, include_archived=True),
             'accounts': accts,
+            'lines': _lines(db, user),
             'account_names': {
                 a.id: a.name for a in ledger.accounts(db, user, include_archived=True)
             },
@@ -72,6 +78,8 @@ def show_goal(
             'moves': sorted(goal.moves, key=lambda m: (m.date, m.id), reverse=True),
             'accounts': ledger.accounts(db, user),
             'account': db.get(Account, goal.account_id) if goal.account_id else None,
+            'lines': _lines(db, user),
+            'line': db.get(Category, goal.category_id) if goal.category_id else None,
             'tax': tax_view,
         },
     )
@@ -88,6 +96,13 @@ def _fields(
     return clean, cents or None, when, maybe_owned(db, Account, account_id, user)
 
 
+def _line(db: Session, user: User, category_id: int) -> Category | None:
+    cat = maybe_owned(db, Category, category_id, user)
+    if cat is not None and (cat.is_income or cat.is_transfer):
+        raise FormError('Choose a spending category to save from')
+    return cat
+
+
 @router.post('/goals')
 def create_goal(
     request: Request,
@@ -98,12 +113,14 @@ def create_goal(
     saved: str = Form(''),
     keep_aside: bool = Form(False),
     is_tax: bool = Form(False),
+    category_id: int = Form(0),
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> Response:
     c = ctx(request)
     try:
         clean, cents, when, acct = _fields(db, user, name, target, target_date, account_id)
+        line = _line(db, user, category_id)
         saved_cents = money(saved, 'Already saved') if saved.strip() else 0
     except FormError as exc:
         return redirect('/goals', flash=str(exc), request=request)
@@ -114,6 +131,7 @@ def create_goal(
         target_cents=cents,
         target_date=when,
         keep_aside=keep_aside,
+        category_id=line.id if line else None,
         created_at=utcnow_naive(c.clock),
     )
     db.add(goal)
@@ -139,6 +157,7 @@ def save_goal(
     holds: str = Form(''),
     keep_aside: bool = Form(False),
     is_tax: bool = Form(False),
+    category_id: int = Form(0),
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> Response:
@@ -146,6 +165,7 @@ def save_goal(
     c = ctx(request)
     try:
         clean, cents, when, acct = _fields(db, user, name, target, target_date, account_id)
+        line = _line(db, user, category_id)
         holds_cents = money(holds, 'Holds now') if holds.strip() else None
     except FormError as exc:
         return redirect(f'/goals/{goal.id}', flash=str(exc), request=request)
@@ -154,6 +174,7 @@ def save_goal(
     goal.target_date = when
     goal.account_id = acct.id if acct else None
     goal.keep_aside = keep_aside
+    goal.category_id = line.id if line else None
     service.set_tax(db, user, goal, is_tax)
     if holds_cents is not None:
         service.set_held(db, c.clock, user, goal, holds_cents, c.clock.today())
@@ -169,6 +190,7 @@ def add_move(
     note: str = Form(''),
     on: str = Form(''),
     back: str = Form(''),
+    as_spent: bool = Form(False),
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> Response:
@@ -183,10 +205,15 @@ def add_move(
     except FormError as exc:
         return redirect(target, flash=str(exc), request=request)
     if direction == 'out':
-        cents = -cents
-    service.move(db, c.clock, user, goal, cents, when, note)
-    verb = 'into' if cents > 0 else 'out of'
-    return redirect(target, flash=f'{fmt(abs(cents))} {verb} {goal.name}', request=request)
+        service.move(db, c.clock, user, goal, -cents, when, note)
+        msg = f'{fmt(cents)} out of {goal.name}'
+    elif as_spent and goal.category_id is not None:
+        service.put_aside(db, c.clock, user, goal, cents, when, note)
+        msg = f'{fmt(cents)} put aside into {goal.name}, spent from the budget'
+    else:
+        service.move(db, c.clock, user, goal, cents, when, note)
+        msg = f'{fmt(cents)} into {goal.name}'
+    return redirect(target, flash=msg, request=request)
 
 
 @router.post('/goals/{goal_id}/moves/{move_id}/delete')
@@ -201,7 +228,7 @@ def delete_move(
     row = get_owned(db, GoalMove, move_id, user)
     if row.goal_id != goal.id:
         raise HTTPException(status_code=404)
-    db.delete(row)
+    service.remove_move(db, user, row)
     return redirect(f'/goals/{goal.id}', flash='Entry removed', request=request)
 
 

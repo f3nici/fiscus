@@ -18,6 +18,7 @@ from sqlalchemy import select, text
 from fiscus.models import (
     Account,
     Bill,
+    BudgetGroup,
     BudgetSpend,
     Category,
     Goal,
@@ -53,6 +54,7 @@ OWNED_TABLES = [
     'loan_rates',
     'budgets',
     'budget_spends',
+    'budget_groups',
     'tax_deductions',
     'goals',
     'goal_moves',
@@ -95,6 +97,7 @@ class Ids:
     spend: int
     goal: int
     goal_move: int
+    group: int
 
 
 @pytest.fixture
@@ -189,6 +192,8 @@ def seeded(env: Env) -> tuple[CsrfClient, CsrfClient, Ids, User, User]:
             },
         )
 
+        a.post('/budget/groups', data={'name': 'Bills'})
+
         def one(model: Any) -> int:
             found = db.execute(select(model.id).where(model.user_id == alex.id)).scalars().first()
             assert found is not None
@@ -216,6 +221,7 @@ def seeded(env: Env) -> tuple[CsrfClient, CsrfClient, Ids, User, User]:
             spend=one(BudgetSpend),
             goal=one(Goal),
             goal_move=one(GoalMove),
+            group=one(BudgetGroup),
         )
     return a, b, ids, alex, blake
 
@@ -305,6 +311,11 @@ WRITES: list[tuple[str, dict[str, Any]]] = [
     ('/budget/spend', {'category_id': '{category}', 'amount': '1'}),
     ('/budget/spend/{spend}/delete', {}),
     ('/budget/{category}/remove', {}),
+    ('/budget/{category}/move', {'direction': 'up'}),
+    ('/budget/groups/{group}', {'name': 'pwned'}),
+    ('/budget/groups/{group}/move', {'direction': 'up'}),
+    ('/budget/groups/{group}/delete', {}),
+    ('/budget', {'category_id': '0', 'new_category': 'x', 'amount': '1', 'group_id': '{group}'}),
     ('/accounts/{account}/balance', {'balance': '1'}),
     ('/goals/{goal}', {'name': 'pwned'}),
     ('/goals/{goal}/move', {'amount': '1'}),
@@ -312,6 +323,7 @@ WRITES: list[tuple[str, dict[str, Any]]] = [
     ('/goals/{goal}/done', {}),
     ('/goals/{goal}/delete', {}),
     ('/goals', {'name': 'x', 'account_id': '{account}'}),
+    ('/goals', {'name': 'x', 'category_id': '{category}'}),
     ('/square', {'account_id': '{account}', 'start_date': '2026-10-01'}),
     ('/square', {'fee_category_id': '{category}', 'start_date': '2026-10-01'}),
 ]
