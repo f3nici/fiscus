@@ -869,14 +869,14 @@ def test_future_payslip_is_one_off_income(env: Env) -> None:
         assert user is not None
         tv = taxes.view(db, user, env.clock.today())
     # Past payslip only in the year to date; the bonus adds to the projection.
-    assert tv.ytd.salary_gross_cents == 1000_00
+    assert tv.ytd.income_cents == 1000_00
     with env.db() as db:
         db.execute(delete(Payslip).where(Payslip.source == 'Acme bonus'))
         db.commit()
         user = db.get(User, alex.id)
         assert user is not None
         without = taxes.view(db, user, env.clock.today())
-    assert tv.projected.salary_gross_cents - without.projected.salary_gross_cents == 5000_00
+    assert tv.projected.income_cents - without.projected.income_cents == 5000_00
 
 
 # ----------------------------------------------------------------------- tax
@@ -885,7 +885,6 @@ def test_future_payslip_is_one_off_income(env: Env) -> None:
 def test_tax_page_estimates_and_set_aside(env: Env) -> None:
     alex = env.user('alex')
     a = env.login(alex)
-    acct = make_account(a)
     set_aside = make_account(a, 'Tax pot', 'savings', '1000')
     with env.db() as db:
         from fiscus.models import Account
@@ -894,25 +893,46 @@ def test_tax_page_estimates_and_set_aside(env: Env) -> None:
         assert acc is not None
         acc.is_set_aside = True
         db.commit()
-        cats = {
-            c.name: c.id
-            for c in db.execute(select(Category).where(Category.user_id == alex.id)).scalars()
-        }
-    a.post('/rules', data={'pattern': 'invoice', 'category_id': str(cats['Business income'])})
-    a.post('/rules', data={'pattern': 'officeworks', 'category_id': str(cats['Business expenses'])})
-    import_csv(a, acct, '10/08/2026,"6000.00","INVOICE 001"\n12/08/2026,"-1000.00","OFFICEWORKS"\n')
     a.post(
         '/payslips',
         data={'date': '2026-07-15', 'gross': '20000', 'tax_withheld': '4000', 'net': '16000'},
     )
     page = a.get('/tax').text
     assert 'Tax 2026-27' in page and 'Estimate' in page and 'not tax advice' in page
-    assert '$5,000.00' in page  # sole trader profit
-    # Taxable 25,000: (25,000 - 18,200) x 15 % = 1,020, less LITO 700, no Medicare:
-    # total 320 against 4,000 withheld, a refund.
-    assert 'Estimated refund' in page
+    assert 'Income (gross)' in page and 'Sole trader' not in page and 'Business' not in page
+    assert 'Low income tax offset' not in page
+    # Taxable 20,000: (20,000 - 18,200) x 15 % = 270, no Medicare, no LITO:
+    # 270 against 4,000 withheld, a refund of 3,730.
+    assert 'Estimated refund' in page and '$3,730.00' in page
     # Nothing owing so far: set-aside more than covers it.
     assert 'That covers it' in page
+
+
+def test_tax_deductions_are_saved_and_come_off_income(env: Env) -> None:
+    a = env.login(env.user('alex'))
+    b = env.login(env.user('blake'))
+    a.post(
+        '/payslips',
+        data={'date': '2026-07-15', 'gross': '20000', 'tax_withheld': '4000', 'net': '16000'},
+    )
+    assert a.post('/tax/deductions', data={'amount': '1,500.50'}).status_code in (200, 303)
+    page = a.get('/tax').text
+    assert 'value="1500.50"' in page
+    assert '$18,499.50' in page  # taxable income
+    # Updating replaces the figure rather than adding to it.
+    a.post('/tax/deductions', data={'amount': '2000'})
+    page = a.get('/tax').text
+    assert 'value="2000.00"' in page and '$18,000.00' in page
+    # A bad or negative amount changes nothing.
+    a.post('/tax/deductions', data={'amount': '-5'})
+    a.post('/tax/deductions', data={'amount': 'lots'})
+    assert 'value="2000.00"' in a.get('/tax').text
+    # Clearing the box sets it back to nothing.
+    a.post('/tax/deductions', data={'amount': ''})
+    assert '$20,000.00' in a.get('/tax').text
+    # Someone else's figure is their own.
+    a.post('/tax/deductions', data={'amount': '2000'})
+    assert 'value="2000.00"' not in b.get('/tax').text
 
 
 # -------------------------------------------------------------- dashboard etc

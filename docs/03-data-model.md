@@ -50,6 +50,7 @@ user's `data_version` (the forecast cache key).
 | recurring_transfers (owned) | from, to, amount, frequency, tax set-aside flag |
 | budgets (owned) | per category, the monthly amount allocated to it; this person's bills in it are paid out of it (D29), `use_in_forecast` (no longer read: every budget is used in the forecast), `cycle_months` (1, 3, 6 or 12; above 1 the line is saved up), `saved_since` and `saved_opening_cents` (where the saving starts) |
 | budget_spends (owned) | money taken off a category's budget by hand: category, date, amount (negative for a refund), note |
+| tax_deductions (owned) | one total of deductions per person per financial year (`year` like "2026-27"), typed in on the tax page (D31) |
 | scenarios, scenario_adjustments (owned) | named what-ifs; adjustments are a kind plus JSON parameters |
 | forecast_cache | one row per user: key and serialised result |
 | notification_log | one row per reminder sent, so each is sent once |
