@@ -49,7 +49,13 @@ def dashboard(
     ]
     start, end = budgeting.period(db, user, today)
     rows = budgeting.rows(db, user, start, end, today)
-    summary = budgeting.summary(rows, budgeting.expected_pay(db, user, start, end, today))
+    loan_lines = loans.budget_lines(db, user, start, end, today)
+    summary = budgeting.summary(
+        rows,
+        budgeting.expected_pay(db, user, start, end, today),
+        loan_cents=sum(x.budget_cents for x in loan_lines),
+        loan_paid_cents=sum(x.paid_cents for x in loan_lines),
+    )
     base = forecasting.base(db, c.clock, user, 3)
     try:
         tax_view = taxes.view(db, user, today, c.tax_dir)

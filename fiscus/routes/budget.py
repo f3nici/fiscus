@@ -12,12 +12,13 @@ from sqlalchemy.orm import Session
 
 from fiscus.clock import utcnow_naive
 from fiscus.domain import recurrence
+from fiscus.domain.budget_import import MORTGAGE
 from fiscus.domain.csvimport import MAX_BYTES, ImportError_
 from fiscus.forms import FormError, money
 from fiscus.models import Budget, BudgetSpend, Category, Loan, User
 from fiscus.money import fmt, round_div
 from fiscus.services import budget_import as importer
-from fiscus.services import budgeting, ledger
+from fiscus.services import budgeting, ledger, loans
 from fiscus.services.access import get_owned, owned
 from fiscus.services.users import settings_for
 from fiscus.web import ctx, current_user, get_db, redirect, render
@@ -44,13 +45,26 @@ def budget_page(
     bal = ledger.balances(db, user, today)
     # Money that can be spent: not the tax set-aside, not a loan offset's job to guess.
     spendable = sum(bal.get(a.id, 0) for a in accts if not a.is_set_aside)
-    summary = budgeting.summary(rows, budgeting.expected_pay(db, user, start, end, today))
+    loan_lines = loans.budget_lines(db, user, start, end, today)
+    summary = budgeting.summary(
+        rows,
+        budgeting.expected_pay(db, user, start, end, today),
+        loan_cents=sum(x.budget_cents for x in loan_lines),
+        loan_paid_cents=sum(x.paid_cents for x in loan_lines),
+    )
     cats = ledger.categories(db, user)
     return render(
         request,
         'budget/index.html',
         {
             'rows': rows,
+            'loan_lines': loan_lines,
+            # A mortgage line of its own would count the loan twice.
+            'doubled': {
+                r.category.id
+                for r in rows
+                if loan_lines and r.has_budget and MORTGAGE.search(r.category.name)
+            },
             'summary': summary,
             'start': start,
             'end': end,

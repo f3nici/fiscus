@@ -8,9 +8,11 @@ from datetime import date, timedelta
 from sqlalchemy.orm import Session
 
 from fiscus.domain import loan as loan_math
+from fiscus.domain.loan import repayments
 from fiscus.domain.tax import fy_bounds
 from fiscus.models import Loan, User
 from fiscus.services import ledger
+from fiscus.services.access import owned
 from fiscus.services.forecasting import loan_spec
 
 
@@ -77,3 +79,35 @@ def summarise(db: Session, user: User, loan: Loan, today: date) -> LoanSummary:
         without_offset=without,
         started=loan.start_date <= today,
     )
+
+
+@dataclass(frozen=True)
+class BudgetLoan:
+    """A home loan's repayments in a budget month: always in the budget, set by
+    the loan, and spent as each repayment day passes."""
+
+    loan: Loan
+    budget_cents: int
+    paid_cents: int
+    count: int
+    paid_count: int
+
+    @property
+    def remaining_cents(self) -> int:
+        return self.budget_cents - self.paid_cents
+
+
+def budget_lines(db: Session, user: User, start: date, end: date, today: date) -> list[BudgetLoan]:
+    out = []
+    loans = db.execute(owned(Loan, user).order_by(Loan.name)).scalars().all()
+    balances = ledger.balances(db, user, today) if loans else {}
+    for loan in loans:
+        spec = loan_spec(db, loan)
+        # Today's offset held steady, as on the calendar.
+        offset = sum(max(0, balances.get(a, 0)) for a in spec.offset_account_ids)
+        due = repayments(spec, start, end, offset)
+        if not due:
+            continue
+        paid = [p for d, p in due if d <= today]
+        out.append(BudgetLoan(loan, sum(p for _, p in due), sum(paid), len(due), len(paid)))
+    return out

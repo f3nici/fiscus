@@ -335,14 +335,19 @@ def expected_pay(db: Session, user: User, start: date, end: date, today: date) -
     )
 
 
-def summary(rs: list[BudgetRow], pay_cents: int) -> Summary:
+def summary(
+    rs: list[BudgetRow], pay_cents: int, *, loan_cents: int = 0, loan_paid_cents: int = 0
+) -> Summary:
+    """Totals for the month. Home loan repayments (`loans.budget_lines`) are
+    always budgeted, and spent as each one falls due."""
     spend = [r for r in rs if not r.category.is_income]
     income = sum(r.budget_cents for r in rs if r.category.is_income)
     return Summary(
         expected_cents=pay_cents + income,
         pay_cents=pay_cents,
-        budget_cents=sum(r.budget_cents for r in spend),
-        spent_cents=sum(r.actual_cents for r in spend),
-        to_spend_cents=sum(max(0, r.remaining_cents) for r in spend if r.has_budget),
+        budget_cents=sum(r.budget_cents for r in spend) + loan_cents,
+        spent_cents=sum(r.actual_cents for r in spend) + loan_paid_cents,
+        to_spend_cents=sum(max(0, r.remaining_cents) for r in spend if r.has_budget)
+        + max(0, loan_cents - loan_paid_cents),
         over=sum(1 for r in spend if r.state == 'over'),
     )
