@@ -2,6 +2,28 @@
 {% block title %}Pay and payslips{% endblock %}
 {% block content %}
   <h1>Pay and payslips</h1>
+  {% if to_put_in %}
+    <div class="card mb" id="put-in">
+      <h2>Payslips to put in</h2>
+      <p class="muted text-sm">Paid in the last eight weeks with no payslip yet. Add it, or read its PDF, and its figures replace the expected pay. If nothing was paid that day, say so.</p>
+      <ul class="list">
+        {% for o in to_put_in %}
+          <li>
+            <span class="grow">
+              <span class="title">{{ o.name }}</span>
+              <span class="text-xs muted">{{ o.payday.strftime('%a') }} {{ o.payday | d }} · expected {{ expected.get(o.schedule_id, 0) | money }}</span>
+            </span>
+            <a class="btn btn-sm btn-primary" href="/pay?payday={{ o.key }}#slip-form">Add payslip</a>
+            <form class="inline" method="post" action="/pay/schedules/{{ o.schedule_id }}/no-pay">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="payday" value="{{ o.payday.isoformat() }}">
+              <button class="btn btn-sm" type="submit">No pay</button>
+            </form>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
   <div class="grid grid-2">
     <div class="card">
       <h2>Pay schedules</h2>
@@ -54,36 +76,47 @@
     <div class="card">
       <h2>Payslips</h2>
       <p class="muted text-sm">This financial year: gross {{ ytd.gross | money }}, tax withheld {{ ytd.tax | money }}, net {{ ytd.net | money }}.</p>
+      {% set f = form %}
+      {% set putting_in = f.payday not in ('', 'auto') and not slip %}
       <form method="post" action="/payslips/read" enctype="multipart/form-data" hx-boost="false" id="slip-read">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        {% if putting_in %}<input type="hidden" name="payday" value="{{ f.payday }}">{% endif %}
         <div class="field">
-          <label class="label" for="slip-file">Fill in from a payslip PDF</label>
-          <input class="input" type="file" id="slip-file" name="file" accept=".pdf,application/pdf" required>
-          <small>Fiscus reads the pay date, employer, gross, tax and net into the form below for you to check. The file is not kept. A scanned payslip has no text to read.</small>
+          <label class="label" for="slip-file">Fill in from payslip PDFs</label>
+          <input class="input" type="file" id="slip-file" name="file" accept=".pdf,application/pdf" multiple required>
+          <small>One PDF fills in the form below. Several (up to 40, such as a year of payslips) open a list to check, each matched to its payday. Files are not kept. A scanned payslip has no text to read.</small>
         </div>
-        <button class="btn" type="submit">Read payslip</button>
+        <button class="btn" type="submit">Read payslips</button>
       </form>
-      {% set r = read %}
-      <form class="mt" method="post" action="/payslips" id="slip-form">
+      <h3 class="mt" id="slip-heading">{{ 'Edit payslip' if slip else ('Payslip for ' ~ (options | selectattr('key', 'equalto', f.payday) | map(attribute='name') | first) if putting_in else 'Add a payslip or one-off payment') }}</h3>
+      <form method="post" action="{{ '/payslips/' ~ slip.id if slip else '/payslips' }}" id="slip-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        {% if r %}
+        {% if f.error %}<div class="alert alert-error" id="slip-error">{{ f.error }}</div>{% endif %}
+        {% if f.file_name or f.notes %}
           <div class="alert alert-info" id="slip-read-note">
-            Read from {{ r.file_name }}. Check the figures, then add the payslip.
-            {% for n in r.notes %}<br>{{ n }}{% endfor %}
+            {% if f.file_name %}Read from {{ f.file_name }}. Check the figures, then add the payslip.{% endif %}
+            {% for n in f.notes %}{% if not loop.first or f.file_name %}<br>{% endif %}{{ n }}{% endfor %}
           </div>
         {% endif %}
         <div class="form-grid">
-          <div class="field"><label class="label" for="slip-date">Pay date</label><input class="input" type="date" id="slip-date" name="date" required value="{{ r.date if r and r.date else today.isoformat() }}"></div>
-          <div class="field"><label class="label" for="slip-source">Employer</label><input class="input" id="slip-source" name="source" maxlength="120" value="{{ r.source if r else '' }}"></div>
-          <div class="field"><label class="label" for="slip-gross">Gross</label><input class="input" id="slip-gross" name="gross" inputmode="decimal" required value="{{ r.gross if r else '' }}"></div>
-          <div class="field"><label class="label" for="slip-tax">Tax withheld</label><input class="input" id="slip-tax" name="tax_withheld" inputmode="decimal" required value="{{ r.tax_withheld if r else '' }}"></div>
-          <div class="field"><label class="label" for="slip-net">Net</label><input class="input" id="slip-net" name="net" inputmode="decimal" required value="{{ r.net if r else '' }}"></div>
+          <div class="field"><label class="label" for="slip-date">Pay date</label><input class="input" type="date" id="slip-date" name="date" required value="{{ f.date or today.isoformat() }}"></div>
+          <div class="field"><label class="label" for="slip-source">Employer</label><input class="input" id="slip-source" name="source" maxlength="120" value="{{ f.source }}"></div>
+          <div class="field"><label class="label" for="slip-gross">Gross</label><input class="input" id="slip-gross" name="gross" inputmode="decimal" required value="{{ f.gross }}"></div>
+          <div class="field"><label class="label" for="slip-tax">Tax withheld</label><input class="input" id="slip-tax" name="tax_withheld" inputmode="decimal" required value="{{ f.tax_withheld }}"></div>
+          <div class="field"><label class="label" for="slip-net">Net</label><input class="input" id="slip-net" name="net" inputmode="decimal" required value="{{ f.net }}"></div>
           <div class="field"><label class="label" for="slip-account">Paid into</label>
-            <select class="input" id="slip-account" name="account_id"><option value="0">My spending account</option>{% for a in accounts %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}</select>
+            <select class="input" id="slip-account" name="account_id"><option value="0">Its pay schedule's account, else my spending account</option>{% for a in accounts %}<option value="{{ a.id }}" {{ 'selected' if f.account_id == a.id else '' }}>{{ a.name }}</option>{% endfor %}</select>
+          </div>
+          <div class="field full"><label class="label" for="slip-payday">Which pay</label>
+            {% from "pay/_payday.html" import payday_select %}
+            {{ payday_select('slip-payday', options, f.payday, schedules) }}
           </div>
         </div>
-        <p class="muted text-xs">For a one-off payment such as a bonus, date it when it will be paid: a payslip dated after today goes into your forecast, calendar and tax estimate. Regular pay belongs in a schedule.</p>
-        <button class="btn btn-primary" type="submit">Add payslip</button>
+        <p class="muted text-xs">A payslip for a payday replaces that payday's expected pay. A one-off, such as a bonus or back pay, is extra; date it when it will be paid and, if that is after today, it goes into your forecast, calendar and tax estimate.</p>
+        <div class="row">
+          <button class="btn btn-primary" type="submit">{{ 'Save payslip' if slip else 'Add payslip' }}</button>
+          {% if slip or putting_in %}<a class="btn" href="/pay">Cancel</a>{% endif %}
+        </div>
       </form>
       <div class="table-wrap mt">
         <table>
@@ -91,9 +124,13 @@
           <tbody>
             {% for p in slips %}
               <tr>
-                <td class="num">{{ p.date | d }}</td><td>{{ p.source }}{% if p.date > today %} <span class="pill">Expected</span>{% endif %}</td>
+                <td class="num">{{ p.date | d }}</td>
+                <td>{{ p.source }}{% if p.date > today %} <span class="pill">Expected</span>{% endif %}
+                  <div class="text-xs muted">{% if p.schedule_id and p.payday %}{{ names.get(p.schedule_id, 'Pay') }}, {{ p.payday | d('dm') }}{% if p.net_cents == 0 and p.gross_cents == 0 %} · no pay{% endif %}{% else %}One-off{% endif %}</div>
+                </td>
                 <td class="num">{{ p.gross_cents | money }}</td><td class="num">{{ p.tax_withheld_cents | money }}</td><td class="num">{{ p.net_cents | money }}</td>
-                <td>
+                <td class="nowrap">
+                  <a class="btn btn-sm" href="/pay?slip={{ p.id }}#slip-form">Edit</a>
                   <form class="inline" method="post" action="/payslips/{{ p.id }}/delete" data-confirm="Delete this payslip?">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <button class="btn btn-sm" type="submit" aria-label="Delete">✕</button>

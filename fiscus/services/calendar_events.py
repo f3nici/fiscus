@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from fiscus.clock import Clock
 from fiscus.domain import recurrence
 from fiscus.domain.loan import repayments as loan_repayments
-from fiscus.models import Loan, Payslip, SquareInvoice, User
+from fiscus.models import Loan, SquareInvoice, User
 from fiscus.services import bills, forecasting, ledger, pay
 from fiscus.services.access import owned
 
@@ -70,28 +70,22 @@ def events(db: Session, user: User, start: date, end: date, today: date) -> list
                 occ.bill.id,
             )
         )
-    for ps, net in pay.schedules(db, user, today):
-        for d in recurrence.occurrences(
-            ps.anchor_date, ps.frequency, start, end, until=ps.end_date
-        ):
-            out.append(
-                Event(
-                    d,
-                    'pay',
-                    ps.name,
-                    net,
-                    'paid' if d <= today else 'scheduled',
-                    None,
-                    ps.id,
-                )
-            )
-    # Payslips after today are one-off pays to come; earlier ones are in the
-    # imported transactions already.
-    for slip in db.execute(
-        owned(Payslip, user).where(Payslip.date > today, Payslip.date >= start, Payslip.date <= end)
-    ).scalars():
+    # Paydays, with their payslip's net once one is in, and one-off payslips.
+    # Past one-offs from before paydays were recorded may repeat a payday, so
+    # only one-offs still to come are shown.
+    for item in pay.items(db, user, start, end, today):
+        if item.schedule is None and item.when <= today:
+            continue
         out.append(
-            Event(slip.date, 'pay', slip.source or 'Payslip', slip.net_cents, 'scheduled', None)
+            Event(
+                item.when,
+                'pay',
+                item.label,
+                item.net_cents,
+                'paid' if item.when <= today else 'scheduled',
+                None,
+                item.schedule.id if item.schedule else None,
+            )
         )
     # Unpaid Square invoices on their due date. Not in the forecast: business
     # income already comes in there through the 90-day average.

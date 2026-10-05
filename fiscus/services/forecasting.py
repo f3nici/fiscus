@@ -20,7 +20,6 @@ from fiscus.models import (
     Budget,
     ForecastCache,
     Loan,
-    Payslip,
     RecurringTransfer,
     Scenario,
     Transaction,
@@ -151,24 +150,13 @@ def build_input(db: Session, user: User, today: date, months: int) -> ForecastIn
         return aid if aid in valid else spend_acct
 
     flows: list[Flow] = []
-    for ps, net in pay.schedules(db, user, today):
-        target = acct_or_default(ps.account_id)
-        if target is None:
-            continue
-        for d in recurrence.occurrences(
-            ps.anchor_date, ps.frequency, first, end, until=ps.end_date
-        ):
-            flows.append(Flow(d, target, net, 'pay', ps.name, ps.id))
-
-    # A payslip dated after today is a one-off pay still to come, such as a bonus.
-    for slip in db.execute(
-        owned(Payslip, user).where(Payslip.date >= first, Payslip.date <= end)
-    ).scalars():
-        target = acct_or_default(slip.account_id)
+    # Schedule paydays (their payslip's figures once one records them) and
+    # one-off payslips still to come, such as a bonus.
+    for item in pay.items(db, user, first, end, today):
+        target = acct_or_default(item.account_id)
         if target is not None:
-            flows.append(
-                Flow(slip.date, target, slip.net_cents, 'pay', slip.source or 'Payslip', slip.id)
-            )
+            ref = item.schedule.id if item.schedule else None
+            flows.append(Flow(item.when, target, item.net_cents, 'pay', item.label, ref))
 
     for occ in bills.occurrences(db, user, today - timedelta(days=OVERDUE_CARRY_DAYS), end, today):
         if occ.payment is not None:

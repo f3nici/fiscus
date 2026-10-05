@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% from "pay/_payday.html" import payday_select %}
+{% block title %}Check payslips{% endblock %}
+{% block content %}
+  <div class="page-head">
+    <div>
+      <h1>Check payslips</h1>
+      <span class="muted text-sm">{{ rows | length }} read{% if errors %}, {{ errors | length }} could not be read{% endif %}</span>
+    </div>
+    <a class="btn" href="/pay">Back to pay</a>
+  </div>
+  {% if saved %}<div class="alert alert-ok" id="bulk-saved">{{ saved }}. The ones below need fixing.</div>{% endif %}
+  <p class="muted">Each ticked payslip is added. One matched to a payday replaces that payday's expected pay; a one-off is extra. Change any figure or payday first; nothing is saved until you press Add.</p>
+  {% if errors %}
+    <div class="alert alert-warn" id="bulk-errors">
+      {% for name, why in errors %}{% if not loop.first %}<br>{% endif %}<strong>{{ name }}</strong>: {{ why }}{% endfor %}
+    </div>
+  {% endif %}
+  {% if rows %}
+    <form method="post" action="/payslips/bulk" id="bulk-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="card">
+        <div class="table-wrap">
+          <table class="import-table">
+            <thead>
+              <tr><th></th><th>File</th><th>Pay date</th><th>Employer</th><th class="num">Gross</th><th class="num">Tax</th><th class="num">Net</th><th>Which pay</th></tr>
+            </thead>
+            <tbody>
+              {% for r in rows %}
+                {% set f = r.form %}
+                <tr>
+                  <td><input type="checkbox" name="include" value="{{ r.index }}" aria-label="Add {{ r.file_name }}" {{ 'checked' if r.include else '' }}></td>
+                  <td>
+                    {{ r.file_name }}
+                    <input type="hidden" name="file_name" value="{{ r.file_name }}">
+                    {% if f.error %}<div class="text-xs neg">{{ f.error }}</div>{% endif %}
+                    {% for n in f.notes %}<div class="text-xs muted">{{ n }}</div>{% endfor %}
+                  </td>
+                  <td><input class="input" type="date" name="date" value="{{ f.date }}" aria-label="Pay date for {{ r.file_name }}"></td>
+                  <td><input class="input" name="source" maxlength="120" value="{{ f.source }}" aria-label="Employer for {{ r.file_name }}"></td>
+                  <td class="num"><input class="input num w-money" name="gross" inputmode="decimal" value="{{ f.gross }}" aria-label="Gross for {{ r.file_name }}"></td>
+                  <td class="num"><input class="input num w-money" name="tax_withheld" inputmode="decimal" value="{{ f.tax_withheld }}" aria-label="Tax withheld for {{ r.file_name }}"></td>
+                  <td class="num"><input class="input num w-money" name="net" inputmode="decimal" value="{{ f.net }}" aria-label="Net for {{ r.file_name }}"></td>
+                  <td>{{ payday_select('payday-' ~ r.index, options, f.payday, true) }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card mt">
+        <div class="field">
+          <label class="label" for="bulk-account">Paid into</label>
+          <select class="input" id="bulk-account" name="account_id"><option value="0">Its pay schedule's account, else my spending account</option>{% for a in accounts %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}</select>
+        </div>
+        <button class="btn btn-primary" type="submit">Add ticked payslips</button>
+      </div>
+    </form>
+  {% endif %}
+{% endblock %}

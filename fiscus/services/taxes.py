@@ -9,7 +9,7 @@ from pathlib import Path
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from fiscus.domain import recurrence, tax
+from fiscus.domain import tax
 from fiscus.models import Account, Category, Payslip, Transaction, User
 from fiscus.services import ledger, pay
 from fiscus.services.access import owned
@@ -78,15 +78,13 @@ def view(db: Session, user: User, today: date, tax_dir: Path | None = None) -> T
     ratio_tax = withheld / gross if gross else None
     proj_gross, proj_tax = gross, withheld
     first = today + timedelta(days=1)
-    for p in db.execute(
-        owned(Payslip, user).where(Payslip.date >= first, Payslip.date <= fy_end)
-    ).scalars():
-        proj_gross += p.gross_cents
-        proj_tax += p.tax_withheld_cents
-    for ps, net in pay.schedules(db, user, today):
-        for _d in recurrence.occurrences(
-            ps.anchor_date, ps.frequency, first, fy_end, until=ps.end_date
-        ):
+    for item in pay.items(db, user, first, fy_end, today):
+        if item.slip is not None:
+            proj_gross += item.slip.gross_cents
+            proj_tax += item.slip.tax_withheld_cents
+            continue
+        ps, net = item.schedule, item.net_cents
+        if ps is not None:
             # A varying pay's gross and tax scale with its average, not the guess.
             g = ps.gross_cents
             if g is not None and ps.varies and ps.net_cents:
