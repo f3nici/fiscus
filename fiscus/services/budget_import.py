@@ -101,8 +101,8 @@ def apply(
 ) -> tuple[int, int]:
     """Sum the chosen lines per category and set those budgets. Returns (categories, total).
 
-    An imported amount is the category's whole budget: bills already in the
-    category count towards it rather than on top.
+    An imported amount is the category's whole budget: bills in the
+    category are paid out of it, not added to it.
     """
     totals: dict[int, tuple[Category, int]] = {}
     for c in chosen:

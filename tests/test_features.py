@@ -387,11 +387,14 @@ def test_a_paid_bill_comes_off_its_category(env: Env) -> None:
     bill = create_bill(
         a, name='Power', amount='200', next_due='2026-10-20', category_id=str(utilities)
     )
+    a.post('/budget', data={'category_id': str(utilities), 'amount': '300'})
     page = a.get('/budget').text
     assert '$200.00 of bills' in page and 'bills paid' not in page
     a.post(f'/bills/{bill}/occurrence/2026-10-20/paid')
     page = a.get('/budget').text
     assert '$200.00 bills paid' in page and 'nothing over' in page
+    # The budget stays 300; 100 of it is left.
+    assert '$300.00' in page and '$100.00' in page
 
 
 def test_balances_are_typed_in(env: Env) -> None:
@@ -455,11 +458,12 @@ def cat_id(env: Env, user: User, name: str) -> int:
         )
 
 
-def test_bills_count_towards_their_category_budget(env: Env) -> None:
+def test_bills_are_paid_out_of_their_category_budget(env: Env) -> None:
     alex = env.user('alex')
     sam = env.user('sam')
     a = env.login(alex)
     housing = cat_id(env, alex, 'Housing')
+    a.post('/budget', data={'category_id': str(housing), 'amount': '150'})
     create_bill(
         a,
         name='Council rates',
@@ -471,27 +475,40 @@ def test_bills_count_towards_their_category_budget(env: Env) -> None:
         participants=[str(sam.id)],
         **{f'split_{alex.id}': '50', f'split_{sam.id}': '50'},
     )
-    # My half of 520 a quarter is 86.67 a month: that is the budget, nothing stored.
+    # My half of 520 a quarter is 86.67 a month. It does not add to the 150.
     page = a.get('/budget?month=2026-10').text
-    assert '$86.67' in page and 'Includes $86.67 of bills' in page
+    assert '$150.00' in page and '$236.67' not in page
+    assert 'Bills here come to $86.67 a month' in page
     with env.db() as db:
-        assert db.execute(select(Budget)).first() is None
+        assert db.execute(select(Budget.monthly_cents)).scalar_one() == 150_00
     assert '-$260.00' in env.login(sam).get('/calendar?view=agenda&date=2026-11-01').text
-    # A total above the bills keeps only the rest.
-    a.post('/budget', data={'category_id': str(housing), 'amount': '150'})
-    with env.db() as db:
-        assert db.execute(select(Budget.monthly_cents)).scalar_one() == 63_33
-    assert '$150.00' in a.get('/budget?month=2026-10').text
-    # Below the bills: the bills are the budget.
+    # Below the bills is allowed, with a note.
     resp = a.post(
         '/budget', data={'category_id': str(housing), 'amount': '50'}, follow_redirects=True
     )
-    assert 'come to $86.67 a month' in resp.text
+    assert 'come to $86.67 a month, more than this' in resp.text
     with env.db() as db:
-        assert db.execute(select(Budget)).first() is None
+        assert db.execute(select(Budget.monthly_cents)).scalar_one() == 50_00
     # The bills page shows the same monthly figure, filtered by category.
     bills_page = a.get(f'/bills?category={housing}').text
     assert 'Bills: Housing' in bills_page and '$86.67' in bills_page
+
+
+def test_a_bill_without_a_budget_adds_nothing_to_the_budget(env: Env) -> None:
+    alex = env.user('alex')
+    a = env.login(alex)
+    utilities = cat_id(env, alex, 'Utilities')
+    bill = create_bill(
+        a, name='Power', amount='200', next_due='2026-10-20', category_id=str(utilities)
+    )
+    a.post(f'/bills/{bill}/occurrence/2026-10-20/paid')
+    with env.db() as db:
+        user = db.get(User, alex.id)
+        assert user is not None
+        start, end = budgeting.period(db, user, date(2026, 10, 1))
+        rows = budgeting.rows(db, user, start, end, date(2026, 10, 1))
+        s = budgeting.summary(rows, 0)
+    assert s.budget_cents == 0 and s.spent_cents == 200_00
 
 
 def test_budget_in_forecast_is_only_the_part_beyond_bills(env: Env) -> None:
@@ -504,6 +521,7 @@ def test_budget_in_forecast_is_only_the_part_beyond_bills(env: Env) -> None:
         data={'category_id': str(utilities), 'amount': '250', 'use_in_forecast': 'true'},
     )
     with env.db() as db:
+        assert db.execute(select(Budget.monthly_cents)).scalar_one() == 250_00
         est = forecasting.estimates(db, db.get(User, alex.id), date(2026, 10, 1))  # type: ignore[arg-type]
     # Power is forecast from its own date; the budget adds only the other 50.
     assert [(e.name, e.monthly_cents, e.source) for e in est] == [('Utilities', -50_00, 'budget')]

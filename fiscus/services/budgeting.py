@@ -1,8 +1,9 @@
 """The budget: what is set aside for each category in a budget month, and what is left.
 
-A category's budget is this person's bills in it (each share at its monthly
-equivalent, a one-off in the period it falls due) plus whatever else they set
-aside for it. The bills are counted for them; only the rest is stored.
+A category's budget is what the person allocates to it, and nothing else.
+Their bills in it (each share at its monthly equivalent, a one-off in the
+period it falls due) are shown beside it but never add to it: a bill is paid
+out of the allocation.
 
 Spending is not read from bank transactions. It is what the person takes off a
 budget by hand (`BudgetSpend`) plus their share of every bill they mark paid
@@ -29,7 +30,7 @@ class BudgetRow:
     category: Category
     budget: Budget | None
     spent_cents: int  # taken off by hand (earned, for income)
-    bills_cents: int  # this person's bills in the category, per month
+    bills_cents: int  # this person's bills in the category, per month (shown, not added)
     bills_paid_cents: int  # their share of bills marked paid this period
 
     @property
@@ -37,16 +38,12 @@ class BudgetRow:
         return self.spent_cents + self.bills_paid_cents
 
     @property
-    def extra_cents(self) -> int:
+    def budget_cents(self) -> int:
         return self.budget.monthly_cents if self.budget else 0
 
     @property
-    def budget_cents(self) -> int:
-        return self.bills_cents + self.extra_cents
-
-    @property
     def has_budget(self) -> bool:
-        return self.budget is not None or self.bills_cents > 0
+        return self.budget is not None
 
     @property
     def remaining_cents(self) -> int:
@@ -75,7 +72,7 @@ class BudgetRow:
 class Summary:
     expected_cents: int  # pay due in the period plus income budgets
     pay_cents: int
-    budget_cents: int  # spending budgets, bills included
+    budget_cents: int  # spending budgets, bills paid out of them
     spent_cents: int
     to_spend_cents: int  # what is left in budgets not yet overspent
     over: int
@@ -99,7 +96,9 @@ def period_starting_in(db: Session, user: User, month: date) -> tuple[date, date
     return period(db, user, recurrence.add_months(month, 0, start_day(db, user)))
 
 
-def bills_by_category(db: Session, user: User, start: date, end: date) -> dict[int, int]:
+def bills_by_category(
+    db: Session, user: User, start: date, end: date, *, one_offs: bool = True
+) -> dict[int, int]:
     """This person's bills per category for the period, smoothed to a monthly amount."""
     out: dict[int, int] = {}
     for share in bills.user_shares(db, user):
@@ -111,7 +110,7 @@ def bills_by_category(db: Session, user: User, start: date, end: date) -> dict[i
             continue
         mine = bills.share_amounts(bill)[user.id]
         if bill.frequency == 'one_off':
-            monthly = mine if start <= bill.next_due <= end else 0
+            monthly = mine if one_offs and start <= bill.next_due <= end else 0
         else:
             monthly = recurrence.monthly_equivalent(mine, bill.frequency)
         if monthly:
@@ -161,30 +160,28 @@ def set_total(
     use_in_forecast: bool,
     add: bool = False,
 ) -> tuple[int, int]:
-    """Set a category's budget to a total, bills included. Returns (total, bills).
+    """Set a category's budget, the bills in it paid out of it. Returns (total, bills).
 
-    Only the part above the bills is stored. With `add`, the amount goes on top
-    of whatever is set aside already.
+    With `add`, the amount goes on top of what is allocated already.
     """
     start, end = period(db, user, day)
     from_bills = bills_by_category(db, user, start, end).get(category.id, 0)
     row = db.execute(
         owned(Budget, user).where(Budget.category_id == category.id)
     ).scalar_one_or_none()
-    extra = (row.monthly_cents if row else 0) + total_cents if add else total_cents - from_bills
-    extra = max(0, extra)
+    total = max(0, (row.monthly_cents if row else 0) + total_cents if add else total_cents)
     keep = use_in_forecast or (row is not None and row.use_in_forecast and add)
-    if extra == 0 and not keep:
+    if total == 0 and not keep:
         if row is not None:
             db.delete(row)
-        return from_bills, from_bills
+        return 0, from_bills
     if row is None:
-        row = Budget(user_id=user.id, category_id=category.id, monthly_cents=extra)
+        row = Budget(user_id=user.id, category_id=category.id, monthly_cents=total)
         db.add(row)
-    row.monthly_cents = extra
+    row.monthly_cents = total
     row.use_in_forecast = keep
     db.flush()
-    return from_bills + extra, from_bills
+    return total, from_bills
 
 
 def rows(db: Session, user: User, start: date, end: date, today: date) -> list[BudgetRow]:

@@ -8,7 +8,7 @@ a PWA on phones. No external calls, no telemetry, no CDN.
 accounts and ANZ/mapped CSV import with dedup and undo; categories, rules and
 recategorising; bills with shares, matching and states; pay schedules and
 payslips; the calendar; home loan and offset; forecasting with scenarios;
-the budget (bills count towards it); bill import; the tax estimate; the dashboard; ntfy reminders;
+the budget (bills paid out of it); bill import; the tax estimate; the dashboard; ntfy reminders;
 backups; PDF statement import; payslip PDFs, single or in bulk, recording schedule paydays; casual pay; Square sync. Since D25 the budget is
 kept by hand (spending taken off, balances typed in) and transactions, import,
 rules and Square are hidden from the menus but not removed. Next steps are in `docs/10-decisions.md` §3.

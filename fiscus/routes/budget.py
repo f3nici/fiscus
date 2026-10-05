@@ -96,10 +96,13 @@ def save_budget(
     total, from_bills = budgeting.set_total(
         db, user, cat, cents, ctx(request).clock.today(), use_in_forecast=False
     )
-    if from_bills and cents < from_bills:
-        msg = f'Your bills in {cat.name} come to {fmt(from_bills)} a month, so that is its budget'
-    elif total == 0:
+    if total == 0:
         msg = f'Budget for {cat.name} removed'
+    elif total < from_bills:
+        msg = (
+            f'Budget for {cat.name} saved. Your bills in it come to {fmt(from_bills)}'
+            ' a month, more than this'
+        )
     else:
         msg = f'Budget for {cat.name} saved'
     return redirect(target, flash=msg, request=request)

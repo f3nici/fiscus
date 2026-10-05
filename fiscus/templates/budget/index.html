@@ -21,7 +21,7 @@
     <div class="card stat">
       <div class="label">Budgeted</div>
       <div class="value">{{ summary.budget_cents | money }}</div>
-      <span class="text-sm muted">bills included</span>
+      <span class="text-sm muted">your bills come out of this</span>
     </div>
     <div class="card stat">
       <div class="label">Unbudgeted (extra)</div>
@@ -105,7 +105,7 @@
                     <input type="hidden" name="category_id" value="{{ r.category.id }}">
                     <input type="hidden" name="back" value="{{ back }}">
                     <input class="input" name="amount" inputmode="decimal" value="{{ r.budget_cents | money_plain if r.has_budget else '' }}" aria-label="Monthly budget for {{ r.category.name }}">
-                    {% if r.bills_cents %}<p class="text-xs muted mt-sm">Includes {{ r.bills_cents | money }} of bills.</p>{% endif %}
+                    {% if r.bills_cents %}<p class="text-xs muted mt-sm">Bills here come to {{ r.bills_cents | money }} a month and are paid out of this.</p>{% endif %}
                     <button class="btn btn-sm btn-primary mt-sm" type="submit">Save</button>
                   </form>
                 </details>
@@ -182,5 +182,5 @@
       <button class="btn btn-primary" type="submit">Upload and preview</button>
     </div>
   </form>
-  <p class="muted text-sm mt">Bills count towards their category's budget at a monthly rate, so add a recurring cost once, on the <a href="/bills">Bills</a> page. The budget you set for a category is the whole amount, bills included, and the forecast spends what is budgeted beyond the bills.</p>
+  <p class="muted text-sm mt">The budget you set for a category is the whole amount. Bills in that category do not add to it: when you tick one as paid on the <a href="/bills">Bills</a> page, it comes off the budget as spent. The forecast spends what is budgeted beyond the bills, since the bills are forecast from their own dates.</p>
 {% endblock %}
