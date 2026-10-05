@@ -27,11 +27,13 @@
 | D21 | One home per cost: every recurring cost is a bill; a category's budget is its bills (monthly equivalent of your share) plus what you set aside on top | Housing costs were a third place that made a bill and a budget line; migration 0003 folded them into bills. Only the part beyond the bills is stored and used in the forecast, so bills are never counted twice. |
 
 | D22 | PDF statements are read once at upload into a CSV-shaped table (pdfminer.six, positions of characters) and then go through the CSV import | Amounts sit in columns by right edge; header words name them. Scans (no text) are refused. |
-| D23 | Casual pay: a schedule marked as varying expects the average received per payday over 13 weeks, from deposits matching its text | Paydays with nothing paid count as zero; the window starts at the first deposit seen. |
+| D23 | Casual pay: a schedule marked as varying expects the average received per payday over 13 weeks, from deposits matching its text | Paydays with nothing paid count as zero; the window starts at the first deposit seen. Since D25 the match text is off the form, so a varying schedule expects the typical pay entered; saving it clears any old text. |
 
 | D24 | Square sync: a second outside service, off by default, per user, read only, fixed host | Payments (gross) and fees as separate rows, refunds, payouts out to the bank, into one account as an import, every six hours with a week of overlap; ids make it idempotent. Unpaid invoices show on the calendar, not in the forecast, which already averages business income. The token is stored like the ntfy token. |
 
 | D25 | Spending is budgeted by hand, not imported | Transactions, import, rules and Square are hidden from the menus; the code and data stay, so they can come back. A person takes spending off a budget as they go and types in their account balances (about weekly). Spent = hand entries plus their share of bills marked paid that fall due in the period. The budget month starts on a chosen day. Every budget replaces the spending average in the forecast. |
+
+| D26 | Payslip PDFs fill in the payslip form; nothing is saved until the person adds it | Read with the statement reader's lines and cells, by label (Total Earnings, PAYG, Net Pay, Payment Date, Paid By and common variants), this pay before year to date. The file is read in memory and not kept. Missing figures and gross less tax not equalling net are pointed out. |
 
 ## 2. Assumptions
 
@@ -46,6 +48,5 @@
 
 - Per-account low-balance thresholds (v1 has one per user).
 - Splitting a single imported transaction across categories.
-- Importing payslips from PDF.
 - A per-category view of discretionary spending in the forecast chart.
 - An offset-balance forecast in the lifetime savings (v1 holds today's).

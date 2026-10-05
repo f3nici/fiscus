@@ -10,7 +10,7 @@
           <li>
             <span class="grow">
               <span class="title">{{ s.name }}</span>
-              <span class="text-xs muted">{{ s.frequency | capitalize }} · next {{ next[s.id] | d if next[s.id] else 'none' }}{% if s.end_date %} · ends {{ s.end_date | d }}{% endif %}{% if s.varies %} · varies, {{ 'recent average' if expected[s.id] != s.net_cents else 'your estimate until pays arrive' }}{% endif %}</span>
+              <span class="text-xs muted">{{ s.frequency | capitalize }} · next {{ next[s.id] | d if next[s.id] else 'none' }}{% if s.end_date %} · ends {{ s.end_date | d }}{% endif %}{% if s.varies %} · varies, {{ 'recent average' if expected[s.id] != s.net_cents else 'your typical pay' }}{% endif %}</span>
             </span>
             <span class="num pos">{% if s.varies %}~{% endif %}{{ expected[s.id] | money }}</span>
             <a class="btn btn-sm" href="/pay?edit={{ s.id }}">Edit</a>
@@ -37,9 +37,6 @@
           </div>
           <div class="field"><label class="label" for="ps-end">Ends (optional)</label><input class="input" type="date" id="ps-end" name="end_date" value="{{ e.end_date.isoformat() if e and e.end_date else '' }}"></div>
           <label class="check full"><input type="checkbox" name="varies" {{ 'checked' if e and e.varies else '' }}> The amount varies (casual or shift work)</label>
-          <div class="field full"><label class="label" for="ps-match">Its deposits contain (if it varies)</label><input class="input" id="ps-match" name="match_text" maxlength="120" placeholder="e.g. PAY/SALARY CAFE CO" value="{{ e.match_text if e else '' }}">
-            <small>Fiscus expects the average paid per payday over the last 13 weeks, counting paydays with nothing paid, from imported deposits whose description contains this. Your typical pay is used until some arrive.</small>
-          </div>
         </div>
         <div class="row">
           <button class="btn btn-primary" type="submit">Save</button>
@@ -57,14 +54,30 @@
     <div class="card">
       <h2>Payslips</h2>
       <p class="muted text-sm">This financial year: gross {{ ytd.gross | money }}, tax withheld {{ ytd.tax | money }}, net {{ ytd.net | money }}.</p>
-      <form method="post" action="/payslips">
+      <form method="post" action="/payslips/read" enctype="multipart/form-data" hx-boost="false" id="slip-read">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="field">
+          <label class="label" for="slip-file">Fill in from a payslip PDF</label>
+          <input class="input" type="file" id="slip-file" name="file" accept=".pdf,application/pdf" required>
+          <small>Fiscus reads the pay date, employer, gross, tax and net into the form below for you to check. The file is not kept. A scanned payslip has no text to read.</small>
+        </div>
+        <button class="btn" type="submit">Read payslip</button>
+      </form>
+      {% set r = read %}
+      <form class="mt" method="post" action="/payslips" id="slip-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        {% if r %}
+          <div class="alert alert-info" id="slip-read-note">
+            Read from {{ r.file_name }}. Check the figures, then add the payslip.
+            {% for n in r.notes %}<br>{{ n }}{% endfor %}
+          </div>
+        {% endif %}
         <div class="form-grid">
-          <div class="field"><label class="label" for="slip-date">Pay date</label><input class="input" type="date" id="slip-date" name="date" required value="{{ today.isoformat() }}"></div>
-          <div class="field"><label class="label" for="slip-source">Employer</label><input class="input" id="slip-source" name="source" maxlength="120"></div>
-          <div class="field"><label class="label" for="slip-gross">Gross</label><input class="input" id="slip-gross" name="gross" inputmode="decimal" required></div>
-          <div class="field"><label class="label" for="slip-tax">Tax withheld</label><input class="input" id="slip-tax" name="tax_withheld" inputmode="decimal" required></div>
-          <div class="field"><label class="label" for="slip-net">Net</label><input class="input" id="slip-net" name="net" inputmode="decimal" required></div>
+          <div class="field"><label class="label" for="slip-date">Pay date</label><input class="input" type="date" id="slip-date" name="date" required value="{{ r.date if r and r.date else today.isoformat() }}"></div>
+          <div class="field"><label class="label" for="slip-source">Employer</label><input class="input" id="slip-source" name="source" maxlength="120" value="{{ r.source if r else '' }}"></div>
+          <div class="field"><label class="label" for="slip-gross">Gross</label><input class="input" id="slip-gross" name="gross" inputmode="decimal" required value="{{ r.gross if r else '' }}"></div>
+          <div class="field"><label class="label" for="slip-tax">Tax withheld</label><input class="input" id="slip-tax" name="tax_withheld" inputmode="decimal" required value="{{ r.tax_withheld if r else '' }}"></div>
+          <div class="field"><label class="label" for="slip-net">Net</label><input class="input" id="slip-net" name="net" inputmode="decimal" required value="{{ r.net if r else '' }}"></div>
           <div class="field"><label class="label" for="slip-account">Paid into</label>
             <select class="input" id="slip-account" name="account_id"><option value="0">My spending account</option>{% for a in accounts %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}</select>
           </div>

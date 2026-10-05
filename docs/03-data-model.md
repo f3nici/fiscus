@@ -43,7 +43,7 @@ user's `data_version` (the forecast cache key).
 
 | Table | Notes |
 | --- | --- |
-| pay_schedules (owned) | frequency, anchor payday, net, optional gross and withholding, end date, account; `varies` and `match_text` for casual pay (expects the 13-week average per payday of deposits containing the text, the net until any arrive) |
+| pay_schedules (owned) | frequency, anchor payday, net, optional gross and withholding, end date, account; `varies` and `match_text` for casual pay (expects the 13-week average per payday of deposits containing the text, the net until any arrive; no longer on the form since D25, so the net is used) |
 | payslips (owned) | date, gross, withheld, net, source, account (paid into). Dated after today, a payslip is one-off income in the forecast, calendar and tax projection |
 | loans (owned) | principal, start, term, repayment frequency, current balance and its date, optional repayment override, repayment account |
 | loan_rates (owned) | rate from an effective date; the history |

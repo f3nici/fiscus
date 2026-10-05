@@ -23,6 +23,7 @@ import uvicorn
 from fiscus.app import create_app
 from fiscus.services import auth as auth_service
 from tests.conftest import settings_for
+from tests.test_payslip_pdf import payslip_pdf
 from tests.test_pdf_import import statement
 
 pytestmark = pytest.mark.browser
@@ -156,10 +157,22 @@ def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any
     page.goto(f'{base}/pay')
     page.check('input[name=varies]')
     page.fill('#ps-net', '450')
-    page.fill('#ps-match', 'CAFE CO')
     page.click('form[action="/pay/schedules"] button[type=submit]')
     page.wait_for_url(f'{base}/pay')
     assert 'varies' in page.content()
+    page.wait_for_selector('ul.list .title:has-text("Salary")')
+    # A payslip PDF fills in the payslip form, then it is added.
+    page.set_input_files(
+        '#slip-file',
+        files=[{'name': 'slip.pdf', 'mimeType': 'application/pdf', 'buffer': payslip_pdf()}],
+    )
+    page.click('#slip-read button[type=submit]')
+    page.wait_for_selector('#slip-read-note')
+    assert page.input_value('#slip-gross') == '803.85'
+    assert page.input_value('#slip-net') == '618.85'
+    page.click('#slip-form button[type=submit]')
+    page.wait_for_url(f'{base}/pay')
+    assert 'Payslip saved' in page.content()
 
     # The weekly routine: a budget line, money taken off it, balances typed in.
     page.goto(f'{base}/budget')

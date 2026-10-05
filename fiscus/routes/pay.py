@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Form, Request
+from typing import Any
+
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
+from fiscus.domain import payslip as payslip_pdf
 from fiscus.domain import recurrence
+from fiscus.domain.csvimport import MAX_BYTES, ImportError_
 from fiscus.domain.tax import fy_bounds
 from fiscus.forms import FormError, choice, money, opt_date, opt_money, req_date, text
 from fiscus.models import PAY_FREQUENCIES, Account, PaySchedule, Payslip, User
+from fiscus.money import fmt_plain
 from fiscus.services import ledger, pay
 from fiscus.services.access import get_owned, maybe_owned, owned
 from fiscus.web import ctx, current_user, get_db, redirect, render
@@ -20,6 +26,12 @@ router = APIRouter()
 @router.get('/pay')
 def pay_page(
     request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> Response:
+    return _page(request, user, db)
+
+
+def _page(
+    request: Request, user: User, db: Session, read: dict[str, Any] | None = None
 ) -> Response:
     c = ctx(request)
     today = c.clock.today()
@@ -51,6 +63,7 @@ def pay_page(
             'edit': maybe_owned(
                 db, PaySchedule, int(request.query_params.get('edit', '0') or 0), user
             ),
+            'read': read,
         },
     )
 
@@ -69,6 +82,7 @@ def save_schedule(
     end_date: str = Form(''),
     account_id: int = Form(0),
     varies: str = Form(''),
+    # No longer on the form (D25 hid transactions); saving from it clears any old text.
     match_text: str = Form(''),
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
@@ -86,8 +100,6 @@ def save_schedule(
             varies=varies == 'on',
             match_text=' '.join(match_text.split())[:120],
         )
-        if values['varies'] and not values['match_text']:
-            raise FormError('For pay that varies, say what its deposits are called')
     except FormError as exc:
         return redirect('/pay', flash=str(exc), request=request)
     acct = maybe_owned(db, Account, account_id, user)
@@ -143,6 +155,49 @@ def add_payslip(
     if slip.date > ctx(request).clock.today():
         return redirect('/pay', flash='Payslip saved. It is in your forecast.', request=request)
     return redirect('/pay', flash='Payslip saved', request=request)
+
+
+def _plain(cents: int | None) -> str:
+    return '' if cents is None else fmt_plain(cents)
+
+
+@router.post('/payslips/read')
+async def read_payslip(
+    request: Request,
+    file: UploadFile = File(...),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Fill in the payslip form from a PDF. Nothing is saved until the person adds it."""
+    data = await file.read(MAX_BYTES + 1)
+    if len(data) > MAX_BYTES:
+        return redirect('/pay', flash='That file is larger than 10 MB', request=request)
+    try:
+        slip = await run_in_threadpool(payslip_pdf.read, data)
+    except ImportError_ as exc:
+        return redirect('/pay', flash=str(exc), request=request)
+    notes = slip.notes()
+    when = slip.pay_date or slip.period_end
+    if when is not None and slip.net_cents is not None:
+        dupe = db.execute(
+            owned(Payslip, user).where(Payslip.date == when, Payslip.net_cents == slip.net_cents)
+        ).first()
+        if dupe is not None:
+            notes.append('You already have a payslip for this date and net pay.')
+    return _page(
+        request,
+        user,
+        db,
+        {
+            'date': when.isoformat() if when else '',
+            'source': slip.employer,
+            'gross': _plain(slip.gross_cents),
+            'tax_withheld': _plain(slip.tax_withheld_cents),
+            'net': _plain(slip.net_cents),
+            'file_name': (file.filename or 'the payslip')[:120],
+            'notes': notes,
+        },
+    )
 
 
 @router.post('/payslips/{slip_id}/delete')

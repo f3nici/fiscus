@@ -9,7 +9,7 @@ accounts and ANZ/mapped CSV import with dedup and undo; categories, rules and
 recategorising; bills with shares, matching and states; pay schedules and
 payslips; the calendar; home loan and offset; forecasting with scenarios;
 the budget (bills count towards it); bill import; the tax estimate; the dashboard; ntfy reminders;
-backups; PDF statement import; casual pay; Square sync. Since D25 the budget is
+backups; PDF statement import; payslip PDFs; casual pay; Square sync. Since D25 the budget is
 kept by hand (spending taken off, balances typed in) and transactions, import,
 rules and Square are hidden from the menus but not removed. Next steps are in `docs/10-decisions.md` §3.
 
@@ -105,7 +105,8 @@ doc 10 wins.
 fiscus/
   config.py clock.py money.py db.py models.py web.py app.py jobs.py cli.py
   domain/     recurrence, splits, csvimport, rules, matching, loan, forecast,
-              tax, bill_import, budget_import, pdfstatement, pay, square.
+              tax, bill_import, budget_import, pdfstatement, payslip, pay,
+              square.
               Pure, no I/O.
   services/   access (ownership), auth (sessions, links, WebAuthn), users,
               ledger, imports, pay, bills, forecasting, loans, taxes, budgeting,
