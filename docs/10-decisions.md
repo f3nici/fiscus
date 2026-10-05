@@ -24,7 +24,7 @@
 | D18 | PolyForm Noncommercial 1.0.0, copyright Fenici | As Vigilo. |
 | D19 | CI pushes images to Docker Hub only when credentials exist | Forks and PRs still build and smoke test. |
 | D20 | Strict CSP: no inline script or style | uPlot styles through the CSSOM, which CSP allows. |
-| D21 | One home per cost: every recurring cost is a bill; a category's budget is its bills (monthly equivalent of your share) plus what you set aside on top | Housing costs were a third place that made a bill and a budget line; migration 0003 folded them into bills. Only the part beyond the bills is stored and used in the forecast, so bills are never counted twice. |
+| D21 | One home per cost: every recurring cost is a bill; a category's budget is its bills (monthly equivalent of your share) plus what you set aside on top (budget half replaced by D29) | Housing costs were a third place that made a bill and a budget line; migration 0003 folded them into bills. Only the part beyond the bills is stored and used in the forecast, so bills are never counted twice. |
 
 | D22 | PDF statements are read once at upload into a CSV-shaped table (pdfminer.six, positions of characters) and then go through the CSV import | Amounts sit in columns by right edge; header words name them. Scans (no text) are refused. |
 | D23 | Casual pay: a schedule marked as varying expects the average received per payday over 13 weeks, from deposits matching its text | Paydays with nothing paid count as zero; the window starts at the first deposit seen. Since D25 the match text is off the form, so a varying schedule expects the typical pay entered; saving it clears any old text. |
@@ -37,6 +37,8 @@
 
 | D27 | Payslips record paydays: a payslip linked to a schedule payday replaces its expected pay in the forecast, calendar, budget and tax; unlinked ones are one-offs | One expansion (`services/pay.items`) for all four. A recorded pay counts on the payslip's date. Paydays in the last eight weeks without one are asked for; "no pay" is a zero payslip, which a varying schedule's average counts. Matching is by date within three days, a schedule named like the employer first; the person can change it before saving. Payslips from before this stay one-offs, and past one-offs are left out of the budget and calendar so they do not double a payday. |
 | D28 | A budget line spent every few months is saved up | Every 3 or 6 months or yearly. Its monthly share builds up from the budget month it was set (plus what the person says is already saved), and hand spending and bills paid in the category come out of that; it is over only when more is spent than saved. Changing it carries the saved amount forward. The forecast still spends it a month at a time. |
+
+| D29 | A category's budget is what is allocated to it; bills are paid out of it, not added to it (replaces the budget half of D21) | Adding a bill used to raise its category's budget. Now a bill shows beside the budget and, once marked paid, comes off it as spent; a saved-up line (D28) saves the allocation, not the allocation plus its bills. Migration 0009 added each person's recurring bills to their stored budgets, so totals were unchanged on upgrade. The forecast still adds only the part of a budget beyond its recurring bills, which are forecast from their dates. |
 
 ## 2. Assumptions
 

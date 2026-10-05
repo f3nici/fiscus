@@ -115,13 +115,13 @@ def save_budget(
         today=today,
     )
     every = 'a month' if cycle_months == 1 else budgeting.CYCLES[cycle_months].lower()
-    if from_bills and cents < from_bills * cycle_months:
-        msg = (
-            f'Your bills in {cat.name} come to {fmt(from_bills * cycle_months)} {every},'
-            ' so that is its budget'
-        )
-    elif total == 0 and cycle_months == 1:
+    if total == 0 and cycle_months == 1:
         msg = f'Budget for {cat.name} removed'
+    elif cents < from_bills * cycle_months:
+        msg = (
+            f'Budget for {cat.name} saved. Your bills in it come to'
+            f' {fmt(from_bills * cycle_months)} {every}, more than this'
+        )
     elif cycle_months > 1:
         msg = f'Saving up {fmt(total)} a month for {cat.name}, spent {every}'
     else:

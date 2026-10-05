@@ -86,7 +86,7 @@ def test_housing_items_become_plain_bills_and_budgets_keep_their_totals(tmp_path
                 {'c': cid, 'm': cents, 'f': fc},
             )
 
-    command.upgrade(cfg, 'head')
+    command.upgrade(cfg, '0003')
 
     insp = inspect(engine)
     assert 'housing_items' not in insp.get_table_names()
@@ -102,5 +102,18 @@ def test_housing_items_become_plain_bills_and_budgets_keep_their_totals(tmp_path
         left = {r[0]: r[1] for r in budget_rows}
     # Housing: all bills now, nothing on top. Utilities: 250 less the 200 power
     # bill. Groceries: unchanged. Insurance: zero and not in the forecast, gone.
+    assert left == {11: 5000, 12: 80000}
+
+    # 0009: a budget is the whole allocation, bills paid out of it, so each
+    # gets its bills back and housing, budgeted only by its bill, gets one.
+    command.upgrade(cfg, 'head')
+    with engine.connect() as c:
+        budget_rows = c.execute(text('SELECT category_id, monthly_cents FROM budgets'))
+        left = {r[0]: r[1] for r in budget_rows}
+    assert left == {10: 8667, 11: 25000, 12: 80000}
+    command.downgrade(cfg, '0008')
+    with engine.connect() as c:
+        budget_rows = c.execute(text('SELECT category_id, monthly_cents FROM budgets'))
+        left = {r[0]: r[1] for r in budget_rows}
     assert left == {11: 5000, 12: 80000}
     engine.dispose()

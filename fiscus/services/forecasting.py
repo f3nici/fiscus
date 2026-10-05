@@ -25,7 +25,7 @@ from fiscus.models import (
     Transaction,
     User,
 )
-from fiscus.services import bills, ledger, pay
+from fiscus.services import bills, budgeting, ledger, pay
 from fiscus.services.access import owned
 from fiscus.services.users import settings_for
 
@@ -125,12 +125,18 @@ def estimates(db: Session, user: User, today: date) -> list[Estimate]:
             name = cats[cid].name if cid in cats else 'Uncategorised'
             out.append(Estimate(cid, name, monthly, 'average'))
             seen.add(cid)
+    # Bills are forecast from their own dates and paid out of the budget, so
+    # only the part of a spending budget beyond its bills is added here.
+    in_bills = budgeting.bills_by_category(db, user, today, today, one_offs=False)
     for cid, b in budgets.items():
         cat = cats.get(cid)
         if cat is None:
             continue
-        sign = 1 if cat.is_income else -1
-        out.append(Estimate(cid, cat.name, sign * b.monthly_cents, 'budget'))
+        if cat.is_income:
+            out.append(Estimate(cid, cat.name, b.monthly_cents, 'budget'))
+        else:
+            rest = max(0, b.monthly_cents - in_bills.get(cid, 0))
+            out.append(Estimate(cid, cat.name, -rest, 'budget'))
     out.sort(key=lambda e: e.monthly_cents)
     return out
 
