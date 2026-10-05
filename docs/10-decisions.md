@@ -36,6 +36,7 @@
 | D26 | Payslip PDFs fill in the payslip form; nothing is saved until the person adds it | Read with the statement reader's lines and cells, by label (Total Earnings, PAYG, Net Pay, Payment Date, Paid By and common variants), this pay before year to date. The file is read in memory and not kept. Missing figures and gross less tax not equalling net are pointed out. |
 
 | D27 | Payslips record paydays: a payslip linked to a schedule payday replaces its expected pay in the forecast, calendar, budget and tax; unlinked ones are one-offs | One expansion (`services/pay.items`) for all four. A recorded pay counts on the payslip's date. Paydays in the last eight weeks without one are asked for; "no pay" is a zero payslip, which a varying schedule's average counts. Matching is by date within three days, a schedule named like the employer first; the person can change it before saving. Payslips from before this stay one-offs, and past one-offs are left out of the budget and calendar so they do not double a payday. |
+| D28 | A budget line spent every few months is saved up | Every 3 or 6 months or yearly. Its monthly share builds up from the budget month it was set (plus what the person says is already saved), and hand spending and bills paid in the category come out of that; it is over only when more is spent than saved. Changing it carries the saved amount forward. The forecast still spends it a month at a time. |
 
 ## 2. Assumptions
 

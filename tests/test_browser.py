@@ -207,6 +207,12 @@ def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any
     page.click('form[action="/budget/spend"] button[type=submit]')
     page.wait_for_selector('text=Ampol')
     assert '$134.50' in page.content()
+    # Something paid once a year is saved up a month at a time.
+    page.fill('#new_category', 'Car rego')
+    page.fill('#add_amount', '900')
+    page.select_option('#add_cycle', '12')
+    page.click('form:has(#add_amount) button[type=submit]')
+    page.wait_for_selector('text=Saving up $900.00 every year')
     page.goto(f'{base}/accounts')
     page.fill('input[name^=balance_]', '2400')
     page.click('form[action="/accounts/balances"] button[type=submit]')
