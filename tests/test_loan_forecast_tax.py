@@ -317,13 +317,15 @@ def test_lito_and_medicare(fy: tax.TaxYear) -> None:
     assert tax.medicare(fy, 100_000_00) == 2_000_00
 
 
-def test_position_owing_on_business_profit(fy: tax.TaxYear) -> None:
-    # Salary 80,000 with tax withheld as if it were the only income, plus 20,000 profit.
-    salary_only = tax.estimate(fy, 80_000_00)
-    pos = tax.position(fy, 80_000_00, salary_only.total_cents, 30_000_00, 10_000_00)
-    assert pos.business_profit_cents == 20_000_00
-    # The extra 20,000 is taxed at 30 % + 2 % Medicare = 6,400.
-    assert pos.owing_cents == 6_400_00
+def test_position_takes_deductions_off_income(fy: tax.TaxYear) -> None:
+    # Income 100,000 with tax withheld as if there were no deductions; 10,000 deducted.
+    no_deductions = tax.estimate(fy, 100_000_00)
+    pos = tax.position(fy, 100_000_00, no_deductions.total_cents, 10_000_00)
+    assert pos.total.taxable_cents == 90_000_00
+    # The 10,000 was taxed at 30 % + 2 % Medicare: 3,200 back.
+    assert pos.owing_cents == -3_200_00
+    # Deductions beyond income leave nothing taxable, not a negative.
+    assert tax.position(fy, 5_000_00, 0, 9_000_00).total.taxable_cents == 0
 
 
 def test_missing_year_is_a_clear_error(tmp_path: Path) -> None:

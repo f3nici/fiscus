@@ -182,7 +182,7 @@ def test_a_payslip_for_a_payday_replaces_its_expected_pay(env: Env) -> None:
         weeks_left = sum(
             1 for i in pay.items(db, user, date(2026, 10, 2), date(2027, 6, 30), TODAY)
         )
-        assert tv.projected.salary_gross_cents == 700_00 + 1000_00 + (weeks_left - 2) * 650_00
+        assert tv.projected.income_cents == 700_00 + 1000_00 + (weeks_left - 2) * 650_00
 
 
 def test_auto_matches_by_date_and_one_off_stays_extra(env: Env) -> None:

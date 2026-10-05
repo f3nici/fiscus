@@ -15,7 +15,7 @@
 | D9 | Loan interest daily on balance less offset, charged monthly on the anniversary; repayment before that day's interest | Matches how Australian lenders state it. |
 | D10 | Rate change reprices over the remaining term unless the repayment is fixed by hand | |
 | D11 | Discretionary spending: 90-day average per category, excluding matched bill payments and transfers; budget can replace it | |
-| D12 | Tax: Australian resident rates, Medicare levy with the low-income phase-in, LITO; HELP and the surcharge out | Rates in `config/tax/<year>.yaml`, checked each July. |
+| D12 | Tax: Australian resident rates, Medicare levy with the low-income phase-in; LITO (since D31), HELP and the surcharge out | Rates in `config/tax/<year>.yaml`, checked each July. |
 | D13 | Calendar: vue-cal's DOM and stylesheet rendered on the server, CareLane's tint | Month, week, day, agenda; agenda default on a phone. |
 | D14 | Service worker caches `/static/*` and `/offline` only | Offline shows the offline screen, never data. |
 | D15 | ntfy, off by default, private LAN allowed, loopback and link-local refused | CareLane blocks private ranges; a homelab ntfy lives in one. Square (D24) is the only other outside service. |
@@ -41,6 +41,8 @@
 | D29 | A category's budget is what is allocated to it; bills are paid out of it, not added to it (replaces the budget half of D21) | Adding a bill used to raise its category's budget. Now a bill shows beside the budget and, once marked paid, comes off it as spent; a saved-up line (D28) saves the allocation, not the allocation plus its bills. Migration 0009 added each person's recurring bills to their stored budgets, so totals were unchanged on upgrade. The forecast still adds only the part of a budget beyond its recurring bills, which are forecast from their dates. |
 
 | D30 | Quarterly pay is spread over the budget months | In the budget, a quarterly schedule counts its expected net x 4 / 12 every budget month from its first payday's month, and its paydays and payslips are not counted again. The calendar, forecast and tax keep the real paydays. |
+
+| D31 | Tax is on income less a typed-in deductions total; no business lines and no LITO | Sole trader income comes in as pay, so the tax page shows income (payslips and expected pays) less one deductions figure per financial year that the person types in and updates. Business categories no longer feed it. The low income tax offset is left out: on a part year it showed an offset the full year would not get. The set-aside target is the projected amount owing at 30 June, saved evenly: the share of it due by today, and what a week is still needed to reach it. |
 
 ## 2. Assumptions
 

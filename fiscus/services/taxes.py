@@ -6,11 +6,11 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
 
-from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from fiscus.domain import tax
-from fiscus.models import Account, Category, Payslip, Transaction, User
+from fiscus.models import Account, Payslip, TaxDeduction, User
+from fiscus.money import round_div
 from fiscus.services import ledger, pay
 from fiscus.services.access import owned
 
@@ -25,33 +25,38 @@ class TaxView:
     days_in_year: int
 
     @property
+    def year_end_set_aside_cents(self) -> int:
+        """Projected tax still to pay at 30 June, beyond what withholding covers."""
+        return max(0, self.projected.owing_cents)
+
+    @property
     def should_set_aside_cents(self) -> int:
-        """Tax owing on the year so far, beyond what salary withholding covered."""
-        return max(0, self.ytd.owing_cents)
+        """The year-end amount saved evenly over the year, as far as today."""
+        return round_div(self.year_end_set_aside_cents * self.days_elapsed, self.days_in_year)
+
+    @property
+    def left_to_save_per_week_cents(self) -> int:
+        """What still has to go in each week to reach the year-end amount by 30 June."""
+        weeks = max(1, (self.days_in_year - self.days_elapsed + 6) // 7)
+        short = self.year_end_set_aside_cents - self.set_aside_actual_cents
+        return max(0, round_div(short, weeks))
 
     @property
     def set_aside_gap_cents(self) -> int:
         return self.set_aside_actual_cents - self.should_set_aside_cents
 
 
-def _business(db: Session, user: User, start: date, end: date) -> tuple[int, int]:
-    cats = {c.id: c for c in db.execute(owned(Category, user)).scalars()}
-    income = 0
-    expenses = 0
-    rows = db.execute(
-        select(Transaction.category_id, func.sum(Transaction.amount_cents))
-        .where(Transaction.user_id == user.id, Transaction.date >= start, Transaction.date <= end)
-        .group_by(Transaction.category_id)
-    )
-    for cid, total in rows:
-        cat = cats.get(cid) if cid else None
-        if cat is None or not cat.is_business:
-            continue
-        if cat.is_income:
-            income += int(total)
-        elif cat.is_deductible:
-            expenses += -int(total)
-    return income, expenses
+def deductions_row(db: Session, user: User, label: str) -> TaxDeduction | None:
+    return db.execute(owned(TaxDeduction, user).where(TaxDeduction.year == label)).scalar()
+
+
+def set_deductions(db: Session, user: User, label: str, cents: int) -> None:
+    row = deductions_row(db, user, label)
+    if row is None:
+        db.add(TaxDeduction(user_id=user.id, year=label, amount_cents=cents))
+    else:
+        row.amount_cents = cents
+    db.flush()
 
 
 def view(db: Session, user: User, today: date, tax_dir: Path | None = None) -> TaxView:
@@ -65,8 +70,9 @@ def view(db: Session, user: User, today: date, tax_dir: Path | None = None) -> T
     )
     gross = sum(p.gross_cents for p in slips)
     withheld = sum(p.tax_withheld_cents for p in slips)
-    b_income, b_exp = _business(db, user, fy_start, today)
-    ytd = tax.position(year, gross, withheld, b_income, b_exp)
+    row = deductions_row(db, user, year.label)
+    deductions = row.amount_cents if row else 0
+    ytd = tax.position(year, gross, withheld, deductions)
 
     # Rest of the year: scheduled pays, with gross and withholding taken from the
     # schedule, or scaled from this year's payslips when the schedule has none.
@@ -100,10 +106,7 @@ def view(db: Session, user: User, today: date, tax_dir: Path | None = None) -> T
             proj_tax += w
     elapsed = (today - fy_start).days + 1
     total_days = (fy_end - fy_start).days + 1
-    scale = total_days / elapsed if elapsed > 0 else 1
-    projected = tax.position(
-        year, proj_gross, proj_tax, round(b_income * scale), round(b_exp * scale)
-    )
+    projected = tax.position(year, proj_gross, proj_tax, deductions)
     set_aside = ledger.balances(db, user, today)
     actual = sum(
         set_aside.get(a.id, 0)

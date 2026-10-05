@@ -128,41 +128,31 @@ def medicare(year: TaxYear, taxable_cents: int) -> int:
 class TaxEstimate:
     taxable_cents: int
     income_tax_cents: int
-    lito_cents: int
     medicare_cents: int
     total_cents: int
 
 
 def estimate(year: TaxYear, taxable_cents: int) -> TaxEstimate:
+    """Income tax plus Medicare. The low income tax offset is left out: on a part
+    year's income it showed an offset the full year would not get (D31)."""
     it = income_tax(year, taxable_cents)
-    off = min(lito(year, taxable_cents), it)
     mc = medicare(year, taxable_cents)
-    return TaxEstimate(taxable_cents, it, off, mc, it - off + mc)
+    return TaxEstimate(taxable_cents, it, mc, it + mc)
 
 
 @dataclass(frozen=True)
 class Position:
-    salary_gross_cents: int
+    income_cents: int
     withheld_cents: int
-    business_income_cents: int
-    business_expenses_cents: int
+    deductions_cents: int
     total: TaxEstimate
 
     @property
-    def business_profit_cents(self) -> int:
-        return self.business_income_cents - self.business_expenses_cents
-
-    @property
     def owing_cents(self) -> int:
-        """Estimated tax still to pay: total on combined income less what was withheld."""
+        """Estimated tax still to pay: total on taxable income less what was withheld."""
         return self.total.total_cents - self.withheld_cents
 
 
-def position(
-    year: TaxYear, salary_gross: int, withheld: int, business_income: int, business_expenses: int
-) -> Position:
-    profit = business_income - business_expenses
-    taxable = salary_gross + profit
-    return Position(
-        salary_gross, withheld, business_income, business_expenses, estimate(year, taxable)
-    )
+def position(year: TaxYear, income: int, withheld: int, deductions: int) -> Position:
+    taxable = max(0, income - deductions)
+    return Position(income, withheld, deductions, estimate(year, taxable))

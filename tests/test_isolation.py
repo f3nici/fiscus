@@ -51,6 +51,7 @@ OWNED_TABLES = [
     'loan_rates',
     'budgets',
     'budget_spends',
+    'tax_deductions',
     'scenarios',
     'scenario_adjustments',
     'recurring_transfers',

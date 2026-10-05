@@ -543,6 +543,19 @@ class BudgetSpend(Base, Owned):
     created_at: Mapped[datetime] = mapped_column(DateTime)
 
 
+class TaxDeduction(Base, Owned):
+    """Total deductions a person claims for one financial year, typed in."""
+
+    __tablename__ = 'tax_deductions'
+    __table_args__ = (UniqueConstraint('user_id', 'year'),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'))
+    # Financial year label, "2026-27".
+    year: Mapped[str] = mapped_column(String(7))
+    amount_cents: Mapped[int] = mapped_column(Integer, default=0)
+
+
 class Scenario(Base, Owned):
     __tablename__ = 'scenarios'
 

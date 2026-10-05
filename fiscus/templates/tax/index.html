@@ -7,29 +7,35 @@
     <span class="muted text-sm">{{ v.year.start | d }} to {{ v.year.end | d }} · day {{ v.days_elapsed }} of {{ v.days_in_year }}</span>
   </div>
   <div class="alert alert-info">
-    Every figure here is an estimate from your payslips and categorised transactions, using the Australian resident rates in <code>config/tax/{{ v.year.label }}.yaml</code>. It is not tax advice. HELP repayments, the Medicare levy surcharge and offsets other than the low income tax offset are not included.
+    Every figure here is an estimate from your payslips and the deductions you enter, using the Australian resident rates in <code>config/tax/{{ v.year.label }}.yaml</code>. It is not tax advice. HELP repayments, the Medicare levy surcharge and tax offsets (including the low income tax offset) are not included.
   </div>
 
   {% set gap = v.set_aside_gap_cents %}
   <div class="card {{ 'alert-error' if gap < 0 else 'alert-ok' }}">
     <h2>Set aside</h2>
-    <p>You should have set aside about <strong>{{ v.should_set_aside_cents | money }}</strong> so far. You actually have <strong>{{ v.set_aside_actual_cents | money }}</strong> in your tax set-aside accounts.</p>
-    <p class="mb-0">{% if gap < 0 %}That is <strong>{{ (-gap) | money }} short</strong>.{% else %}That covers it, with {{ gap | money }} to spare.{% endif %}
+    <p>To have nothing to pay when you lodge, you need about <strong>{{ v.year_end_set_aside_cents | money }}</strong> saved by 30 June, from the projection below. Saved evenly, that is <strong>{{ v.should_set_aside_cents | money }}</strong> by today. You have <strong>{{ v.set_aside_actual_cents | money }}</strong> in your tax set-aside accounts.</p>
+    <p class="mb-0">{% if gap < 0 %}That is <strong>{{ (-gap) | money }} short</strong> today.{% else %}That covers it, with {{ gap | money }} to spare.{% endif %}
+      {% if v.left_to_save_per_week_cents %}Putting away about <strong>{{ v.left_to_save_per_week_cents | money }} a week</strong> gets you there by 30 June.{% endif %}
       {% if not v.set_aside_actual_cents %}Mark an account as your tax set-aside on the <a href="/accounts">Accounts</a> page.{% endif %}</p>
   </div>
 
+  <form class="card mt row" method="post" action="/tax/deductions">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label class="label grow" for="deductions">Total deductions for {{ v.year.label }}</label>
+    <input class="input" id="deductions" name="amount" inputmode="decimal" value="{{ v.ytd.deductions_cents | money_plain if v.ytd.deductions_cents else '' }}" placeholder="0.00">
+    <button class="btn" type="submit">Save</button>
+    <p class="muted text-xs w-full">Everything you expect to claim this financial year. It comes off your taxable income in both columns below; update it as you go.</p>
+  </form>
+
   {% macro col(p) %}
     <ul class="list">
-      <li><span>Salary (gross)</span><span class="num">{{ p.salary_gross_cents | money }}</span></li>
-      <li><span>Business income</span><span class="num">{{ p.business_income_cents | money }}</span></li>
-      <li><span>Business deductible expenses</span><span class="num">-{{ p.business_expenses_cents | money }}</span></li>
-      <li><span>Sole trader profit</span><span class="num">{{ p.business_profit_cents | money }}</span></li>
+      <li><span>Income (gross)</span><span class="num">{{ p.income_cents | money }}</span></li>
+      <li><span>Deductions</span><span class="num">-{{ p.deductions_cents | money }}</span></li>
       <li><strong>Taxable income</strong><strong class="num">{{ p.total.taxable_cents | money }}</strong></li>
       <li><span>Income tax</span><span class="num">{{ p.total.income_tax_cents | money }}</span></li>
-      <li><span>Low income tax offset</span><span class="num">-{{ p.total.lito_cents | money }}</span></li>
       <li><span>Medicare levy</span><span class="num">{{ p.total.medicare_cents | money }}</span></li>
       <li><strong>Total tax</strong><strong class="num">{{ p.total.total_cents | money }}</strong></li>
-      <li><span>Already withheld from salary</span><span class="num">-{{ p.withheld_cents | money }}</span></li>
+      <li><span>Already withheld</span><span class="num">-{{ p.withheld_cents | money }}</span></li>
       <li><strong>{{ 'Estimated owing' if p.owing_cents >= 0 else 'Estimated refund' }}</strong><strong class="num {{ 'neg' if p.owing_cents > 0 else 'pos' }}">{{ (p.owing_cents if p.owing_cents >= 0 else -p.owing_cents) | money }}</strong></li>
     </ul>
   {% endmacro %}
@@ -39,7 +45,7 @@
     <div class="card">
       <h2>Projected to 30 June {{ estimate() }}</h2>
       {{ col(v.projected) }}
-      <p class="muted text-xs mt">Salary projects your pay schedules to 30 June (gross and withholding from the schedule, or scaled from this year's payslips). Business profit continues at its year-to-date daily rate.</p>
+      <p class="muted text-xs mt">Income projects your pay schedules to 30 June (gross and withholding from the schedule, or scaled from this year's payslips).</p>
     </div>
   </div>
   <p class="muted text-xs mt">Tax table: {{ v.year.verified }}</p>
