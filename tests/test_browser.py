@@ -325,6 +325,17 @@ def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any
             got = page.evaluate(js)
         raise AssertionError((got, want))
 
+    def settled(js: str) -> float:
+        # Where it ends up once the page has put it back, after the swap.
+        last = page.evaluate(js)
+        for _ in range(30):
+            page.wait_for_timeout(100)
+            now = page.evaluate(js)
+            if abs(now - last) < 0.5:
+                return float(now)
+            last = now
+        raise AssertionError('still moving')
+
     row.locator('summary:has-text("Edit")').click()
     page.evaluate(f"document.getElementById('{rid}').scrollIntoView({{block: 'center'}})")
     before = page.evaluate(top_js)
@@ -338,8 +349,13 @@ def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any
     assert page.url.endswith(f'#{rid}')
     stays(top_js, before)
     # Moving a line keeps it where it was too.
+    # Up, so there is page above to scroll into; at the foot of the page a
+    # line moved down can only go down.
     page.click('button[aria-label="Move Car registration down"]')
     page.wait_for_selector('tr:has-text("Insurance") + tr:has-text("Car registration")')
+    before = settled(top_js)
+    page.click('button[aria-label="Move Car registration up"]')
+    page.wait_for_selector('tr:has-text("Car registration") + tr:has-text("Insurance")')
     stays(top_js, before)
     page.goto(f'{base}/accounts')
     assert 'Unallocated $2,250.00' in page.inner_text('main table')
