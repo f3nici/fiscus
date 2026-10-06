@@ -305,6 +305,11 @@ class Category(Base, Owned):
         ForeignKey('budget_groups.id', ondelete='SET NULL'), nullable=True
     )
     budget_position: Mapped[int] = mapped_column(Integer, default=0)
+    # The goal this line saves into: putting money aside counts as spent on it.
+    # A goal can be saved from several lines.
+    goal_id: Mapped[int | None] = mapped_column(
+        ForeignKey('goals.id', ondelete='SET NULL'), nullable=True
+    )
 
 
 class BudgetGroup(Base, Owned):
@@ -583,10 +588,6 @@ class Goal(Base, Owned):
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
     # Holds the person's tax money: counted as set aside for tax. One per person.
     is_tax: Mapped[bool] = mapped_column(Boolean, default=False)
-    # Saved from this budget line: putting money aside counts as spent on it.
-    category_id: Mapped[int | None] = mapped_column(
-        ForeignKey('categories.id', ondelete='SET NULL'), nullable=True
-    )
     created_at: Mapped[datetime] = mapped_column(DateTime)
 
     moves: Mapped[list[GoalMove]] = relationship(

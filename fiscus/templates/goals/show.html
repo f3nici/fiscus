@@ -5,7 +5,7 @@
   <div class="page-head">
     <div>
       <h1>{{ goal.name }}{% if goal.is_tax %} <span class="pill">Tax</span>{% endif %}</h1>
-      <span class="muted text-sm">{% if account %}Held in <a href="/accounts/{{ account.id }}">{{ account.name }}</a>{% else %}Not in a particular account{% endif %}{% if line %} · saved from the <a href="/budget">{{ line.name }}</a> budget line{% endif %}</span>
+      <span class="muted text-sm">{% if account %}Held in <a href="/accounts/{{ account.id }}">{{ account.name }}</a>{% else %}Not in a particular account{% endif %}{% if goal_lines %} · saved from the {% for c in goal_lines %}{% if not loop.first %}{{ ' and ' if loop.last else ', ' }}{% endif %}<a href="/budget#line-{{ c.id }}">{{ c.name }}</a>{% endfor %} budget line{{ 's' if goal_lines | length > 1 else '' }}{% endif %}</span>
     </div>
     <div class="row">
       {% include "goals/_status.html" %}
@@ -77,7 +77,18 @@
           <input class="input" type="date" id="move_on" name="on" value="{{ today.isoformat() }}">
         </div>
       </div>
-      {% if line %}<label class="check"><input type="checkbox" name="as_spent" value="true" checked> Putting in counts as spent on the {{ line.name }} budget line</label>{% endif %}
+      {% if goal_lines | length == 1 %}
+        <label class="check"><input type="checkbox" name="as_spent" value="true" checked> Putting in counts as spent on the {{ goal_lines[0].name }} budget line</label>
+      {% elif goal_lines %}
+        <input type="hidden" name="as_spent" value="true">
+        <div class="field">
+          <label class="label" for="move_line">Putting in counts as spent on</label>
+          <select class="input" id="move_line" name="category_id">
+            {% for c in goal_lines %}<option value="{{ c.id }}">The {{ c.name }} budget line</option>{% endfor %}
+            <option value="-1">No budget line</option>
+          </select>
+        </div>
+      {% endif %}
       <button class="btn btn-primary" type="submit">Save</button>
       <p class="muted text-xs mt">The money does not move between accounts here: it is marked as set aside inside {{ account.name if account else 'your accounts' }}. Taking it out (for flights, say) frees it to spend.</p>
     </form>
@@ -106,14 +117,16 @@
         <label class="label" for="target_date">Save by (optional)</label>
         <input class="input" type="date" id="target_date" name="target_date" value="{{ goal.target_date.isoformat() if goal.target_date else '' }}">
       </div>
-      <div class="field">
-        <label class="label" for="category_id">Saved from budget line</label>
-        <select class="input" id="category_id" name="category_id">
-          <option value="0">None</option>
-          {% for c in lines %}<option value="{{ c.id }}" {{ 'selected' if goal.category_id == c.id else '' }}>{{ c.name }}</option>{% endfor %}
-        </select>
-        <small>Money put aside from that line counts as spent on it and goes into this goal. Taking money out to pay the bill does not count again.</small>
-      </div>
+      {% if lines %}
+        <fieldset class="full">
+          <legend class="label">Saved from budget lines</legend>
+          {% for c in lines %}
+            {% set other = saves_into.get(c.id) if c.goal_id != goal.id else None %}
+            <label class="check"><input type="checkbox" name="category_id" value="{{ c.id }}" {{ 'checked' if c.goal_id == goal.id else '' }}> {{ c.name }}{% if other %} <span class="muted text-xs">(now saves into {{ other }})</span>{% endif %}</label>
+          {% endfor %}
+          <small>Money put aside from these lines counts as spent on them and goes into this goal. Taking money out to pay a bill does not count again. A line saves into one goal, so ticking one here takes it from another.</small>
+        </fieldset>
+      {% endif %}
       <div class="field">
         <label class="label" for="holds">Holds now</label>
         <input class="input" id="holds" name="holds" inputmode="decimal" value="{{ v.held_cents | money_plain }}">

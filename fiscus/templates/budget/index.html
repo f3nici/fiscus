@@ -173,6 +173,8 @@
                 {% if r.has_budget and not r.saving %}<meter min="0" max="{{ r.budget_cents }}" low="{{ (r.budget_cents * 0.9) | int }}" high="{{ r.budget_cents }}" optimum="0" value="{{ [r.actual_cents, r.budget_cents] | min }}">{{ r.pct }}%</meter>{% endif %}
                 {% if r.saving %}<div class="text-xs muted">Saving up {{ (r.budget_cents * r.cycle_months) | money }} {{ cycles[r.cycle_months] | lower }}</div>{% endif %}
                 {% if r.bills_cents %}<div class="text-xs muted"><a href="/bills?category={{ r.category.id }}">{{ r.bills_cents | money }} of bills</a></div>{% endif %}
+                {% set dc = due.get(r.category.id) %}
+                {% if dc %}<div class="text-xs {{ 'neg' if dc.short_cents else 'pos' }}">{{ dc.need_cents | money }} due {{ dc.due | d }}: {% if dc.short_cents %}{{ dc.short_cents | money }} short by then{% else %}on track{% endif %}</div>{% endif %}
                 {% if r.category.id in doubled %}<div class="text-xs neg">Your home loan repayments are already in the budget. Remove this line so they are not counted twice.</div>{% endif %}
                 {% set g = goal_for.get(r.category.id) %}
                 {% if g %}
@@ -181,6 +183,7 @@
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <input type="hidden" name="back" value="{{ back }}#line-{{ r.category.id }}">
                     <input type="hidden" name="as_spent" value="true">
+                    <input type="hidden" name="category_id" value="{{ r.category.id }}">
                     <input type="hidden" name="on" value="{{ (today if current else end).isoformat() }}">
                     <input class="input" name="amount" inputmode="decimal" value="{{ (r.budget_cents if r.saving or r.remaining_cents <= 0 else r.remaining_cents) | money_plain if r.has_budget else '' }}" aria-label="Put aside into {{ g.name }}">
                     <button class="btn btn-sm btn-primary" type="submit">Put aside</button>
@@ -267,7 +270,7 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="back" value="{{ back }}">
     <h2>Add a budget line</h2>
-    <p class="muted text-sm">Saving for something, like a holiday? Put it in a <a href="/goals">goal</a>: what a goal holds comes off what is free in your accounts, not out of the budget. For money you budget each month but pay every few months (utilities), give the goal this budget line to save from, and a Put aside button here spends it from the line and puts it in the goal at once.</p>
+    <p class="muted text-sm">Saving for something, like a holiday? Put it in a <a href="/goals">goal</a>: what a goal holds comes off what is free in your accounts, not out of the budget. For money you budget each month but pay every few months (utilities, yearly bills), give the goal its budget lines to save from (one goal can take several), and a Put aside button here spends it from each line and puts it in the goal at once.</p>
     <div class="form-grid">
       <div class="field">
         <label class="label" for="add_category">Category</label>

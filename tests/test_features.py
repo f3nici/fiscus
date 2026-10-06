@@ -667,6 +667,36 @@ def test_a_quarterly_bill_paid_comes_out_of_what_is_saved(env: Env) -> None:
     assert '1 category over' in nov
 
 
+def test_a_saved_up_line_says_whether_it_will_hold_its_next_bill(env: Env) -> None:
+    alex = env.user('alex')
+    a = env.login(alex)
+    car = cat_id(env, alex, 'Transport')
+    create_bill(
+        a,
+        name='Roadside assistance',
+        amount='330',
+        frequency='yearly',
+        next_due='2027-03-15',
+        category_id=str(car),
+    )
+    a.post('/budget', data={'category_id': str(car), 'amount': '330', 'cycle_months': '12'})
+    # Started in October: six months of 27.50 by March is 165, half of it.
+    page = a.get('/budget').text
+    assert '$330.00 due 15 Mar 2027: $165.00 short by then' in page
+    a.post(
+        '/budget',
+        data={'category_id': str(car), 'amount': '330', 'cycle_months': '12', 'saved': '165'},
+    )
+    assert '$330.00 due 15 Mar 2027: on track' in a.get('/budget').text
+
+    # Put aside into a goal: out of the line, but still kept for the bill.
+    goal = a.post('/goals', data={'name': 'Yearly bills', 'category_id': str(car)})
+    gid = int(goal.headers['location'].rsplit('/', 1)[1])
+    a.post(f'/goals/{gid}/move', data={'amount': '192.50', 'as_spent': 'true'})
+    page = a.get('/budget').text
+    assert '$0.00' in page and '$330.00 due 15 Mar 2027: on track' in page
+
+
 def test_budget_in_forecast_is_only_the_part_beyond_bills(env: Env) -> None:
     alex = env.user('alex')
     a = env.login(alex)

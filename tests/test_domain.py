@@ -6,7 +6,7 @@ from datetime import date
 
 import pytest
 
-from fiscus.domain import csvimport, recurrence, splits
+from fiscus.domain import csvimport, recurrence, saving, splits
 from fiscus.domain.matching import Candidate, OpenOccurrence, assign, matches
 from fiscus.domain.rules import Matcher, RuleError, RuleSpec, validate
 from fiscus.money import MoneyError, fmt, parse_cents
@@ -331,3 +331,28 @@ def test_bill_import_reads_bimonthly() -> None:
         ('Water', 'bimonthly'),
         ('Power', 'bimonthly'),
     ]
+
+
+def test_a_saved_up_line_counts_the_months_before_its_bill() -> None:
+    oct1 = date(2026, 10, 1)
+    # 27.50 a month: October holds 27.50, November to March add five more.
+    dc = saving.check(
+        period_start=oct1,
+        start_day=1,
+        due=date(2027, 3, 15),
+        need_cents=330_00,
+        saved_cents=27_50,
+        monthly_cents=27_50,
+    )
+    assert (dc.by_then_cents, dc.short_cents) == (165_00, 165_00)
+    # Due this month: nothing more comes in; what was put aside still counts.
+    dc = saving.check(
+        period_start=oct1,
+        start_day=1,
+        due=date(2026, 10, 20),
+        need_cents=330_00,
+        saved_cents=0,
+        monthly_cents=27_50,
+        put_aside_cents=330_00,
+    )
+    assert (dc.by_then_cents, dc.short_cents) == (330_00, 0)

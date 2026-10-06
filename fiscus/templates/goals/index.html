@@ -50,13 +50,12 @@
         <label class="label" for="goal_date">Save by (optional)</label>
         <input class="input" type="date" id="goal_date" name="target_date">
       </div>
-      <div class="field">
-        <label class="label" for="goal_line">Saved from budget line (optional)</label>
-        <select class="input" id="goal_line" name="category_id">
-          <option value="0">None</option>
-          {% for c in lines %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
-        </select>
-      </div>
+      {% if lines %}
+        <fieldset class="full">
+          <legend class="label">Saved from budget lines (optional)</legend>
+          {% for c in lines %}<label class="check"><input type="checkbox" name="category_id" value="{{ c.id }}"> {{ c.name }}{% if c.id in saves_into %} <span class="muted text-xs">(now saves into {{ saves_into[c.id] }})</span>{% endif %}</label>{% endfor %}
+        </fieldset>
+      {% endif %}
       <div class="field">
         <label class="label" for="goal_saved">Already saved (optional)</label>
         <input class="input" id="goal_saved" name="saved" inputmode="decimal" placeholder="0.00">
@@ -67,6 +66,6 @@
       </div>
     </div>
     <button class="btn btn-primary" type="submit">Add goal</button>
-    <p class="muted text-xs mt">Leave the target and date blank for a bucket with no end, like general savings. With both, the goal shows how much to put in each month to get there. Give it a budget line (Utilities, say) to save from, and a Put aside button on the budget spends the money from that line and puts it in the goal at once.</p>
+    <p class="muted text-xs mt">Leave the target and date blank for a bucket with no end, like general savings. With both, the goal shows how much to put in each month to get there. Give it budget lines to save from (all your yearly bills, say), and a Put aside button on each on the budget line spends the money from it and puts it in the goal at once.</p>
   </form>
 {% endblock %}

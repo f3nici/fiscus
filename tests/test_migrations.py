@@ -117,3 +117,47 @@ def test_housing_items_become_plain_bills_and_budgets_keep_their_totals(tmp_path
         left = {r[0]: r[1] for r in budget_rows}
     assert left == {11: 5000, 12: 80000}
     engine.dispose()
+
+
+def test_a_goal_line_moves_onto_the_category(tmp_path: Path) -> None:
+    url = f'sqlite:///{tmp_path / "fiscus.db"}'
+    cfg = alembic_config(url)
+    command.upgrade(cfg, '0015')
+    engine = create_engine(url)
+    with engine.begin() as c:
+        c.execute(
+            text(
+                'INSERT INTO users (id, username, display_name, is_admin, is_active,'
+                ' user_handle, password_enabled, data_version, created_at)'
+                " VALUES (1, 'alex', 'alex', 0, 1, :h, 0, 0, '2026-01-01')"
+            ),
+            {'h': bytes([1]) * 64},
+        )
+        for cid, name in ((10, 'Rego'), (11, 'Power')):
+            c.execute(
+                text(
+                    'INSERT INTO categories (id, user_id, name, is_business, is_deductible,'
+                    ' is_income, is_transfer, budget_position) VALUES (:id, 1, :n, 0, 0, 0, 0, 0)'
+                ),
+                {'id': cid, 'n': name},
+            )
+        # Two goals on Rego: the open one keeps it.
+        goals: list[tuple[int, int | None, int]] = [(1, 10, 1), (2, 10, 0), (3, None, 0)]
+        for gid, line, archived in goals:
+            c.execute(
+                text(
+                    'INSERT INTO goals (id, user_id, name, keep_aside, archived, is_tax,'
+                    " category_id, created_at) VALUES (:id, 1, 'g', 1, :a, 0, :c, '2026-01-01')"
+                ),
+                {'id': gid, 'c': line, 'a': archived},
+            )
+    command.upgrade(cfg, '0016')
+    assert 'category_id' not in {col['name'] for col in inspect(engine).get_columns('goals')}
+    with engine.connect() as c:
+        rows = c.execute(text('SELECT id, goal_id FROM categories ORDER BY id'))
+        assert [tuple(r) for r in rows] == [(10, 2), (11, None)]
+    command.downgrade(cfg, '0015')
+    with engine.connect() as c:
+        rows = c.execute(text('SELECT id, category_id FROM goals ORDER BY id'))
+        assert [tuple(r) for r in rows] == [(1, None), (2, 10), (3, None)]
+    engine.dispose()
