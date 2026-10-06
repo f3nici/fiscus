@@ -80,9 +80,22 @@
   {% endif %}
 
   <div class="card mt" id="lines">
+    {% if groups %}
+      {% set any_open = groups | rejectattr('collapsed') | list %}
+      <div class="row lines-head">
+        <h2 class="grow">Budget lines</h2>
+        <form class="inline" method="post" action="/budget/groups/fold">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="back" value="{{ back }}">
+          <input type="hidden" name="collapsed" value="{{ 'true' if any_open else 'false' }}">
+          <button class="btn btn-sm" type="submit">{{ 'Totals only' if any_open else 'Show every line' }}</button>
+        </form>
+      </div>
+    {% endif %}
     <div class="table-wrap">
       <table class="stack-table cols-3 budget-table">
         <thead><tr><th>Category</th><th class="num">Left</th><th class="num">Spent</th><th class="num">Budget</th><th></th></tr></thead>
+        {% if loan_lines %}
         <tbody>
           {% for x in loan_lines %}
             <tr>
@@ -96,11 +109,30 @@
               <td class="cell-full"><a class="text-sm" href="/loans/{{ x.loan.id }}">Loan</a></td>
             </tr>
           {% endfor %}
+        </tbody>
+        {% endif %}
           {% for sec in sections %}
+          {% set folded = sec.group and sec.group.collapsed %}
+          <tbody class="{{ 'group' if sec.group else 'no-group' if groups else '' }}{{ ' folded' if folded else '' }}">
           {% if sec.group or groups %}
             <tr class="group-head" id="{{ 'group-%d' % sec.group.id if sec.group else 'group-none' }}">
-              <th>{{ sec.group.name if sec.group else 'Not in a group' }}</th>
-              <th class="num" data-label="Left">{{ sec.remaining_cents | money }}</th>
+              <th>
+                {%- if sec.group -%}
+                  <form class="inline" method="post" action="/budget/groups/{{ sec.group.id }}/fold">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input type="hidden" name="back" value="{{ back }}">
+                    <input type="hidden" name="collapsed" value="{{ 'false' if folded else 'true' }}">
+                    <button class="group-toggle" type="submit" aria-expanded="{{ 'false' if folded else 'true' }}" aria-label="{{ 'Show' if folded else 'Hide' }} the lines in {{ sec.group.name }}">
+                      <span class="caret" aria-hidden="true">{{ '▸' if folded else '▾' }}</span>
+                      {{ sec.group.name }}
+                    </button>
+                  </form>
+                {%- else -%}
+                  Not in a group
+                {%- endif %}
+                <span class="group-count">{{ sec.rows | length }} line{{ '' if sec.rows | length == 1 else 's' }}{{ ', hidden' if folded and sec.rows else '' }}</span>
+              </th>
+              <th class="num {{ 'neg' if sec.remaining_cents < 0 else '' }}" data-label="Left">{{ sec.remaining_cents | money }}</th>
               <th class="num" data-label="Spent">{{ sec.spent_cents | money }}</th>
               <th class="num" data-label="Budget">{{ sec.budget_cents | money }}</th>
               <th class="cell-full cell-actions">
@@ -133,6 +165,7 @@
               </th>
             </tr>
           {% endif %}
+          {% if not folded %}
           {% for r in sec.rows %}
             <tr id="line-{{ r.category.id }}">
               <td>
@@ -223,8 +256,9 @@
             {% if sec.group %}<tr><td colspan="5" class="muted text-sm">Nothing in it yet.</td></tr>
             {% elif not loan_lines and not groups %}<tr><td colspan="5" class="muted">No budget lines yet. Add one below.</td></tr>{% endif %}
           {% endfor %}
+          {% endif %}
+          </tbody>
           {% endfor %}
-        </tbody>
       </table>
     </div>
   </div>
@@ -278,7 +312,7 @@
     <label class="label grow" for="group_name">Add a group</label>
     <input class="input w-group" id="group_name" name="name" required maxlength="80" placeholder="Bills, Living, Fun...">
     <button class="btn" type="submit">Add group</button>
-    <p class="muted text-xs w-full">Groups put budget lines under headings with their own totals. Choose a line's group when you edit it, and use the arrows to put lines and groups in order.</p>
+    <p class="muted text-xs w-full">Groups put budget lines under headings with their own totals. Choose a line's group when you edit it. Tap a group's name to hide its lines and see just the totals.</p>
   </form>
 
   <div class="card mt" id="spent">

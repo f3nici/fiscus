@@ -314,6 +314,7 @@ WRITES: list[tuple[str, dict[str, Any]]] = [
     ('/budget/{category}/move', {'direction': 'up'}),
     ('/budget/groups/{group}', {'name': 'pwned'}),
     ('/budget/groups/{group}/move', {'direction': 'up'}),
+    ('/budget/groups/{group}/fold', {'collapsed': 'true'}),
     ('/budget/groups/{group}/delete', {}),
     ('/budget', {'category_id': '0', 'new_category': 'x', 'amount': '1', 'group_id': '{group}'}),
     ('/accounts/{account}/balance', {'balance': '1'}),

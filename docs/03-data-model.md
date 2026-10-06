@@ -29,7 +29,7 @@ user's `data_version` (the forecast cache key).
 | imports (owned) | file name, status (`pending`, `committed`, `undone`), counts, staged file path |
 | import_mappings (owned) | one column mapping per account, for non-ANZ files; a PDF statement's mapping sits under its `pdf` key |
 | categories (owned) | name unique per user; income, business, deductible, transfer flags; the budget group its line sits in and its place there (0 until moved) |
-| budget_groups (owned) | a heading on the budget page: name, position |
+| budget_groups (owned) | a heading on the budget page: name, position, collapsed (shows only its totals) |
 | rules (owned) | pattern, regex flag, category, priority |
 
 ## Bills

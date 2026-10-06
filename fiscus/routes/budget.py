@@ -191,6 +191,18 @@ def add_group(
     return redirect(_back(back, f'group-{group.id}'), flash=f'Group {clean} added', request=request)
 
 
+@router.post('/budget/groups/fold')
+def fold_groups(
+    request: Request,
+    collapsed: bool = Form(True),
+    back: str = Form('/budget'),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    budget_groups.fold_all(db, user, collapsed)
+    return redirect(_back(back, 'lines'), request=request)
+
+
 @router.post('/budget/groups/{group_id}')
 def rename_group(
     group_id: int,
@@ -222,6 +234,21 @@ def move_group(
 ) -> Response:
     group = get_owned(db, BudgetGroup, group_id, user)
     budget_groups.move_group(db, user, group, _step(direction))
+    return redirect(_back(back, f'group-{group.id}'), request=request)
+
+
+@router.post('/budget/groups/{group_id}/fold')
+def fold_group(
+    group_id: int,
+    request: Request,
+    collapsed: bool = Form(True),
+    back: str = Form('/budget'),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    group = get_owned(db, BudgetGroup, group_id, user)
+    group.collapsed = collapsed
+    db.flush()
     return redirect(_back(back, f'group-{group.id}'), request=request)
 
 

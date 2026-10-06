@@ -22,8 +22,13 @@ def test_moved_swaps_with_a_neighbour_and_stops_at_the_ends() -> None:
 
 def _order(page: str) -> list[str]:
     """Line and group names in the order the budget table shows them."""
-    body = page[page.index('<tbody>') : page.index('</tbody>')]
-    return re.findall(r'id="(?:line|group)-(?:\d+|none)">\s*<t[dh]>\s*([^<{\n]+?)\s*(?:<|\n)', body)
+    body = page[page.index('<tbody') : page.rindex('</tbody>')]
+    return re.findall(
+        r'id="(?:line|group)-(?:\d+|none)">\s*<t[dh]>\s*'
+        r'(?:<form(?:(?!</form>).)*?<span class="caret"[^>]*>.</span>\s*)?([^<{\n]+?)\s*(?:<|\n)',
+        body,
+        re.S,
+    )
 
 
 def _cat(env: Env, name: str) -> int:
@@ -81,6 +86,41 @@ def test_lines_are_grouped_and_put_in_order(env: Env) -> None:
     with env.db() as db:
         cat = db.get(Category, _cat(env, 'Fun'))
         assert cat is not None and cat.budget_group_id == fun
+
+
+def test_a_group_folds_to_its_totals(env: Env) -> None:
+    a = env.login(env.user('alex'))
+    a.post('/budget', data={'new_category': 'Power', 'amount': '200'})
+    a.post('/budget', data={'new_category': 'Fun', 'amount': '50'})
+    a.post('/budget/groups', data={'name': 'Utilities'})
+    with env.db() as db:
+        gid = db.execute(select(BudgetGroup.id)).scalar_one()
+    a.post(
+        '/budget',
+        data={'category_id': str(_cat(env, 'Power')), 'amount': '200', 'group_id': str(gid)},
+    )
+
+    resp = a.post(f'/budget/groups/{gid}/fold', data={'collapsed': 'true'})
+    assert resp.headers['location'] == f'/budget#group-{gid}'
+    page = a.get('/budget').text
+    # The heading and its total stay; the line in it is gone.
+    assert _order(page) == ['Utilities', 'Not in a group', 'Fun']
+    assert '1 line, hidden' in page and '$200.00' in page
+    assert 'Show every line' in page
+
+    a.post(f'/budget/groups/{gid}/fold', data={'collapsed': 'false'})
+    assert _order(a.get('/budget').text) == ['Utilities', 'Power', 'Not in a group', 'Fun']
+
+    # All at once, and putting a line in a folded group opens it.
+    a.post('/budget/groups/fold', data={'collapsed': 'true'})
+    assert 'Power' not in _order(a.get('/budget').text)
+    a.post(
+        '/budget', data={'category_id': str(_cat(env, 'Fun')), 'amount': '50', 'group_id': str(gid)}
+    )
+    assert _order(a.get('/budget').text) == ['Utilities', 'Power', 'Fun']
+    a.post('/budget/groups/fold', data={'collapsed': 'false'})
+    with env.db() as db:
+        assert db.get(BudgetGroup, gid).collapsed is False  # type: ignore[union-attr]
 
 
 def test_a_group_needs_a_name(env: Env) -> None:

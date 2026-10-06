@@ -109,6 +109,15 @@ def put_in(db: Session, user: User, cat: Category, group: BudgetGroup | None) ->
     )
     cat.budget_group_id = gid
     cat.budget_position = (db.execute(q).scalar() or 0) + 1
+    # Opened, so the line just put in it can be seen.
+    if group is not None:
+        group.collapsed = False
+    db.flush()
+
+
+def fold_all(db: Session, user: User, collapsed: bool) -> None:
+    for g in groups(db, user):
+        g.collapsed = collapsed
     db.flush()
 
 

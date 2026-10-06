@@ -316,6 +316,8 @@ class BudgetGroup(Base, Owned):
     user_id: Mapped[int] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'), index=True)
     name: Mapped[str] = mapped_column(String(80))
     position: Mapped[int] = mapped_column(Integer, default=0)
+    # Folded: the budget page shows only the group's totals.
+    collapsed: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class Transaction(Base, Owned):
