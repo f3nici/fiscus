@@ -238,7 +238,22 @@ button.btn-link .title { color: #fff; }
 .put-aside .btn { white-space: nowrap; }
 .order-btns { gap: 4px; flex-wrap: nowrap; margin-bottom: 4px; }
 .order-btns .btn { min-width: 32px; padding: 2px 8px; }
-tr.group-head th { padding-top: 18px; color: #fff; border-bottom: 1px solid var(--line-strong); text-transform: none; letter-spacing: normal; font-size: 0.9rem; }
+/* Budget groups: a tinted heading, then its lines behind a coloured edge. */
+.lines-head { margin-bottom: 8px; }
+.lines-head h2 { margin: 0; }
+.budget-table tbody.group, .budget-table tbody.no-group { border-top: 14px solid transparent; }
+tr.group-head th { padding: 10px 8px; color: #fff; background: rgba(37, 99, 235, 0.14); border-bottom: 1px solid rgba(37, 99, 235, 0.45); text-transform: none; letter-spacing: normal; font-size: 0.95rem; font-weight: 600; }
+tr.group-head th:first-child { border-radius: 8px 0 0 0; }
+tr.group-head th:last-child { border-radius: 0 8px 0 0; }
+tbody.folded tr.group-head th { border-bottom: none; }
+tbody.folded tr.group-head th:first-child { border-radius: 8px 0 0 8px; }
+tbody.folded tr.group-head th:last-child { border-radius: 0 8px 8px 0; }
+tbody.no-group tr.group-head th { background: rgba(255, 255, 255, 0.04); border-bottom-color: var(--line-strong); }
+tbody.group tr:not(.group-head) > td:first-child { box-shadow: inset 3px 0 0 rgba(37, 99, 235, 0.5); padding-left: 16px; }
+.group-toggle { display: inline-flex; align-items: center; gap: 6px; background: none; border: none; padding: 2px 0; margin: 0; color: inherit; font: inherit; font-weight: 600; cursor: pointer; text-align: left; }
+.group-toggle:hover { text-decoration: underline; }
+.group-toggle .caret { display: inline-block; width: 1em; color: #93b4f8; }
+.group-count { margin-left: 8px; color: var(--mid); font-size: 0.75rem; font-weight: 400; white-space: nowrap; }
 .w-group { max-width: 16rem; }
 .budget-import .in-file { white-space: nowrap; }
 .budget-import .in-file .pill { display: flex; width: max-content; margin-top: 4px; }
@@ -283,8 +298,12 @@ tr.group-head th { padding-top: 18px; color: #fff; border-bottom: 1px solid var(
   .stack-table .cell-actions:not(:has(*)) { display: none; }
   .stack-table .cell-actions > details[open] { flex-basis: 100%; }
   .stack-table .input, .stack-table .w-money, .stack-table input[list] { width: 100%; min-width: 0; text-align: left; }
-  .budget-table tr.group-head { margin-top: 10px; padding: 10px 12px; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line); border-radius: var(--radius); }
-  .budget-table tr.group-head th { border-bottom: none; padding-top: 0; }
+  .budget-table tbody.group, .budget-table tbody.no-group { border-top: none; margin-top: 14px; }
+  .budget-table tr.group-head { padding: 10px 12px; background: rgba(37, 99, 235, 0.14); border: 1px solid rgba(37, 99, 235, 0.45); border-radius: var(--radius); }
+  .budget-table tbody.no-group tr.group-head { background: rgba(255, 255, 255, 0.04); border-color: var(--line-strong); }
+  .budget-table tbody tr.group-head th { border-bottom: none; padding: 0; background: none; border-radius: 0; }
+  .budget-table tbody.group tr:not(.group-head) { margin-left: 10px; padding-left: 12px; border-left: 3px solid rgba(37, 99, 235, 0.5); }
+  .budget-table tbody.group tr:not(.group-head) > td:first-child { box-shadow: none; padding-left: 0; }
   .budget-table tr.group-head > :first-child { font-size: 1.05rem; }
   .order-btns { margin-bottom: 0; }
   .order-btns .btn { min-width: 40px; min-height: 36px; }

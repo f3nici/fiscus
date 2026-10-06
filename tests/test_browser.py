@@ -292,9 +292,19 @@ def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any
     page.wait_for_selector('tr.group-head:has-text("Bills") + tr:has-text("Car rego")')
     page.fill('#group_name', 'Fun')
     page.click('form[action="/budget/groups"] button[type=submit]')
-    page.wait_for_selector('tr.group-head:has-text("Bills") ~ tr.group-head:has-text("Fun")')
+    page.wait_for_selector(
+        'tbody:has(tr.group-head:has-text("Bills")) ~ tbody:has(tr.group-head:has-text("Fun"))'
+    )
     page.click('button[aria-label="Move Fun up"]')
-    page.wait_for_selector('tr.group-head:has-text("Fun") ~ tr.group-head:has-text("Bills")')
+    page.wait_for_selector(
+        'tbody:has(tr.group-head:has-text("Fun")) ~ tbody:has(tr.group-head:has-text("Bills"))'
+    )
+    # Folded, Bills shows only its totals; opened again, its line is back.
+    page.click('button[aria-label="Hide the lines in Bills"]')
+    page.wait_for_selector('tbody.folded tr.group-head:has-text("1 line, hidden")')
+    assert page.locator('tr:has(.put-aside)').count() == 0
+    page.click('button[aria-label="Show the lines in Bills"]')
+    page.wait_for_selector('tr.group-head:has-text("Bills") + tr:has-text("Car rego")')
     # A line renamed from its Edit form.
     row = page.locator('tr:has(.put-aside)')
     row.locator('summary:has-text("Edit")').click()
