@@ -21,7 +21,7 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <div class="card">
         <div class="table-wrap">
-          <table class="import-table">
+          <table class="import-table stack-table cols-3">
             <thead>
               <tr><th></th><th>File</th><th>Pay date</th><th>Employer</th><th class="num">Gross</th><th class="num">Tax</th><th class="num">Net</th><th>Which pay</th></tr>
             </thead>
@@ -29,19 +29,19 @@
               {% for r in rows %}
                 {% set f = r.form %}
                 <tr>
-                  <td><input type="checkbox" name="include" value="{{ r.index }}" aria-label="Add {{ r.file_name }}" {{ 'checked' if r.include else '' }}></td>
-                  <td>
+                  <td data-label="Add"><input type="checkbox" name="include" value="{{ r.index }}" aria-label="Add {{ r.file_name }}" {{ 'checked' if r.include else '' }}></td>
+                  <td class="cell-full">
                     {{ r.file_name }}
                     <input type="hidden" name="file_name" value="{{ r.file_name }}">
                     {% if f.error %}<div class="text-xs neg">{{ f.error }}</div>{% endif %}
                     {% for n in f.notes %}<div class="text-xs muted">{{ n }}</div>{% endfor %}
                   </td>
-                  <td><input class="input" type="date" name="date" value="{{ f.date }}" aria-label="Pay date for {{ r.file_name }}"></td>
-                  <td><input class="input" name="source" maxlength="120" value="{{ f.source }}" aria-label="Employer for {{ r.file_name }}"></td>
-                  <td class="num"><input class="input num w-money" name="gross" inputmode="decimal" value="{{ f.gross }}" aria-label="Gross for {{ r.file_name }}"></td>
-                  <td class="num"><input class="input num w-money" name="tax_withheld" inputmode="decimal" value="{{ f.tax_withheld }}" aria-label="Tax withheld for {{ r.file_name }}"></td>
-                  <td class="num"><input class="input num w-money" name="net" inputmode="decimal" value="{{ f.net }}" aria-label="Net for {{ r.file_name }}"></td>
-                  <td>{{ payday_select('payday-' ~ r.index, options, f.payday, true) }}</td>
+                  <td class="cell-full" data-label="Pay date"><input class="input" type="date" name="date" value="{{ f.date }}" aria-label="Pay date for {{ r.file_name }}"></td>
+                  <td class="cell-full" data-label="Employer"><input class="input" name="source" maxlength="120" value="{{ f.source }}" aria-label="Employer for {{ r.file_name }}"></td>
+                  <td class="num" data-label="Gross"><input class="input num w-money" name="gross" inputmode="decimal" value="{{ f.gross }}" aria-label="Gross for {{ r.file_name }}"></td>
+                  <td class="num" data-label="Tax"><input class="input num w-money" name="tax_withheld" inputmode="decimal" value="{{ f.tax_withheld }}" aria-label="Tax withheld for {{ r.file_name }}"></td>
+                  <td class="num" data-label="Net"><input class="input num w-money" name="net" inputmode="decimal" value="{{ f.net }}" aria-label="Net for {{ r.file_name }}"></td>
+                  <td class="cell-full" data-label="Which pay">{{ payday_select('payday-' ~ r.index, options, f.payday, true) }}</td>
                 </tr>
               {% endfor %}
             </tbody>

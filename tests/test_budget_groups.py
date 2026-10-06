@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import re
+from urllib.parse import unquote
 
 from sqlalchemy import select
 
 from fiscus.domain import arrange
-from fiscus.models import BudgetGroup, Category
+from fiscus.models import BudgetGroup, BudgetSpend, Category
 from tests.conftest import Env
 
 
@@ -88,3 +89,72 @@ def test_a_group_needs_a_name(env: Env) -> None:
     with env.db() as db:
         assert db.execute(select(BudgetGroup)).first() is None
     assert resp.status_code == 200
+
+
+def test_a_budget_line_can_be_renamed(env: Env) -> None:
+    a = env.login(env.user('alex'))
+    a.post('/budget', data={'new_category': 'Food shop', 'amount': '600'})
+    a.post('/budget', data={'new_category': 'Petrol money', 'amount': '200'})
+    cid = _cat(env, 'Food shop')
+
+    resp = a.post(
+        '/budget', data={'category_id': str(cid), 'name': ' Weekly shop ', 'amount': '650'}
+    )
+    assert resp.status_code == 303
+    assert unquote(resp.cookies['fiscus_flash']).startswith('Food shop renamed to Weekly shop.')
+    assert resp.headers['location'] == f'/budget#line-{cid}'
+    page = a.get('/budget').text
+    with env.db() as db:
+        cat = db.get(Category, cid)
+        assert cat is not None and cat.name == 'Weekly shop'
+    assert '$650.00' in page
+
+    # Only the case changed: still a rename of the same line.
+    a.post('/budget', data={'category_id': str(cid), 'name': 'WEEKLY SHOP', 'amount': '650'})
+    with env.db() as db:
+        cat = db.get(Category, cid)
+        assert cat is not None and cat.name == 'WEEKLY SHOP'
+
+    # Another category's name, in any case, is refused and nothing changes.
+    resp = a.post('/budget', data={'category_id': str(cid), 'name': 'petrol money', 'amount': '1'})
+    assert unquote(resp.cookies['fiscus_flash']) == 'You already have a category with that name'
+    with env.db() as db:
+        cat = db.get(Category, cid)
+        assert cat is not None and cat.name == 'WEEKLY SHOP'
+    assert '$650.00' in a.get('/budget').text
+
+    # Without a name the line keeps its own.
+    a.post('/budget', data={'category_id': str(cid), 'amount': '700'})
+    with env.db() as db:
+        cat = db.get(Category, cid)
+        assert cat is not None and cat.name == 'WEEKLY SHOP'
+
+
+def test_each_save_comes_back_to_what_it_changed(env: Env) -> None:
+    a = env.login(env.user('alex'))
+    back = '/budget?month=2026-10'
+
+    def goes(path: str, data: dict[str, str]) -> str:
+        resp = a.post(path, data={'back': back, **data})
+        assert resp.status_code == 303
+        return str(resp.headers['location'])
+
+    assert (
+        goes('/budget', {'new_category': 'Fun', 'amount': '50'})
+        == f'{back}#line-{_cat(env, "Fun")}'
+    )
+    fun = _cat(env, 'Fun')
+    assert goes('/budget', {'amount': '50'}) == f'{back}#add-line'
+    assert goes('/budget/spend', {'category_id': str(fun), 'amount': '5'}) == f'{back}#spend'
+    with env.db() as db:
+        spend = db.execute(select(BudgetSpend.id)).scalar_one()
+    assert goes(f'/budget/spend/{spend}/delete', {}) == f'{back}#spent'
+    assert goes('/budget/groups', {'name': 'Bills'}).startswith(f'{back}#group-')
+    assert goes(f'/budget/{fun}/remove', {}) == f'{back}#lines'
+    # A back address that already carries an anchor gets this one instead.
+    resp = a.post(
+        '/budget', data={'back': f'{back}#elsewhere', 'category_id': str(fun), 'amount': '9'}
+    )
+    assert resp.headers['location'] == f'{back}#line-{fun}'
+    resp = a.post('/budget/start-day', data={'start_day': '15'})
+    assert resp.headers['location'] == '/budget#start-day'

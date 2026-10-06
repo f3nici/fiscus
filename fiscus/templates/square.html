@@ -73,15 +73,15 @@
     <h2>Unpaid invoices</h2>
     <p class="muted text-sm">As of the last sync. They show on the calendar on their due date. The forecast already counts business income through your recent average, so they are not added to it again.</p>
     <div class="table-wrap">
-      <table>
+      <table class="stack-table cols-3">
         <thead><tr><th>Due</th><th>Invoice</th><th>Customer</th><th class="num">Owing</th></tr></thead>
         <tbody>
           {% for i in invoices %}
             <tr>
               <td class="num">{{ i.due_date | d }}{% if i.due_date < today %} <span class="pill pill-overdue">Overdue</span>{% endif %}</td>
-              <td>{{ i.number }}</td>
-              <td>{{ i.customer }}</td>
-              <td class="num">{{ money_cell(i.amount_due_cents) }}</td>
+              <td data-label="Invoice">{{ i.number }}</td>
+              <td data-label="Customer">{{ i.customer }}</td>
+              <td class="num" data-label="Owing">{{ money_cell(i.amount_due_cents) }}</td>
             </tr>
           {% else %}
             <tr><td colspan="4" class="muted">None.</td></tr>

@@ -36,7 +36,7 @@
   {% endif %}
   <div class="card mt">
     <div class="table-wrap">
-      <table>
+      <table class="stack-table cols-3">
         <thead><tr><th>Bill</th><th>Category</th><th>How often</th><th class="num">Your share</th><th class="num">Per month</th><th>Next due</th><th></th></tr></thead>
         <tbody>
           {% for s in shares %}
@@ -48,12 +48,12 @@
                 {% if b.shares | length > 1 %}<span class="pill pill-shared">Shared{% if b.owner_id != user.id %} by {{ owners[b.owner_id].display_name }}{% endif %}</span>{% endif %}
                 {% if not b.active %}<span class="pill">Inactive</span>{% endif %}
               </td>
-              <td>{% if s.category_id in cats %}<a href="/bills?category={{ s.category_id }}">{{ cats[s.category_id] }}</a>{% endif %}</td>
-              <td>{{ freq[b.frequency] }}</td>
-              <td class="num">{{ amounts[b.id] | money }}{% if b.shares | length > 1 %}<span class="muted text-xs"> of {{ b.amount_cents | money }}</span>{% endif %}</td>
-              <td class="num">{{ monthly[b.id] | money if monthly[b.id] else '-' }}</td>
-              <td>{% if n %}{{ n.due | d }}{% endif %}</td>
-              <td>{% if n %}{{ status_pill(n.status) }}{% endif %}</td>
+              <td data-label="Category">{% if s.category_id in cats %}<a href="/bills?category={{ s.category_id }}">{{ cats[s.category_id] }}</a>{% endif %}</td>
+              <td data-label="How often">{{ freq[b.frequency] }}</td>
+              <td class="num" data-label="Your share">{{ amounts[b.id] | money }}{% if b.shares | length > 1 %}<span class="muted text-xs"> of {{ b.amount_cents | money }}</span>{% endif %}</td>
+              <td class="num" data-label="Per month">{{ monthly[b.id] | money if monthly[b.id] else '-' }}</td>
+              <td data-label="Next due">{% if n %}{{ n.due | d }}{% endif %}</td>
+              <td class="cell-status">{% if n %}{{ status_pill(n.status) }}{% endif %}</td>
             </tr>
           {% else %}
             <tr><td colspan="7" class="muted">No bills yet. Rent, rates, insurance and utilities all go here.</td></tr>

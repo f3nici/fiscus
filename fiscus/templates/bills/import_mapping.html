@@ -5,9 +5,9 @@
   <p class="muted">This file's headings do not match the template. Point each field at a column. Name, amount and frequency are required.</p>
   <div class="card">
     <div class="table-wrap">
-      <table>
+      <table class="stack-table">
         <thead><tr>{% for h in header %}<th>{{ loop.index }}. {{ h }}</th>{% endfor %}</tr></thead>
-        <tbody>{% for r in sample %}<tr>{% for c in r %}<td>{{ c }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+        <tbody>{% for r in sample %}<tr>{% for c in r %}<td data-label="{{ loop.index }}. {{ header[loop.index0] if loop.index0 < header | length else '' }}">{{ c }}</td>{% endfor %}</tr>{% endfor %}</tbody>
       </table>
     </div>
   </div>

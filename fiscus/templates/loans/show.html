@@ -24,11 +24,11 @@
     <h2>Over the life of the loan {{ estimate() }}</h2>
     <p class="muted text-sm">Assumes today's rate and today's offset balance stay as they are.</p>
     <div class="table-wrap">
-      <table>
+      <table class="stack-table">
         <thead><tr><th></th><th>Paid off</th><th class="num">Interest from today</th></tr></thead>
         <tbody>
-          <tr><td>With the offset</td><td>{{ s.with_offset.paid_off | d if s.with_offset.paid_off else 'Not within 50 years' }}</td><td class="num">{{ s.with_offset.total_interest | money }}</td></tr>
-          <tr><td>Without the offset</td><td>{{ s.without_offset.paid_off | d if s.without_offset.paid_off else 'Not within 50 years' }}</td><td class="num">{{ s.without_offset.total_interest | money }}</td></tr>
+          <tr><td>With the offset</td><td data-label="Paid off">{{ s.with_offset.paid_off | d if s.with_offset.paid_off else 'Not within 50 years' }}</td><td class="num" data-label="Interest from today">{{ s.with_offset.total_interest | money }}</td></tr>
+          <tr><td>Without the offset</td><td data-label="Paid off">{{ s.without_offset.paid_off | d if s.without_offset.paid_off else 'Not within 50 years' }}</td><td class="num" data-label="Interest from today">{{ s.without_offset.total_interest | money }}</td></tr>
         </tbody>
         <tfoot><tr><th>Offset saves</th><th>{% if s.months_sooner is not none %}{{ s.months_sooner }} months sooner{% endif %}</th><th class="num pos">{{ s.lifetime_saving_cents | money }}</th></tr></tfoot>
       </table>

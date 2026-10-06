@@ -15,15 +15,15 @@
   <div class="card mt">
     <h2>Users</h2>
     <div class="table-wrap">
-      <table>
+      <table class="stack-table cols-3">
         <thead><tr><th>User</th><th>Passkeys</th><th>Password</th><th>Status</th><th>Actions</th></tr></thead>
         <tbody>
           {% for r in rows %}
             {% set u = r.user %}
             <tr>
               <td>{{ u.display_name }}<br><span class="text-xs muted">{{ u.username }}{{ ' · admin' if u.is_admin }}</span></td>
-              <td>{{ r.passkeys }}{% if r.pending %}<br><span class="text-xs muted">link pending until {{ r.pending.expires_at.strftime('%d %b %H:%M') }}</span>{% endif %}</td>
-              <td>
+              <td data-label="Passkeys">{{ r.passkeys }}{% if r.pending %}<br><span class="text-xs muted">link pending until {{ r.pending.expires_at.strftime('%d %b %H:%M') }}</span>{% endif %}</td>
+              <td data-label="Password">
                 <form method="post" action="/admin/users/{{ u.id }}/password">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                   <input type="hidden" name="enabled" value="{{ 'false' if u.password_enabled else 'true' }}">
@@ -31,8 +31,8 @@
                 </form>
                 {% if u.password_enabled %}<span class="text-xs muted">{{ 'set' if u.password_hash else 'not set yet' }}</span>{% endif %}
               </td>
-              <td>{% if u.is_active %}<span class="pill pill-ok">Active</span>{% else %}<span class="pill pill-overdue">Disabled</span>{% endif %}</td>
-              <td>
+              <td data-label="Status">{% if u.is_active %}<span class="pill pill-ok">Active</span>{% else %}<span class="pill pill-overdue">Disabled</span>{% endif %}</td>
+              <td class="cell-full">
                 <div class="row">
                   {% if u.is_active %}
                     <form method="post" action="/admin/users/{{ u.id }}/invite">

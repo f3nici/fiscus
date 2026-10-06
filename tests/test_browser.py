@@ -295,8 +295,35 @@ def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any
     page.wait_for_selector('tr.group-head:has-text("Bills") ~ tr.group-head:has-text("Fun")')
     page.click('button[aria-label="Move Fun up"]')
     page.wait_for_selector('tr.group-head:has-text("Fun") ~ tr.group-head:has-text("Bills")')
+    # A line renamed from its Edit form.
+    row = page.locator('tr:has(.put-aside)')
+    row.locator('summary:has-text("Edit")').click()
+    row.locator('input[name=name]').fill('Car registration')
+    row.locator('form[action="/budget"] button[type=submit]').click()
+    page.wait_for_selector(
+        '[data-flash]:has-text("Car rego renamed to Car registration")', state='attached'
+    )
+    page.wait_for_selector('tr.group-head:has-text("Bills") + tr:has-text("Car registration")')
+    # The save comes back to the line it changed, not wherever the page ends up.
+    assert page.url.endswith(f'#{row.get_attribute("id")}')
+    top = page.evaluate(
+        f"document.getElementById('{row.get_attribute('id')}').getBoundingClientRect().top"
+    )
+    assert 0 < top < 200, top
     page.goto(f'{base}/accounts')
     assert 'Unallocated $2,250.00' in page.inner_text('main table')
+
+    # Narrow screen: nothing scrolls sideways, the page or a table in it.
+    for path in ['/', '/budget', '/bills', '/accounts', '/calendar', '/forecast', '/pay', '/goals']:
+        page.goto(f'{base}{path}')
+        wide = page.evaluate("""() => {
+            const out = [];
+            if (document.documentElement.scrollWidth > innerWidth) out.push('page');
+            for (const el of document.querySelectorAll('.table-wrap'))
+                if (el.scrollWidth > el.clientWidth + 1) out.push(el.innerText.slice(0, 40));
+            return out;
+        }""")
+        assert not wide, (path, wide)
 
     # Narrow screen: the calendar opens on the agenda.
     page.goto(f'{base}/calendar')

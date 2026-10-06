@@ -13,10 +13,10 @@
     <div class="card">
       <h2>First rows</h2>
       <div class="table-wrap">
-        <table>
+        <table class="stack-table">
           <thead><tr>{% for i in range(width) %}<th>{{ names[i] if i < names | length else 'Column ' ~ (i + 1) }}</th>{% endfor %}</tr></thead>
           <tbody>
-            {% for r in sample %}<tr>{% for i in range(width) %}<td>{{ r[i] if i < r | length else '' }}</td>{% endfor %}</tr>{% endfor %}
+            {% for r in sample %}<tr>{% for i in range(width) %}<td data-label="{{ names[i] if i < names | length else 'Column ' ~ (i + 1) }}">{{ r[i] if i < r | length else '' }}</td>{% endfor %}</tr>{% endfor %}
           </tbody>
         </table>
       </div>
