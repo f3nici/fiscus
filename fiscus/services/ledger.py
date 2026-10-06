@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from fiscus.domain.rules import Matcher, RuleSpec
-from fiscus.models import Account, Category, Rule, Transaction, User
+from fiscus.models import Account, Budget, Category, Rule, Transaction, User
 from fiscus.services.access import owned
 
 
@@ -103,6 +103,28 @@ def category_exists(db: Session, user: User, name: str, besides: Category | None
     if besides is not None:
         q = q.where(Category.id != besides.id)
     return db.execute(q.limit(1)).first() is not None
+
+
+def move_aside(db: Session, user: User, name: str, besides: Category) -> Category | None:
+    """Free `name` for `besides` when another category has it but is no longer
+    in the budget: that one is renamed "<name> (old)", keeping its history.
+    Returns the category in the way when it is still a budget line."""
+    other = db.execute(
+        owned(Category, user).where(
+            func.lower(Category.name) == name.strip().lower(), Category.id != besides.id
+        )
+    ).scalar_one_or_none()
+    if other is None:
+        return None
+    if db.execute(owned(Budget, user).where(Budget.category_id == other.id)).first():
+        return other
+    base = other.name[:70]
+    aside, n = f'{base} (old)', 2
+    while category_exists(db, user, aside):
+        aside, n = f'{base} (old {n})', n + 1
+    other.name = aside
+    db.flush()
+    return None
 
 
 def spend_by_category(db: Session, user: User, start: date, end: date) -> dict[int | None, int]:

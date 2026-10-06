@@ -125,6 +125,33 @@
     }
   }, true);
 
+  // ------------------------------------------------- keep the place on save
+  // A save comes back to the page at the #anchor of what it changed, and htmx
+  // scrolls that to the top. When it was already on screen, put it back where
+  // it was instead, so the page does not jump under the person's finger.
+  let place = null;
+  document.addEventListener('htmx:beforeRequest', (e) => {
+    const elt = e.detail.elt;
+    if (!elt || elt.tagName !== 'FORM' || (elt.getAttribute('method') || '').toLowerCase() !== 'post') return;
+    const tops = {};
+    document.querySelectorAll('main [id]').forEach((el) => { tops[el.id] = el.getBoundingClientRect().top; });
+    place = { tops };
+  });
+  document.addEventListener('htmx:afterSettle', () => {
+    if (!place) return;
+    const { tops } = place;
+    place = null;
+    // After htmx's own scroll to the anchor, which follows this event.
+    setTimeout(() => {
+      const id = decodeURIComponent(window.location.hash.slice(1));
+      const el = id && document.getElementById(id);
+      if (!el || !(id in tops)) return;
+      const was = tops[id];
+      if (was < 0 || was > window.innerHeight) return;
+      window.scrollBy({ top: el.getBoundingClientRect().top - was, behavior: 'instant' });
+    }, 0);
+  });
+
   // ------------------------------------------------------------ copy links
   document.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-copy]');
