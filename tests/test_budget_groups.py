@@ -157,7 +157,7 @@ def test_a_budget_line_can_be_renamed(env: Env) -> None:
 
     # Another category's name, in any case, is refused and nothing changes.
     resp = a.post('/budget', data={'category_id': str(cid), 'name': 'petrol money', 'amount': '1'})
-    assert unquote(resp.cookies['fiscus_flash']) == 'You already have a category with that name'
+    assert unquote(resp.cookies['fiscus_flash']) == 'Petrol money is already a budget line'
     with env.db() as db:
         cat = db.get(Category, cid)
         assert cat is not None and cat.name == 'WEEKLY SHOP'
@@ -168,6 +168,31 @@ def test_a_budget_line_can_be_renamed(env: Env) -> None:
     with env.db() as db:
         cat = db.get(Category, cid)
         assert cat is not None and cat.name == 'WEEKLY SHOP'
+
+
+def test_a_line_can_take_the_name_of_one_no_longer_in_the_budget(env: Env) -> None:
+    a = env.login(env.user('alex'))
+    a.post('/budget', data={'new_category': 'Groceries', 'amount': '600'})
+    a.post('/budget', data={'new_category': 'Food', 'amount': '500'})
+    old, new = _cat(env, 'Groceries'), _cat(env, 'Food')
+    a.post('/budget/spend', data={'category_id': str(old), 'amount': '20'})
+    a.post(f'/budget/{old}/remove')
+
+    resp = a.post('/budget', data={'category_id': str(new), 'name': 'groceries', 'amount': '500'})
+    assert unquote(resp.cookies['fiscus_flash']).startswith('Food renamed to groceries.')
+    with env.db() as db:
+        assert db.get(Category, new).name == 'groceries'  # type: ignore[union-attr]
+        # The old one keeps its spending, under a name out of the way.
+        assert db.get(Category, old).name == 'Groceries (old)'  # type: ignore[union-attr]
+
+    # Again, and the next old name is numbered.
+    a.post('/budget', data={'new_category': 'Fuel', 'amount': '100'})
+    fuel = _cat(env, 'Fuel')
+    a.post(f'/budget/{new}/remove')
+    a.post('/budget', data={'category_id': str(fuel), 'name': 'Groceries', 'amount': '100'})
+    with env.db() as db:
+        assert db.get(Category, new).name == 'groceries (old 2)'  # type: ignore[union-attr]
+        assert db.get(Category, fuel).name == 'Groceries'  # type: ignore[union-attr]
 
 
 def test_each_save_comes_back_to_what_it_changed(env: Env) -> None:

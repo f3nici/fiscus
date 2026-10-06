@@ -305,21 +305,58 @@ def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any
     assert page.locator('tr:has(.put-aside)').count() == 0
     page.click('button[aria-label="Show the lines in Bills"]')
     page.wait_for_selector('tr.group-head:has-text("Bills") + tr:has-text("Car rego")')
+    page.fill('#new_category', 'Insurance')
+    page.fill('#add_amount', '40')
+    page.select_option('#add_group', label='Bills')
+    page.click('#add-line button[type=submit]')
+    page.wait_for_selector('tr:has-text("Car rego") + tr:has-text("Insurance")')
     # A line renamed from its Edit form.
     row = page.locator('tr:has(.put-aside)')
+    rid = row.get_attribute('id')
+    top_js = f"document.getElementById('{rid}').getBoundingClientRect().top"
+
+    def stays(js: str, want: float) -> None:
+        # Polled from here: the page's CSP refuses wait_for_function's eval.
+        got = page.evaluate(js)
+        for _ in range(30):
+            if abs(got - want) < 2:
+                return
+            page.wait_for_timeout(100)
+            got = page.evaluate(js)
+        raise AssertionError((got, want))
+
+    def settled(js: str) -> float:
+        # Where it ends up once the page has put it back, after the swap.
+        last = page.evaluate(js)
+        for _ in range(30):
+            page.wait_for_timeout(100)
+            now = page.evaluate(js)
+            if abs(now - last) < 0.5:
+                return float(now)
+            last = now
+        raise AssertionError('still moving')
+
     row.locator('summary:has-text("Edit")').click()
+    page.evaluate(f"document.getElementById('{rid}').scrollIntoView({{block: 'center'}})")
+    before = page.evaluate(top_js)
     row.locator('input[name=name]').fill('Car registration')
     row.locator('form[action="/budget"] button[type=submit]').click()
     page.wait_for_selector(
         '[data-flash]:has-text("Car rego renamed to Car registration")', state='attached'
     )
     page.wait_for_selector('tr.group-head:has-text("Bills") + tr:has-text("Car registration")')
-    # The save comes back to the line it changed, not wherever the page ends up.
-    assert page.url.endswith(f'#{row.get_attribute("id")}')
-    top = page.evaluate(
-        f"document.getElementById('{row.get_attribute('id')}').getBoundingClientRect().top"
-    )
-    assert 0 < top < 200, top
+    # The save comes back to the line it changed, left where it was on screen.
+    assert page.url.endswith(f'#{rid}')
+    stays(top_js, before)
+    # Moving a line keeps it where it was too.
+    # Up, so there is page above to scroll into; at the foot of the page a
+    # line moved down can only go down.
+    page.click('button[aria-label="Move Car registration down"]')
+    page.wait_for_selector('tr:has-text("Insurance") + tr:has-text("Car registration")')
+    before = settled(top_js)
+    page.click('button[aria-label="Move Car registration up"]')
+    page.wait_for_selector('tr:has-text("Car registration") + tr:has-text("Insurance")')
+    stays(top_js, before)
     page.goto(f'{base}/accounts')
     assert 'Unallocated $2,250.00' in page.inner_text('main table')
 

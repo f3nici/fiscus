@@ -134,10 +134,9 @@ def save_budget(
         return redirect(target, flash=str(exc), request=request)
     renamed = ''
     if new_name != cat.name:
-        if ledger.category_exists(db, user, new_name, besides=cat):
-            return redirect(
-                target, flash='You already have a category with that name', request=request
-            )
+        clash = ledger.move_aside(db, user, new_name, cat)
+        if clash is not None:
+            return redirect(target, flash=f'{clash.name} is already a budget line', request=request)
         renamed = f'{cat.name} renamed to {new_name}. '
         cat.name = new_name
     if group_id >= 0:
