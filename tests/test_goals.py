@@ -33,7 +33,7 @@ def test_per_month_rounds_up_and_stops_at_the_target() -> None:
     assert calc.unallocated(1_000, [600, 700]) == -300
 
 
-def _goal(client: object, **data: str) -> int:
+def _goal(client: object, **data: str | list[str]) -> int:
     resp = client.post('/goals', data=data)  # type: ignore[attr-defined]
     assert resp.status_code == 303, resp.text
     return int(resp.headers['location'].rsplit('/', 1)[1])
@@ -217,8 +217,47 @@ def test_putting_aside_from_a_budget_line_spends_it_and_keeps_it_aside(env: Env)
     a.post(f'/categories/{cid}/delete')
     with env.db() as db:
         g = db.get(Goal, goal)
-        assert g is not None and g.category_id is None
+        assert g is not None and db.get(Category, cid) is None
         assert sum(m.amount_cents for m in g.moves) == -200_00 + 50_00
+
+
+def test_one_goal_saves_from_several_lines(env: Env) -> None:
+    a = env.login(env.user('alex'))
+    ids = {}
+    for name in ('Car insurance', 'Rego', 'Roadside'):
+        a.post('/budget', data={'new_category': name, 'amount': '30'})
+        with env.db() as db:
+            ids[name] = db.execute(select(Category.id).where(Category.name == name)).scalar_one()
+    goal = _goal(a, name='Yearly bills', category_id=[str(ids['Car insurance']), str(ids['Rego'])])
+    page = a.get(f'/goals/{goal}').text
+    assert 'Car insurance</a> and <a' in page and 'budget lines' in page
+    assert a.get('/budget').text.count('Saved into <a href="/goals/') == 2
+
+    # Each line's Put aside spends from that line.
+    for name, amount in (('Car insurance', '30'), ('Rego', '20')):
+        a.post(
+            f'/goals/{goal}/move',
+            data={'amount': amount, 'as_spent': 'true', 'category_id': str(ids[name])},
+        )
+    # A line that is not the goal's is not spent from: an ordinary move in.
+    a.post(
+        f'/goals/{goal}/move',
+        data={'amount': '5', 'as_spent': 'true', 'category_id': str(ids['Roadside'])},
+    )
+    with env.db() as db:
+        spent = {s.category_id: s.amount_cents for s in db.execute(select(BudgetSpend)).scalars()}
+        held = sum(m.amount_cents for m in db.execute(select(GoalMove)).scalars())
+    assert spent == {ids['Car insurance']: 30_00, ids['Rego']: 20_00} and held == 55_00
+
+    # A line saves into one goal: ticking it on another takes it over.
+    other = _goal(a, name='Car', category_id=str(ids['Rego']))
+    with env.db() as db:
+        assert db.get(Category, ids['Rego']).goal_id == other  # type: ignore[union-attr]
+        assert db.get(Category, ids['Car insurance']).goal_id == goal  # type: ignore[union-attr]
+    # Unticking everything leaves the goal with no lines.
+    a.post(f'/goals/{goal}', data={'name': 'Yearly bills'})
+    with env.db() as db:
+        assert db.get(Category, ids['Car insurance']).goal_id is None  # type: ignore[union-attr]
 
 
 def test_a_goal_saves_only_from_a_spending_line(env: Env) -> None:

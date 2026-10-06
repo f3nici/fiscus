@@ -22,8 +22,8 @@ from datetime import date, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from fiscus.domain import recurrence
-from fiscus.models import Budget, BudgetSpend, Category, User
+from fiscus.domain import recurrence, saving
+from fiscus.models import Budget, BudgetSpend, Category, GoalMove, User
 from fiscus.money import round_div
 from fiscus.services import bills, ledger, pay
 from fiscus.services.access import owned
@@ -304,6 +304,70 @@ def rows(db: Session, user: User, start: date, end: date, today: date) -> list[B
             )
     out.sort(key=lambda r: (r.category.is_income, -r.budget_cents, r.category.name))
     return out
+
+
+# How far back to look for a line's last bill, and ahead for its next.
+DUE_LOOKBACK = timedelta(days=400)
+DUE_LOOKAHEAD = timedelta(days=400)
+
+
+def due_checks(
+    db: Session, user: User, rs: list[BudgetRow], start: date, today: date
+) -> dict[int, saving.DueCheck]:
+    """For each saved-up spending line with a bill still to pay: its next due
+    date, and whether the line will hold enough by then. From the budget month
+    starting `start`; bills overdue before it are left out."""
+    lines = {
+        r.category.id: r
+        for r in rs
+        if r.saved_cents is not None and r.budget is not None and not r.category.is_income
+    }
+    if not lines:
+        return {}
+    first = start_day(db, user)
+    occs = [
+        o
+        for o in bills.occurrences(db, user, start - DUE_LOOKBACK, start + DUE_LOOKAHEAD, today)
+        if o.share.category_id in lines
+    ]
+    out: dict[int, saving.DueCheck] = {}
+    for cid, r in lines.items():
+        mine = [o for o in occs if o.share.category_id == cid]
+        unpaid = [o for o in mine if o.payment is None and o.due >= start]
+        if not unpaid or r.budget is None or r.saved_cents is None:
+            continue
+        due = unpaid[0].due
+        _ps, due_end = period(db, user, due)
+        before = [o.due for o in mine if o.due < start]
+        since = before[-1] + timedelta(days=1) if before else start - DUE_LOOKBACK
+        if r.budget.saved_since is not None:
+            since = max(since, r.budget.saved_since)
+        out[cid] = saving.check(
+            period_start=start,
+            start_day=first,
+            due=due,
+            need_cents=sum(o.share_cents for o in unpaid if o.due <= due_end),
+            saved_cents=r.saved_cents,
+            monthly_cents=r.budget.monthly_cents,
+            put_aside_cents=put_aside(db, user, cid, since, today),
+        )
+    return out
+
+
+def put_aside(db: Session, user: User, category_id: int, start: date, end: date) -> int:
+    """What was spent from a line into a goal in the period: out of the line,
+    but kept for its bills."""
+    total = db.execute(
+        select(func.sum(BudgetSpend.amount_cents))
+        .join(GoalMove, GoalMove.spend_id == BudgetSpend.id)
+        .where(
+            BudgetSpend.user_id == user.id,
+            BudgetSpend.category_id == category_id,
+            BudgetSpend.date >= start,
+            BudgetSpend.date <= end,
+        )
+    ).scalar()
+    return int(total or 0)
 
 
 # Pay this far apart is spread over the budget months rather than landing in one.

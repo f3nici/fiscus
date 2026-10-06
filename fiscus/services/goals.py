@@ -73,15 +73,37 @@ def move(
     return row
 
 
+def lines(db: Session, user: User, goal: Goal) -> list[Category]:
+    """The budget lines this goal is saved from."""
+    q = owned(Category, user).where(Category.goal_id == goal.id).order_by(Category.name)
+    return list(db.execute(q).scalars())
+
+
+def set_lines(db: Session, user: User, goal: Goal, cats: list[Category]) -> None:
+    """Save the goal from exactly `cats`. A line saves into one goal, so taking
+    it here takes it from any other."""
+    ids = {c.id for c in cats}
+    for c in lines(db, user, goal):
+        if c.id not in ids:
+            c.goal_id = None
+    for c in cats:
+        c.goal_id = goal.id
+    db.flush()
+
+
 def put_aside(
-    db: Session, clock: Clock, user: User, goal: Goal, cents: int, day: date, note: str = ''
+    db: Session,
+    clock: Clock,
+    user: User,
+    goal: Goal,
+    cat: Category,
+    cents: int,
+    day: date,
+    note: str = '',
 ) -> GoalMove:
-    """Money saved from the goal's budget line: spent on the line and put into
-    the goal at once, so the budget counts it used and the goal keeps it out of
-    what is free. Without a line it is an ordinary move in."""
-    cat = maybe_owned(db, Category, goal.category_id, user)
-    if cat is None:
-        return move(db, clock, user, goal, cents, day, note)
+    """Money saved from one of the goal's budget lines: spent on the line and
+    put into the goal at once, so the budget counts it used and the goal keeps
+    it out of what is free."""
     spend = BudgetSpend(
         user_id=user.id,
         category_id=cat.id,
@@ -117,11 +139,13 @@ def remove_spend(db: Session, user: User, spend: BudgetSpend) -> None:
 
 def by_category(db: Session, user: User) -> dict[int, Goal]:
     """Open goals saved from a budget line, by the line's category."""
-    out: dict[int, Goal] = {}
-    for g in goals(db, user):
-        if g.category_id is not None:
-            out.setdefault(g.category_id, g)
-    return out
+    open_ = {g.id: g for g in goals(db, user)}
+    q = owned(Category, user).where(Category.goal_id.is_not(None))
+    return {
+        c.id: open_[c.goal_id]
+        for c in db.execute(q).scalars()
+        if c.goal_id is not None and c.goal_id in open_
+    }
 
 
 def set_held(

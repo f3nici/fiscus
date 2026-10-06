@@ -67,6 +67,7 @@ def budget_page(
             'in_goals': in_goals,
             'goal_for': goals.by_category(db, user),
             'goal_held': goals.held(db, user),
+            'due': budgeting.due_checks(db, user, rows, start, today),
             # A mortgage line of its own would count the loan twice.
             'doubled': {
                 r.category.id

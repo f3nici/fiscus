@@ -274,7 +274,7 @@ def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any
     assert 'in your Japan trip goal' in page.inner_text('main')
     # Saved from a budget line: Put aside spends it and fills the goal at once.
     page.go_back()
-    page.select_option('#category_id', label='Car rego')
+    page.check('form:has(#holds) label.check:has-text("Car rego") input')
     page.click('form[action^="/goals/"]:has(#holds) button[type=submit]')
     page.wait_for_selector('h1 .pill:has-text("Tax")')
     page.goto(f'{base}/budget')

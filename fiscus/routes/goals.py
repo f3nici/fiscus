@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 from datetime import date, timedelta
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import Response
@@ -47,6 +48,7 @@ def list_goals(
             'views': service.views(db, user, today, include_archived=True),
             'accounts': accts,
             'lines': _lines(db, user),
+            'saves_into': _saves_into(db, user),
             'account_names': {
                 a.id: a.name for a in ledger.accounts(db, user, include_archived=True)
             },
@@ -79,7 +81,8 @@ def show_goal(
             'accounts': ledger.accounts(db, user),
             'account': db.get(Account, goal.account_id) if goal.account_id else None,
             'lines': _lines(db, user),
-            'line': db.get(Category, goal.category_id) if goal.category_id else None,
+            'saves_into': _saves_into(db, user),
+            'goal_lines': service.lines(db, user, goal),
             'tax': tax_view,
         },
     )
@@ -96,11 +99,22 @@ def _fields(
     return clean, cents or None, when, maybe_owned(db, Account, account_id, user)
 
 
-def _line(db: Session, user: User, category_id: int) -> Category | None:
-    cat = maybe_owned(db, Category, category_id, user)
-    if cat is not None and (cat.is_income or cat.is_transfer):
-        raise FormError('Choose a spending category to save from')
-    return cat
+def _saves_into(db: Session, user: User) -> dict[int, str]:
+    """The open goal each budget line saves into, by name."""
+    return {cid: g.name for cid, g in service.by_category(db, user).items()}
+
+
+def _chosen(db: Session, user: User, category_ids: list[int]) -> list[Category]:
+    """The budget lines ticked to save from. Someone else's are ignored."""
+    out = []
+    for cid in dict.fromkeys(category_ids):
+        cat = maybe_owned(db, Category, cid, user)
+        if cat is None:
+            continue
+        if cat.is_income or cat.is_transfer:
+            raise FormError('Choose a spending category to save from')
+        out.append(cat)
+    return out
 
 
 @router.post('/goals')
@@ -113,14 +127,14 @@ def create_goal(
     saved: str = Form(''),
     keep_aside: bool = Form(False),
     is_tax: bool = Form(False),
-    category_id: int = Form(0),
+    category_id: Annotated[list[int], Form()] = [],  # noqa: B006
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> Response:
     c = ctx(request)
     try:
         clean, cents, when, acct = _fields(db, user, name, target, target_date, account_id)
-        line = _line(db, user, category_id)
+        chosen = _chosen(db, user, category_id)
         saved_cents = money(saved, 'Already saved') if saved.strip() else 0
     except FormError as exc:
         return redirect('/goals', flash=str(exc), request=request)
@@ -131,12 +145,12 @@ def create_goal(
         target_cents=cents,
         target_date=when,
         keep_aside=keep_aside,
-        category_id=line.id if line else None,
         created_at=utcnow_naive(c.clock),
     )
     db.add(goal)
     db.flush()
     service.set_tax(db, user, goal, is_tax)
+    service.set_lines(db, user, goal, chosen)
     if saved_cents:
         # An opening amount, not this budget month's saving: dated before it.
         start, _end = budgeting.period(db, user, c.clock.today())
@@ -157,7 +171,7 @@ def save_goal(
     holds: str = Form(''),
     keep_aside: bool = Form(False),
     is_tax: bool = Form(False),
-    category_id: int = Form(0),
+    category_id: Annotated[list[int], Form()] = [],  # noqa: B006
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> Response:
@@ -165,7 +179,7 @@ def save_goal(
     c = ctx(request)
     try:
         clean, cents, when, acct = _fields(db, user, name, target, target_date, account_id)
-        line = _line(db, user, category_id)
+        chosen = _chosen(db, user, category_id)
         holds_cents = money(holds, 'Holds now') if holds.strip() else None
     except FormError as exc:
         return redirect(f'/goals/{goal.id}', flash=str(exc), request=request)
@@ -174,8 +188,8 @@ def save_goal(
     goal.target_date = when
     goal.account_id = acct.id if acct else None
     goal.keep_aside = keep_aside
-    goal.category_id = line.id if line else None
     service.set_tax(db, user, goal, is_tax)
+    service.set_lines(db, user, goal, chosen)
     if holds_cents is not None:
         service.set_held(db, c.clock, user, goal, holds_cents, c.clock.today())
     return redirect(f'/goals/{goal.id}', flash=f'{clean} saved', request=request)
@@ -191,10 +205,16 @@ def add_move(
     on: str = Form(''),
     back: str = Form(''),
     as_spent: bool = Form(False),
+    category_id: int = Form(0),
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> Response:
     goal = get_owned(db, Goal, goal_id, user)
+    # The line it is spent from: the one named, else the goal's only line.
+    saved_from = service.lines(db, user, goal)
+    line = next((c for c in saved_from if c.id == category_id), None)
+    if line is None and not category_id and len(saved_from) == 1:
+        line = saved_from[0]
     c = ctx(request)
     target = _back(back, goal)
     try:
@@ -207,9 +227,9 @@ def add_move(
     if direction == 'out':
         service.move(db, c.clock, user, goal, -cents, when, note)
         msg = f'{fmt(cents)} out of {goal.name}'
-    elif as_spent and goal.category_id is not None:
-        service.put_aside(db, c.clock, user, goal, cents, when, note)
-        msg = f'{fmt(cents)} put aside into {goal.name}, spent from the budget'
+    elif as_spent and line is not None:
+        service.put_aside(db, c.clock, user, goal, line, cents, when, note)
+        msg = f'{fmt(cents)} put aside into {goal.name}, spent from {line.name}'
     else:
         service.move(db, c.clock, user, goal, cents, when, note)
         msg = f'{fmt(cents)} into {goal.name}'
