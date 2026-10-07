@@ -374,9 +374,7 @@ def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any
 
     # Narrow screen: the calendar opens on the agenda.
     page.goto(f'{base}/calendar')
-    page.wait_for_function(
-        "document.querySelector('#cal') && document.querySelector('#cal').dataset.view === 'agenda'"
-    )
+    page.wait_for_selector('#cal[data-view="agenda"]')
     # The forecast chart drew.
     page.goto(f'{base}/forecast')
     page.wait_for_selector('.uplot')
@@ -388,7 +386,13 @@ def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any
     # The service worker is active and has cached the shell and nothing else.
     page.goto(f'{base}/')
     page.evaluate('navigator.serviceWorker.ready.then(() => true)')
-    page.wait_for_function('navigator.serviceWorker.controller !== null', timeout=10000)
+    # Polled from here: the page's CSP refuses wait_for_function's eval.
+    for _ in range(100):
+        if page.evaluate('navigator.serviceWorker.controller !== null'):
+            break
+        page.wait_for_timeout(100)
+    else:
+        raise AssertionError('no service worker controller')
     cached = page.evaluate("""async () => {
         const out = [];
         for (const name of await caches.keys()) {
