@@ -28,6 +28,9 @@ def parse_cents(text: str | int | Decimal | None, *, allow_negative: bool = True
             raw = raw[1:]
         if raw == '':
             raise MoneyError('An amount is required')
+        if 'e' in raw.lower():
+            # Decimal reads "1e3" as 1000; nobody means that in an amount.
+            raise MoneyError(f'"{text}" is not an amount')
         try:
             value = Decimal(raw)
         except InvalidOperation as exc:

@@ -18,6 +18,7 @@ from fiscus.web import (
     client_ip,
     ctx,
     get_db,
+    local_path,
     optional_user,
     redirect,
     render,
@@ -33,9 +34,7 @@ def limit(request: Request, bucket: str, key: str) -> None:
 
 
 def safe_next(target: str | None) -> str:
-    if not target or not target.startswith('/') or target.startswith('//') or '\\' in target:
-        return '/'
-    return target
+    return local_path(target)
 
 
 def set_session_cookie(request: Request, response: Response, token: str) -> None:

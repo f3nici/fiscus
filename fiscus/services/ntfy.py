@@ -14,7 +14,7 @@ from __future__ import annotations
 import ipaddress
 import re
 import socket
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
@@ -34,7 +34,13 @@ def _blocked(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     )
 
 
-def validate_target(url: str, topic: str, *, resolve: bool = True) -> None:
+Address = ipaddress.IPv4Address | ipaddress.IPv6Address
+
+
+def validate_target(url: str, topic: str, *, resolve: bool = True) -> list[Address]:
+    """Refuse a server this container must not reach. Returns the addresses
+    checked, so the request can go to one of them and not to whatever the
+    name resolves to a moment later."""
     parts = urlsplit(url.strip())
     if parts.scheme not in {'http', 'https'} or not parts.hostname:
         raise NtfyError('The ntfy server must be an http:// or https:// address')
@@ -51,7 +57,7 @@ def validate_target(url: str, topic: str, *, resolve: bool = True) -> None:
         if host.lower() in {'localhost'} or host.lower().endswith('.localhost'):
             raise NtfyError('The ntfy server cannot be this machine') from None
         if not resolve:
-            return
+            return []
         try:
             infos = socket.getaddrinfo(host, parts.port or 443, proto=socket.IPPROTO_TCP)
         except OSError as exc:
@@ -60,6 +66,7 @@ def validate_target(url: str, topic: str, *, resolve: bool = True) -> None:
     for ip in addrs:
         if _blocked(ip):
             raise NtfyError('That address is not allowed for the ntfy server')
+    return addrs
 
 
 def send(
@@ -67,20 +74,30 @@ def send(
 ) -> None:
     if not prefs.ntfy_url or not prefs.ntfy_topic:
         raise NtfyError('Set the ntfy server and topic first')
-    validate_target(prefs.ntfy_url, prefs.ntfy_topic)
+    addrs = validate_target(prefs.ntfy_url, prefs.ntfy_topic)
+    parts = urlsplit(prefs.ntfy_url.strip())
+    host = parts.hostname or ''
     headers = {'Title': title.encode('ascii', 'replace').decode(), 'Priority': priority}
     if tags:
         headers['Tags'] = tags
     if prefs.ntfy_token:
         headers['Authorization'] = f'Bearer {prefs.ntfy_token}'
-    try:
-        resp = httpx.post(
-            f'{prefs.ntfy_url.rstrip("/")}/{prefs.ntfy_topic}',
-            content=message.encode(),
-            headers=headers,
-            timeout=TIMEOUT,
-            follow_redirects=False,
+    netloc, extensions = parts.netloc, {}
+    if addrs and str(addrs[0]) != host:
+        # A name: connect to the address that was checked, still asking for
+        # (and verifying the certificate of) the name.
+        ip = addrs[0]
+        netloc = (f'[{ip}]' if ip.version == 6 else str(ip)) + (
+            f':{parts.port}' if parts.port else ''
         )
+        headers['Host'] = parts.netloc
+        extensions['sni_hostname'] = host
+    url = urlunsplit((parts.scheme, netloc, f'/{prefs.ntfy_topic.strip()}', '', ''))
+    try:
+        with httpx.Client(timeout=TIMEOUT, follow_redirects=False, trust_env=False) as client:
+            resp = client.post(
+                url, content=message.encode(), headers=headers, extensions=extensions
+            )
     except httpx.HTTPError as exc:
         raise NtfyError(f'Could not reach the ntfy server: {exc.__class__.__name__}') from exc
     if resp.status_code >= 300:

@@ -196,11 +196,11 @@ def test_reminders_sent_once_each(env: Env, monkeypatch: pytest.MonkeyPatch) -> 
     )
     sent: list[dict[str, Any]] = []
 
-    def fake_post(url: str, **kw: Any) -> httpx.Response:
+    def fake_post(_client: httpx.Client, url: str, **kw: Any) -> httpx.Response:
         sent.append({'url': url, **kw})
         return httpx.Response(200)
 
-    monkeypatch.setattr(httpx, 'post', fake_post)
+    monkeypatch.setattr(httpx.Client, 'post', fake_post)
     assert jobs.run_reminders(env.ctx) == 3
     titles = sorted(s['headers']['Title'] for s in sent)
     assert titles == ['Low balance ahead', 'Phone is overdue', 'Rent due on Sat 03 Oct']
@@ -219,7 +219,7 @@ def test_reminders_wait_for_the_chosen_hour(env: Env, monkeypatch: pytest.Monkey
         '/settings/ntfy',
         data={'enabled': 'true', 'url': 'http://192.168.1.20', 'topic': 'f', 'hour': '7'},
     )
-    monkeypatch.setattr(httpx, 'post', lambda *a, **k: pytest.fail('sent at the wrong hour'))
+    monkeypatch.setattr(httpx.Client, 'post', lambda *a, **k: pytest.fail('sent at the wrong hour'))
     with env.db() as db:
         from fiscus.models import User
 

@@ -219,6 +219,30 @@ def create_app(
             request, 'error.html', {'title': 'Check the form', 'message': message}, status_code=422
         )
 
+    @app.exception_handler(Exception)
+    async def _crashed(request: Request, exc: Exception) -> Response:
+        # Starlette logs the traceback after this answers. This runs outside the
+        # headers middleware, so the page carries its own.
+        safe = {
+            'Content-Security-Policy': CSP,
+            'X-Content-Type-Options': 'nosniff',
+            'X-Frame-Options': 'DENY',
+            'Cache-Control': 'no-store',
+        }
+        try:
+            return render(
+                request,
+                'error.html',
+                {
+                    'title': 'Something went wrong',
+                    'message': 'That did not work. Nothing was saved. Go back and try again.',
+                },
+                status_code=500,
+                headers=safe,
+            )
+        except Exception:
+            return Response('Something went wrong', status_code=500, headers=safe)
+
     app.mount('/static', StaticFiles(directory=STATIC_DIR), name='static')
 
     from fiscus.routes import (

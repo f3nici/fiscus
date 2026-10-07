@@ -250,6 +250,19 @@ def render(
     return resp
 
 
+def local_path(target: object, fallback: str = '/') -> str:
+    """`target` when it is a path on this site, else `fallback`. Never another
+    origin: no `//host`, no backslashes a browser might read as slashes."""
+    if (
+        isinstance(target, str)
+        and target.startswith('/')
+        and not target.startswith('//')
+        and '\\' not in target
+    ):
+        return target
+    return fallback
+
+
 def redirect(url: str, *, flash: str | None = None, request: Request | None = None) -> Response:
     if request is not None and request.headers.get('hx-request') == 'true':
         resp: Response = Response(status_code=204, headers={'HX-Location': url})
