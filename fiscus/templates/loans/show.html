@@ -13,8 +13,8 @@
     <div class="card stat"><div class="label">Repayment</div><div class="value">{{ s.repayment_cents | money }}</div><span class="text-sm muted">{{ loan.repayment_frequency }}{{ ' (set by you)' if loan.repayment_override_cents else '' }}</span></div>
     <div class="card stat"><div class="label">Offset balance</div><div class="value">{{ s.offset_balance_cents | money }}</div><span class="text-sm muted">{{ offsets | length }} account{{ '' if offsets | length == 1 else 's' }}</span></div>
     {% if s.started %}
-      <div class="card stat"><div class="label">Saved this month {{ estimate() }}</div><div class="value pos">{{ s.saved_month_cents | money }}</div></div>
-      <div class="card stat"><div class="label">Saved this financial year {{ estimate() }}</div><div class="value pos">{{ s.saved_year_cents | money }}</div></div>
+      <div class="card stat"><div class="label">Saved this month {{ estimate() }}</div><div class="value pos">{{ s.saved_month_cents | money }}</div>{% if s.saved_month_from %}<span class="text-sm muted">since {{ s.saved_month_from | d('dm') }}, when the offset's balance was first entered</span>{% endif %}</div>
+      <div class="card stat"><div class="label">Saved this financial year {{ estimate() }}</div><div class="value pos">{{ s.saved_year_cents | money }}</div>{% if s.saved_year_from %}<span class="text-sm muted">since {{ s.saved_year_from | d('dm') }}, when the offset's balance was first entered</span>{% endif %}</div>
     {% else %}
       <div class="card stat span-2"><div class="label">Offset savings</div><div class="value">-</div><span class="text-sm muted">The loan starts {{ loan.start_date | d('long') }}. Savings count from then.</span></div>
     {% endif %}

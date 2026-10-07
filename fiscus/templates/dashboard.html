@@ -64,7 +64,8 @@
         <div class="value">-</div><span class="text-sm muted">Loan starts {{ loans[0].loan.start_date | d }}</span>
       {% elif loans %}
         <div class="value pos">{{ loans | sum(attribute='saved_month_cents') | money }}</div>
-        <span class="text-sm muted">{{ loans | sum(attribute='saved_year_cents') | money }} this financial year</span>
+        {% set counted_from = loans | map(attribute='saved_year_from') | select | list %}
+        <span class="text-sm muted">{{ loans | sum(attribute='saved_year_cents') | money }} this financial year{% if counted_from %} (since {{ counted_from | max | d('dm') }}){% endif %}</span>
       {% else %}
         <div class="value">-</div><a class="text-sm" href="/loans/new">Add your home loan</a>
       {% endif %}

@@ -258,6 +258,20 @@ class Account(Base, Owned):
     balance_updated_on: Mapped[date | None] = mapped_column(Date, nullable=True)
 
 
+class AccountBalance(Base, Owned):
+    """A balance typed in for an account, one a day: the account's history, so
+    a past day's balance is what was known then, not today's."""
+
+    __tablename__ = 'account_balances'
+    __table_args__ = (UniqueConstraint('account_id', 'date'),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'), index=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey('accounts.id', ondelete='CASCADE'))
+    date: Mapped[date] = mapped_column(Date)
+    balance_cents: Mapped[int] = mapped_column(Integer)
+
+
 class ImportMapping(Base, Owned):
     """Column mapping for a non-ANZ CSV, saved per account."""
 

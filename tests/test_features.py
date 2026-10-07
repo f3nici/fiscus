@@ -19,6 +19,7 @@ from fiscus.models import (
     BudgetSpend,
     Category,
     ForecastCache,
+    Loan,
     PaySchedule,
     Payslip,
     User,
@@ -1187,3 +1188,45 @@ def test_tax_page_lists_paydays_without_a_payslip(env: Env) -> None:
     assert '/pay?payday=' in page and '3 Sep 2026' in page and '17 Sep 2026' in page
     a.post('/pay/schedules/1/no-pay', data={'payday': '2026-09-03'})
     assert '1 payday without a payslip' in a.get('/tax').text
+
+
+def test_offset_savings_use_the_balance_known_on_each_day(env: Env) -> None:
+    alex = env.user('alex')
+    # The offset is first entered on 1 Sep at $10,000 and updated to $30,000
+    # on 15 Sep. Today is 1 Oct.
+    env.clock.set(datetime(2026, 9, 1, 2, tzinfo=UTC))
+    a = env.login(alex)
+    resp = a.post('/accounts', data={'name': 'Offset', 'type': 'offset', 'balance': '10000'})
+    offset = int(resp.headers['location'].rsplit('/', 1)[1])
+    resp = a.post(
+        '/loans',
+        data={
+            'name': 'Home',
+            'principal': '500000',
+            'start_date': '2024-01-15',
+            'initial_rate': '6',
+            'balance': '480000',
+            'balance_date': '2026-09-01',
+        },
+    )
+    loan_id = int(resp.headers['location'].rsplit('/', 1)[1])
+    a.post(f'/loans/{loan_id}/offsets', data={'account_id': str(offset)})
+    env.clock.set(datetime(2026, 9, 15, 2, tzinfo=UTC))
+    a.post(f'/accounts/{offset}/balance', data={'balance': '30000'})
+    env.clock.set(datetime(2026, 10, 1, 2, tzinfo=UTC))
+    from fiscus.services import loans as loan_service
+
+    with env.db() as db:
+        u = db.get(User, alex.id)
+        loan = db.get(Loan, loan_id)
+        assert u is not None and loan is not None
+        s = loan_service.summarise(db, u, loan, date(2026, 10, 1))
+    # 1 to 14 Sep on $10,000 and 15 Sep to 1 Oct on $30,000, at 6 %; nothing
+    # before 1 Sep, when the offset was first entered.
+    expected = (14 * 10_000_00 + 17 * 30_000_00) * Decimal('0.06') / 365
+    assert s.saved_year_cents == L.cents(expected)
+    assert s.saved_year_from == date(2026, 9, 1)
+    assert s.saved_month_cents == L.cents(30_000_00 * Decimal('0.06') / 365)
+    assert s.saved_month_from is None
+    page = a.get(f'/loans/{loan_id}').text
+    assert "since 1 Sep, when the offset's balance was first entered" in page
