@@ -25,11 +25,14 @@ from fiscus.models import (
     Transaction,
     User,
 )
+from fiscus.money import round_div
 from fiscus.services import bills, budgeting, ledger, pay
 from fiscus.services.access import owned
 from fiscus.services.users import settings_for
 
 AVERAGE_DAYS = 90
+# 365.25 / 12 days in a month, scaled to whole numbers.
+DAYS_PER_MONTH_X10000 = 304375
 OVERDUE_CARRY_DAYS = 62
 
 
@@ -120,7 +123,7 @@ def estimates(db: Session, user: User, today: date) -> list[Estimate]:
     for cid, total in totals.items():
         if cid in budgets:
             continue
-        monthly = round(total * 30.4375 / AVERAGE_DAYS)
+        monthly = round_div(total * DAYS_PER_MONTH_X10000, AVERAGE_DAYS * 10000)
         if monthly:
             name = cats[cid].name if cid in cats else 'Uncategorised'
             out.append(Estimate(cid, name, monthly, 'average'))

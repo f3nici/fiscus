@@ -68,6 +68,11 @@ class BudgetRow:
         return self.budget.monthly_cents if self.budget else 0
 
     @property
+    def cycle_total_cents(self) -> int:
+        """The budget for one cycle, as typed: $2,480 for a yearly line."""
+        return cycle_total(self.budget) if self.budget else 0
+
+    @property
     def has_budget(self) -> bool:
         return self.budget is not None
 
@@ -81,7 +86,7 @@ class BudgetRow:
     def pct(self) -> int:
         if not self.budget_cents:
             return 0
-        return min(999, round(100 * self.actual_cents / self.budget_cents))
+        return min(999, round_div(100 * self.actual_cents, self.budget_cents))
 
     @property
     def state(self) -> str:
@@ -110,6 +115,13 @@ class Summary:
     @property
     def unbudgeted_cents(self) -> int:
         return self.expected_cents - self.budget_cents
+
+
+def cycle_total(row: Budget) -> int:
+    """A line's amount for one cycle; older rows without one multiply out."""
+    if row.total_cents is not None:
+        return row.total_cents
+    return row.monthly_cents * row.cycle_months
 
 
 def start_day(db: Session, user: User) -> int:
@@ -206,10 +218,10 @@ def set_total(
     """Set a category's budget, the bills in it paid out of it. Returns the
     monthly (total, bills).
 
-    The total is for `cycle_months` (the line's own cycle when None), stored as
-    a monthly amount. With `add`, the monthly amount goes on top of what is
-    allocated already. A line spent every few months
-    keeps what it has saved when it changes, or starts from `saved_cents`.
+    The total is for `cycle_months` (the line's own cycle when None): kept as
+    typed, and as a monthly amount. With `add`, it goes on top of what is
+    allocated already. A line spent every few months keeps what it has saved
+    when it changes, or starts from `saved_cents`.
     """
     start, end = period(db, user, day)
     from_bills = bills_by_category(db, user, start, end).get(category.id, 0)
@@ -217,11 +229,12 @@ def set_total(
         owned(Budget, user).where(Budget.category_id == category.id)
     ).scalar_one_or_none()
     cycle = cycle_months or (row.cycle_months if row else 1)
-    if add:
-        monthly = (row.monthly_cents if row else 0) + total_cents
-    else:
-        monthly = round_div(total_cents, cycle)
-    monthly = max(0, monthly)
+    total = total_cents
+    if add and row is not None:
+        # What is there already, over the new cycle, plus the new amount.
+        total += round_div(cycle_total(row) * cycle, row.cycle_months)
+    total = max(0, total)
+    monthly = round_div(total, cycle)
     keep = use_in_forecast or (row is not None and row.use_in_forecast and add)
     if monthly == 0 and not keep and cycle == 1:
         if row is not None:
@@ -245,6 +258,7 @@ def set_total(
         row = Budget(user_id=user.id, category_id=category.id, monthly_cents=monthly)
         db.add(row)
     row.monthly_cents = monthly
+    row.total_cents = total
     row.use_in_forecast = keep
     row.cycle_months = cycle
     row.saved_since = since
@@ -256,7 +270,8 @@ def set_total(
 def saved_to(db: Session, user: User, row: Budget, end: date, today: date) -> int:
     """What a saved-up line holds at the end of `end`'s day: its opening amount,
     plus a month's budget for every budget month since it started, less what
-    was spent (by hand and bills paid) in that time."""
+    was spent (by hand and bills paid) in that time. A full cycle saves exactly
+    the amount typed for it."""
     since = row.saved_since
     if since is None or end < since:
         return row.saved_opening_cents
@@ -268,7 +283,8 @@ def saved_to(db: Session, user: User, row: Budget, end: date, today: date) -> in
     cid = row.category_id
     spent = spent_by_category(db, user, since, end).get(cid, 0)
     paid = bills_paid_by_category(db, user, since, end, today).get(cid, 0)
-    return row.saved_opening_cents + months * row.monthly_cents - spent - paid
+    saved = round_div(cycle_total(row) * months, row.cycle_months)
+    return row.saved_opening_cents + saved - spent - paid
 
 
 def rows(db: Session, user: User, start: date, end: date, today: date) -> list[BudgetRow]:

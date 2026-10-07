@@ -18,7 +18,7 @@
       <div class="label">Holds</div>
       <div class="value">{{ v.held_cents | money }}</div>
       {% if goal.target_cents %}
-        <meter class="mt-sm" min="0" max="{{ goal.target_cents }}" optimum="{{ goal.target_cents }}" low="{{ (goal.target_cents * 0.5) | int }}" value="{{ [[v.held_cents, 0] | max, goal.target_cents] | min }}">{{ v.progress.pct }}%</meter>
+        <meter class="mt-sm" min="0" max="{{ goal.target_cents }}" optimum="{{ goal.target_cents }}" low="{{ goal.target_cents // 2 }}" value="{{ [[v.held_cents, 0] | max, goal.target_cents] | min }}">{{ v.progress.pct }}%</meter>
         <span class="text-sm muted">{{ v.progress.pct }}% of {{ goal.target_cents | money }}{% if v.progress.remaining_cents %}, {{ v.progress.remaining_cents | money }} to go{% endif %}</span>
       {% else %}
         <span class="text-sm muted">No target</span>

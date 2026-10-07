@@ -170,8 +170,8 @@
             <tr id="line-{{ r.category.id }}">
               <td>
                 {{ r.category.name }}{% if r.category.is_income %} <span class="pill pill-ok">Income</span>{% endif %}
-                {% if r.has_budget and not r.saving %}<meter min="0" max="{{ r.budget_cents }}" low="{{ (r.budget_cents * 0.9) | int }}" high="{{ r.budget_cents }}" optimum="0" value="{{ [r.actual_cents, r.budget_cents] | min }}">{{ r.pct }}%</meter>{% endif %}
-                {% if r.saving %}<div class="text-xs muted">Saving up {{ (r.budget_cents * r.cycle_months) | money }} {{ cycles[r.cycle_months] | lower }}</div>{% endif %}
+                {% if r.has_budget and not r.saving %}<meter min="0" max="{{ r.budget_cents }}" low="{{ r.budget_cents * 9 // 10 }}" high="{{ r.budget_cents - 1 if r.state == 'over' else r.budget_cents }}" optimum="0" value="{{ [r.actual_cents, r.budget_cents] | min }}">{{ r.pct }}%</meter>{% endif %}
+                {% if r.saving %}<div class="text-xs muted">Saving up {{ r.cycle_total_cents | money }} {{ cycles[r.cycle_months] | lower }}</div>{% endif %}
                 {% if r.bills_cents %}<div class="text-xs muted"><a href="/bills?category={{ r.category.id }}">{{ r.bills_cents | money }} of bills</a></div>{% endif %}
                 {% set dc = due.get(r.category.id) %}
                 {% if dc %}<div class="text-xs {{ 'neg' if dc.short_cents else 'pos' }}">{{ dc.need_cents | money }} due {{ dc.due | d }}: {% if dc.short_cents %}{{ dc.short_cents | money }} short by then{% else %}on track{% endif %}</div>{% endif %}
@@ -225,7 +225,7 @@
                     <label class="label" for="name-{{ r.category.id }}">Name</label>
                     <input class="input" id="name-{{ r.category.id }}" name="name" maxlength="80" required value="{{ r.category.name }}" aria-label="Name of {{ r.category.name }}">
                     <label class="label mt-sm" for="amount-{{ r.category.id }}">Amount</label>
-                    <input class="input" id="amount-{{ r.category.id }}" name="amount" inputmode="decimal" value="{{ (r.budget_cents * cycle) | money_plain if r.has_budget else ((r.bills_cents * cycle) | money_plain if r.bills_cents else '') }}" aria-label="Budget for {{ r.category.name }}">
+                    <input class="input" id="amount-{{ r.category.id }}" name="amount" inputmode="decimal" value="{{ (r.cycle_total_cents if cycle == r.cycle_months else r.budget_cents * cycle) | money_plain if r.has_budget else ((r.bills_cents * cycle) | money_plain if r.bills_cents else '') }}" aria-label="Budget for {{ r.category.name }}">
                     {% if not r.category.is_income %}
                       <label class="label mt-sm" for="cycle-{{ r.category.id }}">How often</label>
                       <select class="input" id="cycle-{{ r.category.id }}" name="cycle_months" aria-label="How often {{ r.category.name }} is spent">

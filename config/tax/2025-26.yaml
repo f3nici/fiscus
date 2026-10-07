@@ -5,6 +5,10 @@
 #
 # Kept so a figure for the year just finished can still be estimated. Fiscus
 # estimates. It is not tax advice.
+#
+# Medicare levy low-income thresholds: $28,011 and $35,013 for a single, the
+# 2025-26 figures (the 2026 Budget lifted the 2024-25 ones by 2.9 %, back to
+# 1 July 2025).
 
 financial_year: "2025-26"
 start: 2025-07-01
@@ -25,8 +29,8 @@ brackets:
 
 medicare:
   rate: "0.02"
-  lower: 27222
-  upper: 34027
+  lower: 28011
+  upper: 35013
   phase_in_rate: "0.10"
 
 lito:

@@ -20,7 +20,7 @@
             {% if v.goal.target_cents %}of {{ v.goal.target_cents | money }}{% if v.goal.target_date %} by {{ v.goal.target_date | d }}{% endif %}{% else %}set aside{% endif %}{% if v.goal.account_id %} · in {{ account_names.get(v.goal.account_id, '') }}{% endif %}
           </span>
         </div>
-        {% if v.goal.target_cents %}<meter class="mt-sm" min="0" max="{{ v.goal.target_cents }}" optimum="{{ v.goal.target_cents }}" low="{{ (v.goal.target_cents * 0.5) | int }}" value="{{ [[v.held_cents, 0] | max, v.goal.target_cents] | min }}">{{ v.progress.pct }}%</meter>{% endif %}
+        {% if v.goal.target_cents %}<meter class="mt-sm" min="0" max="{{ v.goal.target_cents }}" optimum="{{ v.goal.target_cents }}" low="{{ v.goal.target_cents // 2 }}" value="{{ [[v.held_cents, 0] | max, v.goal.target_cents] | min }}">{{ v.progress.pct }}%</meter>{% endif %}
       </a>
     {% else %}
       <div class="card muted">No goals yet. Add one below.</div>

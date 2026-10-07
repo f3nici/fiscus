@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import date
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 
 from fiscus.domain.csvimport import ImportError_, decode, read_rows
@@ -149,12 +150,12 @@ def _item(raw: dict[str, Any], where: str) -> BillSpec:
     split_bp = 0
     if shared:
         try:
-            pct = float(split_raw) if split_raw not in (None, '') else 50.0
-        except (TypeError, ValueError) as exc:
+            pct = Decimal(str(split_raw)) if split_raw not in (None, '') else Decimal(50)
+        except InvalidOperation as exc:
             raise ValueError(f'{where}: split_percent must be a number') from exc
-        if not 0 < pct < 100:
+        if not pct.is_finite() or not 0 < pct < 100:
             raise ValueError(f'{where}: split_percent must be between 0 and 100')
-        split_bp = round(pct * 100)
+        split_bp = int((pct * 100).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
     category = str(raw.get('category') or '').strip()[:80] if 'category' in raw else None
     return BillSpec(name[:120], amount, freq, category, due, shared, split_bp)
 

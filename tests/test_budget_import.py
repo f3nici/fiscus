@@ -267,7 +267,7 @@ def test_import_saves_up_yearly_and_quarterly_lines(env: Env) -> None:
         'Council rates': (246_67, 12),
         'Car': (433_33 + 92_42, 12),
     }
-    assert 'Saving up $2,960.04 every year' in a.get('/budget').text
+    assert 'Saving up $2,960.00 every year' in a.get('/budget').text
 
 
 def test_import_refuses_an_unknown_cycle(env: Env) -> None:

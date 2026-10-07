@@ -250,7 +250,7 @@ def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any
     )
     # Car rego came back from the file at its own amount, not the old $900.
     table = page.inner_text('main table')
-    assert 'Saving up $1,109.04 every year' in table and '$900.00' not in table
+    assert 'Saving up $1,109.00 every year' in table and '$900.00' not in table
     page.goto(f'{base}/accounts')
     page.fill('input[name^=balance_]', '2400')
     page.click('form[action="/accounts/balances"] button[type=submit]')

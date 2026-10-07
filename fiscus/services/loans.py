@@ -58,7 +58,7 @@ def summarise(db: Session, user: User, loan: Loan, today: date) -> LoanSummary:
         return loan_math.interest_saved(loan.balance_cents, spec.rates, daily)
 
     # The current repayment, after any rate changes up to today.
-    sim = loan_math.LoanSim(spec)
+    sim = loan_math.LoanSim(spec, opening_offset_cents=offset_now)
     day = spec.balance_date
     while day < today:
         day += timedelta(days=1)

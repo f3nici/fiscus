@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from fiscus.domain import budget_import as dom
 from fiscus.domain.csvimport import ImportError_, decode, read_rows
 from fiscus.models import Budget, Category, User
+from fiscus.money import round_div
 from fiscus.services import budgeting
 from fiscus.services.access import owned
 from fiscus.services.ledger import category_named
@@ -88,8 +89,12 @@ def parse(data: bytes, filename: str, sheet: str | None, *, has_loan: bool) -> P
 @dataclass(frozen=True)
 class Chosen:
     category: str
-    monthly_cents: int
+    total_cents: int  # for one cycle, as typed
     cycle_months: int = 1
+
+    @property
+    def monthly_cents(self) -> int:
+        return round_div(self.total_cents, self.cycle_months)
 
 
 def apply(
@@ -108,27 +113,33 @@ def apply(
     category are paid out of it, not added to it. A category takes the longest
     cycle of its lines, so a yearly cost in it is saved up.
     """
-    totals: dict[int, tuple[Category, int, int]] = {}
+    lines: dict[int, tuple[Category, list[Chosen]]] = {}
     for c in chosen:
         cat = category_named(db, user, c.category)
-        _, cents, cycle = totals.get(cat.id, (cat, 0, 1))
-        totals[cat.id] = (cat, cents + c.monthly_cents, max(cycle, c.cycle_months))
-    for cat, cents, cycle in totals.values():
+        lines.setdefault(cat.id, (cat, []))[1].append(c)
+    monthly_total = 0
+    for cat, picked in lines.values():
+        cycle = max(c.cycle_months for c in picked)
         if cat.is_income or cycle not in budgeting.CYCLES:
             cycle = 1
+        if all(c.cycle_months == cycle for c in picked):
+            total = sum(c.total_cents for c in picked)
+        else:
+            total = sum(c.monthly_cents for c in picked) * cycle
         budgeting.set_total(
             db,
             user,
             cat,
-            cents if not replace else cents * cycle,
+            total,
             today,
             use_in_forecast=use_in_forecast,
             add=not replace,
             cycle_months=cycle,
             today=today,
         )
+        monthly_total += sum(c.monthly_cents for c in picked)
     db.flush()
-    return len(totals), sum(cents for _, cents, _ in totals.values())
+    return len(lines), monthly_total
 
 
 def clear(db: Session, user: User) -> int:

@@ -539,9 +539,12 @@ class Budget(Base, Owned):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'), index=True)
     category_id: Mapped[int] = mapped_column(ForeignKey('categories.id', ondelete='CASCADE'))
-    # Set aside on top of this person's bills in the category. The budget shown
-    # is the bills' monthly equivalent plus this.
+    # What is allocated each month; this person's bills in the category are
+    # paid out of it (D29).
     monthly_cents: Mapped[int] = mapped_column(Integer)
+    # The amount as typed, for one cycle ($2,480 a year), so it reads back
+    # exactly and a saved-up line saves exactly that over its cycle.
+    total_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Use this amount instead of the rolling average in the forecast.
     use_in_forecast: Mapped[bool] = mapped_column(Boolean, default=False)
     # Spent every few months (rego, insurance): the monthly share is saved up

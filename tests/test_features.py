@@ -1079,3 +1079,31 @@ def test_a_bimonthly_bill_in_bills_and_budget(env: Env) -> None:
     with env.db() as db:
         row = db.execute(select(Budget)).scalar_one()
         assert (row.monthly_cents, row.cycle_months) == (90_00, 2)
+
+
+def test_a_yearly_line_reads_back_and_saves_exactly_what_was_typed(env: Env) -> None:
+    alex = env.user('alex')
+    a = env.login(alex)
+    a.post(
+        '/budget', data={'new_category': 'Council rates', 'amount': '2480', 'cycle_months': '12'}
+    )
+    page = a.get('/budget?month=2026-10').text
+    assert 'Saving up $2,480.00 every year' in page
+    assert 'value="2480.00"' in page
+    # Twelve budget months save $2,480.00, not 12 x $206.67.
+    assert _saved(env, alex, date(2027, 9, 1))['Council rates'] == (2480_00, 'ok')
+
+
+def test_an_overspent_line_shows_a_red_bar(env: Env) -> None:
+    alex = env.user('alex')
+    a = env.login(alex)
+    a.post('/budget', data={'new_category': 'Eating out', 'amount': '250'})
+    cid = cat_id(env, alex, 'Eating out')
+    a.post('/budget/spend', data={'category_id': str(cid), 'amount': '250'})
+    page = a.get('/budget').text
+    # At the budget: amber, as from 90 %.
+    assert 'low="22500" high="25000" optimum="0" value="25000"' in page
+    a.post('/budget/spend', data={'category_id': str(cid), 'amount': '10'})
+    page = a.get('/budget').text
+    # Over it: the value sits above `high`, which the meter draws red.
+    assert 'low="22500" high="24999" optimum="0" value="25000"' in page

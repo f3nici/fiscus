@@ -202,10 +202,11 @@ def test_offset_interest_in_the_forecast() -> None:
     # Repayment out of account 1 on 15 Oct.
     idx = (date(2026, 10, 15) - date(2026, 10, 1)).days
     assert r.accounts[1][idx] == 1_000_00 - L.LoanSim(loan).payment
-    # Only 2..15 Oct accrues in the forecast, charged on 15 Oct: 13 days on
-    # (400,000 - 5,000 offset), then the repayment lands before the 15th's
-    # interest: 13 x 395,000 x 6 % / 365 + (397,002.25 - 5,000) x 6 % / 365 = $908.55
-    assert r.loans[1][idx] == 400_000_00 - L.LoanSim(loan).payment + 908_55
+    # The 15 Oct charge holds 16 Sep to 1 Oct, accrued before the balance was
+    # known (16 x 395,000 x 6 % / 365 = $1,038.90), then 2..14 Oct on
+    # (400,000 - 5,000 offset) and the 15th after its repayment:
+    # 13 x 395,000 x 6 % / 365 + (397,002.25 - 5,000) x 6 % / 365 = $908.55
+    assert r.loans[1][idx] == 400_000_00 - L.LoanSim(loan).payment + 1_038_90 + 908_55
 
 
 def test_scenarios_do_not_touch_the_base_input() -> None:
@@ -313,7 +314,9 @@ def test_lito_and_medicare(fy: tax.TaxYear) -> None:
     assert tax.lito(fy, 50_000_00) == 250_00  # 325 - 5,000 x 1.5 %
     assert tax.lito(fy, 70_000_00) == 0
     assert tax.medicare(fy, 20_000_00) == 0
-    assert tax.medicare(fy, 30_000_00) == 277_80  # (30,000 - 27,222) x 10 %
+    assert tax.medicare(fy, 28_011_00) == 0
+    assert tax.medicare(fy, 30_000_00) == 198_90  # (30,000 - 28,011) x 10 %
+    assert tax.medicare(fy, 40_000_00) == 800_00  # over $35,013: the full 2 %
     assert tax.medicare(fy, 100_000_00) == 2_000_00
 
 
@@ -331,3 +334,28 @@ def test_position_takes_deductions_off_income(fy: tax.TaxYear) -> None:
 def test_missing_year_is_a_clear_error(tmp_path: Path) -> None:
     with pytest.raises(tax.TaxConfigError):
         tax.load_year('2031-32', tmp_path)
+
+
+def test_interest_accrued_before_the_balance_date_is_charged_next() -> None:
+    # Balance known on 1 Oct; the last charge was 15 Sep. 16 Sep to 1 Oct is
+    # 16 days of interest the balance does not include yet.
+    s = spec(balance_cents=400_000_00, balance_date=date(2026, 10, 1))
+    assert L.last_charge(s, date(2026, 10, 1)) == date(2026, 9, 15)
+    assert L.cents(L.accrued_at_balance_date(s, 0)) == 1_052_05  # 16 x 400,000 x 6 % / 365
+    assert L.cents(L.accrued_at_balance_date(s, 400_000_00)) == 0
+    # On a charge day the balance already includes the charge.
+    on_charge = spec(balance_cents=400_000_00, balance_date=date(2026, 9, 15))
+    assert L.accrued_at_balance_date(on_charge, 0) == 0
+    # Before settlement nothing has accrued.
+    assert L.accrued_at_balance_date(spec(balance_date=date(2026, 1, 1)), 0) == 0
+
+
+def test_payoff_counts_repayments_since_an_old_balance_date() -> None:
+    s = spec(balance_cents=490_000_00, balance_date=date(2026, 3, 1))
+    from_balance_date = L.project_payoff(s, s.balance_date, lambda _d: 0)
+    from_today = L.project_payoff(s, date(2026, 10, 1), lambda _d: 0)
+    # Same loan, same payoff: the months since the balance date are stepped,
+    # not skipped.
+    assert from_today.paid_off == from_balance_date.paid_off
+    # Interest from today leaves out what was charged before it.
+    assert from_today.total_interest < from_balance_date.total_interest

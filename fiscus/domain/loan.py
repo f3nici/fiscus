@@ -117,7 +117,7 @@ def repayments(
     Stepped from the balance date with the offset held at `offset_cents`. Days
     before the balance date show the repayment as at that date.
     """
-    sim = LoanSim(spec)
+    sim = LoanSim(spec, opening_offset_cents=offset_cents)
     out: list[tuple[date, int]] = []
     day = start
     while day <= min(end, spec.balance_date):
@@ -157,6 +157,33 @@ def _months_between(a: date, b: date) -> int:
     return (b.year - a.year) * 12 + (b.month - a.month)
 
 
+def last_charge(spec: LoanSpec, day: date) -> date:
+    """The latest interest charge day on or before `day`; the start date before the first."""
+    if day <= spec.start_date:
+        return spec.start_date
+    n = _months_between(spec.start_date, day)
+    charge = nth(spec.start_date, 'monthly', n)
+    if charge > day:
+        charge = nth(spec.start_date, 'monthly', n - 1)
+    return max(charge, spec.start_date)
+
+
+def accrued_at_balance_date(spec: LoanSpec, offset_cents: int) -> Decimal:
+    """Interest accrued from the last charge to the end of the balance date.
+
+    A lender's balance leaves it out until the charge day adds it, so the first
+    charge after the balance date includes it. Worked on the balance as known
+    (repayments in between are not undone) and the offset given.
+    """
+    effective = Decimal(max(0, spec.balance_cents - max(0, offset_cents)))
+    total = Decimal(0)
+    day = last_charge(spec, spec.balance_date)
+    while day < spec.balance_date:
+        day += timedelta(days=1)
+        total += effective * rate_on(spec.rates, day) / Decimal(100) / DAYS_PER_YEAR
+    return total
+
+
 @dataclass
 class LoanSim:
     """Steps one loan a day at a time. The forecast owns the account balances."""
@@ -169,9 +196,12 @@ class LoanSim:
     paid_off: date | None = None
     interest_charged: int = 0
     extra_by_day: dict[date, list[tuple[int, int | None]]] = field(default_factory=dict)
+    # The offset as at the balance date, for the interest accrued before it.
+    opening_offset_cents: int = 0
 
     def __post_init__(self) -> None:
         self.balance = self.spec.balance_cents
+        self.accrued = accrued_at_balance_date(self.spec, self.opening_offset_cents)
         self.payment = self.spec.scheduled_repayment()
         self.rate = rate_on(self.spec.rates, self.spec.balance_date)
         for d, amount, acct in self.spec.extra_repayments:
@@ -230,16 +260,25 @@ class Payoff:
 def project_payoff(
     spec: LoanSpec, from_day: date, offset_for: Callable[[date], int], max_years: int = 50
 ) -> Payoff:
-    sim = LoanSim(spec)
-    day = from_day
-    limit = from_day + timedelta(days=365 * max_years)
+    """When the loan is paid off, and the interest still to come after `from_day`.
+
+    Stepped from the balance date, so repayments between it and `from_day`
+    are counted rather than skipped.
+    """
+    sim = LoanSim(spec, opening_offset_cents=offset_for(spec.balance_date))
+    day = spec.balance_date
+    limit = max(from_day, day) + timedelta(days=365 * max_years)
+    charged_before = 0
     while day <= limit:
         day += timedelta(days=1)
         sim.repayments_due(day)
         if sim.balance <= 0:
             break
         sim.end_of_day(day, offset_for(day))
-    return Payoff(sim.paid_off, sim.interest_charged + cents(sim.accrued), sim.payment)
+        if day <= from_day:
+            charged_before = sim.interest_charged
+    total = sim.interest_charged - charged_before + cents(sim.accrued)
+    return Payoff(sim.paid_off, total, sim.payment)
 
 
 def interest_saved(

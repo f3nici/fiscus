@@ -4,11 +4,14 @@
 #   https://www.ato.gov.au/tax-rates-and-codes/tax-rates-australian-residents
 #   https://www.ato.gov.au/individuals-and-families/medicare-and-private-health-insurance/medicare-levy
 #
-# Source: the resident rates as legislated for 2026-27. The 16 % rate from
-# 2024-25 is cut to 15 % from 1 July 2026 (Treasury Laws Amendment (Cost of
-# Living Tax Cuts) legislation, 2025 Budget). The low income tax offset and the
-# Medicare levy low-income thresholds below are the 2025-26 values; the ATO
-# usually confirms the new thresholds after the Budget, so check them in July.
+# Source: the ATO's resident tax rates 2026-27 table, checked October 2026:
+# nil to $18,200; 15c over $18,200; $4,020 plus 30c over $45,000; $31,020 plus
+# 37c over $135,000; $51,370 plus 45c over $190,000; Medicare levy 2 %.
+#
+# The Medicare levy low-income thresholds below are the 2025-26 figures
+# ($28,011 and $35,013 for a single). The 2026-27 ones are usually set in the
+# next Budget, so check them each July. The low income tax offset is not used
+# (D31).
 #
 # Fiscus estimates. It is not tax advice. HELP / study loan repayments, the
 # Medicare levy surcharge, private health rebates and every other offset are
@@ -17,7 +20,7 @@
 financial_year: "2026-27"
 start: 2026-07-01
 end: 2027-06-30
-verified: "Not yet checked against ato.gov.au by a person. Check every July."
+verified: "Brackets checked against the ATO table in October 2026. Medicare thresholds are the 2025-26 figures until the 2026-27 ones are set."
 
 # Each bracket: income above `over` is taxed at `rate` per dollar.
 brackets:
@@ -36,8 +39,8 @@ medicare:
   rate: "0.02"
   # Singles: no levy at or below `lower`, phased in at `phase_in_rate` of the
   # excess up to `upper`, then the full rate.
-  lower: 27222
-  upper: 34027
+  lower: 28011
+  upper: 35013
   phase_in_rate: "0.10"
 
 lito:

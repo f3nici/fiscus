@@ -119,12 +119,15 @@ def run(inp: ForecastInput) -> ForecastResult:
 
     series: dict[int, list[int]] = {a: [balances.get(a, 0)] for a in inp.account_names}
     combined = [sum(balances.values())]
-    sims = [LoanSim(spec) for spec in inp.loans]
+    sims = [
+        LoanSim(spec, opening_offset_cents=sum(balances.get(a, 0) for a in spec.offset_account_ids))
+        for spec in inp.loans
+    ]
     # Roll each loan from the day its balance was known up to today, without
     # touching accounts: those repayments are already in the bank history.
     for sim in sims:
         day = sim.spec.balance_date
-        offset_now = sum(balances.get(a, 0) for a in sim.spec.offset_account_ids)
+        offset_now = sim.opening_offset_cents
         while day < inp.today:
             day += timedelta(days=1)
             sim.repayments_due(day)
