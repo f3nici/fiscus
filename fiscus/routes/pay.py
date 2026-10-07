@@ -27,7 +27,6 @@ from fiscus.forms import (
     int_or,
     money,
     opt_date,
-    opt_money,
     req_date,
     text,
 )
@@ -188,6 +187,10 @@ def _page(
     )
 
 
+def _opt_positive(value: str, label: str) -> int | None:
+    return money(value, label, allow_negative=False) if value.strip() else None
+
+
 @router.post('/pay/schedules')
 @router.post('/pay/schedules/{schedule_id}')
 def save_schedule(
@@ -215,8 +218,8 @@ def save_schedule(
             frequency=choice(frequency, PAY_FREQUENCIES, 'Frequency'),
             anchor_date=anchor,
             net_cents=money(net, 'Net pay', allow_negative=False),
-            gross_cents=opt_money(gross, 'Gross pay'),
-            tax_withheld_cents=opt_money(tax_withheld, 'Tax withheld'),
+            gross_cents=_opt_positive(gross, 'Gross pay'),
+            tax_withheld_cents=_opt_positive(tax_withheld, 'Tax withheld'),
             end_date=ends_after(anchor, opt_date(end_date, 'End date')),
             varies=varies == 'on',
             match_text=' '.join(match_text.split())[:120],

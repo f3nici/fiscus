@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -210,6 +210,49 @@ def test_reminders_sent_once_each(env: Env, monkeypatch: pytest.MonkeyPatch) -> 
     assert jobs.run_reminders(env.ctx) == 0  # already sent
     with env.db() as db:
         assert len(db.execute(select(NotificationLog)).scalars().all()) == 3
+
+
+def test_a_payday_without_a_payslip_is_reminded_once(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    alex = env.user('alex')
+    client = env.login(alex)
+    client.post(
+        '/pay/schedules',
+        data={'name': 'Acme', 'frequency': 'weekly', 'anchor_date': '2026-09-03', 'net': '900'},
+    )
+    client.post(
+        '/settings/ntfy',
+        data={
+            'enabled': 'true',
+            'url': 'http://192.168.1.20',
+            'topic': 'f',
+            'hour': '10',
+            'payslips': 'true',
+        },
+    )
+    sent: list[str] = []
+
+    def fake_post(_client: httpx.Client, url: str, **kw: Any) -> httpx.Response:
+        sent.append(kw['content'].decode())
+        return httpx.Response(200)
+
+    # TestClient is an httpx.Client too: only patch it while the job runs.
+    with monkeypatch.context() as m:
+        m.setattr(httpx.Client, 'post', fake_post)
+        # Only the last week's payday (24 Sep); today's (1 Oct) may not be in yet.
+        assert jobs.run_reminders(env.ctx) == 1
+        assert sent == ['Acme paid on Thu 24 Sep: no payslip in Fiscus yet.']
+        assert jobs.run_reminders(env.ctx) == 0
+    # Turned off, nothing is sent for the next one either.
+    client.post(
+        '/settings/ntfy',
+        data={'enabled': 'true', 'url': 'http://192.168.1.20', 'topic': 'f', 'hour': '10'},
+    )
+    env.clock.set(datetime(2026, 10, 2, 2, 0, tzinfo=UTC))
+    with monkeypatch.context() as m:
+        m.setattr(httpx.Client, 'post', fake_post)
+        assert jobs.run_reminders(env.ctx) == 0
 
 
 def test_reminders_wait_for_the_chosen_hour(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:

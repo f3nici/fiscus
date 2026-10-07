@@ -14,6 +14,8 @@ from typing import Any
 
 import yaml
 
+from fiscus.money import round_div
+
 CONFIG_DIR = Path(__file__).resolve().parents[2] / 'config' / 'tax'
 
 
@@ -156,3 +158,66 @@ class Position:
 def position(year: TaxYear, income: int, withheld: int, deductions: int) -> Position:
     taxable = max(0, income - deductions)
     return Position(income, withheld, deductions, estimate(year, taxable))
+
+
+def share_of(year: Position, income: int, withheld: int) -> Position:
+    """The part of a whole year's position that `income` so far accounts for:
+    that share of the deductions and of the year's tax.
+
+    Tax worked on the income so far alone would give it the whole tax-free
+    threshold and the low brackets, and show early in the year a refund the
+    full year takes back.
+    """
+    if year.income_cents <= 0:
+        return Position(income, withheld, 0, TaxEstimate(0, 0, 0, 0))
+
+    def part(cents: int) -> int:
+        return round_div(cents * income, year.income_cents)
+
+    t = year.total
+    it, mc = part(t.income_tax_cents), part(t.medicare_cents)
+    return Position(
+        income,
+        withheld,
+        part(year.deductions_cents),
+        TaxEstimate(part(t.taxable_cents), it, mc, it + mc),
+    )
+
+
+@dataclass(frozen=True)
+class PayFigures:
+    """What a schedule says about a pay beyond its net."""
+
+    gross_cents: int | None
+    withheld_cents: int | None
+    usual_net_cents: int  # the net those figures go with
+    varies: bool = False
+
+
+def gross_and_tax(
+    net: int, figures: PayFigures, slips: tuple[int, int, int] | None
+) -> tuple[int, int, bool]:
+    """Gross and tax withheld for an expected pay of `net`, and whether
+    anything said so.
+
+    The schedule's own gross and tax first (scaled to the net when the pay
+    varies); a gross alone means gross less net was withheld, a tax alone that
+    gross is net plus it. Then in proportion to that job's own payslips
+    (gross, withheld, net). With nothing to go on, nothing was withheld: the
+    safe guess for a tax estimate, and right for contract income.
+    """
+    g, w = figures.gross_cents, figures.withheld_cents
+    if figures.varies and figures.usual_net_cents:
+        if g is not None:
+            g = round_div(g * net, figures.usual_net_cents)
+        if w is not None:
+            w = round_div(w * net, figures.usual_net_cents)
+    if g is not None:
+        return g, (w if w is not None else max(0, g - net)), True
+    if w is not None:
+        return net + w, w, True
+    if slips is not None and slips[2] > 0:
+        gross, withheld, slip_net = slips
+        g = round_div(net * gross, slip_net)
+        return g, (round_div(g * withheld, gross) if gross else 0), True
+    return net, 0, False

@@ -359,3 +359,43 @@ def test_payoff_counts_repayments_since_an_old_balance_date() -> None:
     assert from_today.paid_off == from_balance_date.paid_off
     # Interest from today leaves out what was charged before it.
     assert from_today.total_interest < from_balance_date.total_interest
+
+
+def test_year_to_date_is_a_share_of_the_years_tax(fy: tax.TaxYear) -> None:
+    year = tax.position(fy, 100_000_00, 20_000_00, 4_000_00)
+    ytd = tax.share_of(year, 25_000_00, 5_000_00)
+    # A quarter of the income: a quarter of the deductions and of the tax.
+    assert ytd.deductions_cents == 1_000_00
+    assert ytd.total.total_cents == round(year.total.total_cents / 4)
+    assert ytd.total.taxable_cents == 24_000_00
+    assert ytd.withheld_cents == 5_000_00
+    # Not the tax on $25,000 alone, which the tax-free threshold nearly clears.
+    assert ytd.total.total_cents > tax.estimate(fy, 24_000_00).total_cents
+    empty = tax.share_of(tax.position(fy, 0, 0, 0), 0, 0)
+    assert empty.total.total_cents == 0
+
+
+def test_gross_and_tax_for_an_expected_pay() -> None:
+    f = tax.PayFigures
+    # The schedule's own figures.
+    assert tax.gross_and_tax(3_000_00, f(4_000_00, 1_000_00, 3_000_00), None) == (
+        4_000_00,
+        1_000_00,
+        True,
+    )
+    # A gross alone: what is not net was withheld.
+    assert tax.gross_and_tax(3_000_00, f(4_000_00, None, 3_000_00), None)[:2] == (
+        4_000_00,
+        1_000_00,
+    )
+    # A varying pay scales both to the net expected.
+    assert tax.gross_and_tax(1_500_00, f(4_000_00, 1_000_00, 3_000_00, True), None)[:2] == (
+        2_000_00,
+        500_00,
+    )
+    # Nothing on the schedule: in proportion to that job's payslips.
+    assert tax.gross_and_tax(3_000_00, f(None, None, 3_000_00), (8_000_00, 2_000_00, 6_000_00))[
+        :2
+    ] == (4_000_00, 1_000_00)
+    # Nothing at all: nothing withheld.
+    assert tax.gross_and_tax(4_500_00, f(None, None, 4_500_00), None) == (4_500_00, 0, False)

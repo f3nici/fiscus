@@ -13,10 +13,12 @@ from sqlalchemy.orm import Session
 from fiscus.clock import Clock, utcnow_naive
 from fiscus.models import NotificationLog, User
 from fiscus.money import fmt
-from fiscus.services import bills, forecasting, ntfy
+from fiscus.services import bills, forecasting, ntfy, pay
 from fiscus.services.users import settings_for
 
 log = logging.getLogger('fiscus.reminders')
+# A payday this many days back without a payslip is reminded about, once.
+PAYSLIP_DAYS = 7
 
 
 @dataclass(frozen=True)
@@ -55,9 +57,22 @@ def due_reminders(db: Session, clock: Clock, user: User) -> list[Reminder]:
                     f'{occ.bill.id}:{occ.due.isoformat()}',
                     f'{occ.bill.name} is overdue',
                     f'{occ.bill.name}: {fmt(occ.share_cents)} was due {occ.due.strftime("%d %b")} '
-                    'and has not been matched to a payment.',
+                    'and has not been marked paid.',
                     priority='high',
                     tags='warning',
+                )
+            )
+    if prefs.ntfy_payslips:
+        # Paydays from the last week, not today's (the pay may not be in yet).
+        since = today - timedelta(days=PAYSLIP_DAYS)
+        for o in pay.open_paydays(db, user, since, today - timedelta(days=1)):
+            out.append(
+                Reminder(
+                    'payslip',
+                    o.key,
+                    'Payslip to put in',
+                    f'{o.name} paid on {o.payday.strftime("%a %d %b")}: no payslip in Fiscus yet.',
+                    tags='receipt',
                 )
             )
     if prefs.ntfy_low_balance:

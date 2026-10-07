@@ -180,6 +180,8 @@ class UserSettings(Base, Owned):
     ntfy_bills_due: Mapped[bool] = mapped_column(Boolean, default=True)
     ntfy_overdue: Mapped[bool] = mapped_column(Boolean, default=True)
     ntfy_low_balance: Mapped[bool] = mapped_column(Boolean, default=True)
+    # A payday that passed without a payslip.
+    ntfy_payslips: Mapped[bool] = mapped_column(Boolean, default=True)
     ntfy_hour: Mapped[int] = mapped_column(Integer, default=8)
     # The budget month runs from this day to the day before it next month.
     budget_start_day: Mapped[int] = mapped_column(Integer, default=1)

@@ -59,6 +59,7 @@
           </div>
           <div class="field"><label class="label" for="ps-end">Ends (optional)</label><input class="input" type="date" id="ps-end" name="end_date" value="{{ e.end_date.isoformat() if e and e.end_date else '' }}"></div>
           <label class="check full"><input type="checkbox" name="varies" {{ 'checked' if e and e.varies else '' }}> The amount varies (casual or shift work)</label>
+          <p class="muted text-xs full">Gross and tax are for the tax estimate. Left blank, it uses this job's payslips once there are some, and until then counts the pay as having no tax taken out, as for contract work.</p>
         </div>
         <div class="row">
           <button class="btn btn-primary" type="submit">Save</button>

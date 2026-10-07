@@ -10,6 +10,18 @@
     Every figure here is an estimate from your payslips and the deductions you enter, using the Australian resident rates in <code>config/tax/{{ v.year.label }}.yaml</code>. It is not tax advice. HELP repayments, the Medicare levy surcharge and tax offsets (including the low income tax offset) are not included.
   </div>
 
+  {% if v.missing %}
+    <div class="card alert-warn" id="missing-payslips">
+      <h2>{{ v.missing | length }} payday{{ '' if v.missing | length == 1 else 's' }} without a payslip</h2>
+      <p>These are not in the figures below until their payslips are in.</p>
+      <ul class="list">
+        {% for o in v.missing | reverse %}
+          <li><span class="grow">{{ o.name }} <span class="muted text-sm">{{ o.payday | d }}</span></span><a class="btn btn-sm" href="/pay?payday={{ o.key }}">Add payslip</a></li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
   {% set gap = v.set_aside_gap_cents %}
   <div class="card {{ 'alert-error' if gap < 0 else 'alert-ok' }}">
     <h2>Set aside</h2>
@@ -22,9 +34,9 @@
   <form class="card mt row" method="post" action="/tax/deductions">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label class="label grow" for="deductions">Total deductions for {{ v.year.label }}</label>
-    <input class="input" id="deductions" name="amount" inputmode="decimal" value="{{ v.ytd.deductions_cents | money_plain if v.ytd.deductions_cents else '' }}" placeholder="0.00">
+    <input class="input" id="deductions" name="amount" inputmode="decimal" value="{{ v.projected.deductions_cents | money_plain if v.projected.deductions_cents else '' }}" placeholder="0.00">
     <button class="btn" type="submit">Save</button>
-    <p class="muted text-xs w-full">Everything you expect to claim this financial year. It comes off your taxable income in both columns below; update it as you go.</p>
+    <p class="muted text-xs w-full">Everything you expect to claim this financial year. It comes off the year's taxable income; update it as you go.</p>
   </form>
 
   {% macro col(p) %}
@@ -41,11 +53,16 @@
   {% endmacro %}
 
   <div class="grid grid-2 mt">
-    <div class="card"><h2>Year to date {{ estimate() }}</h2>{{ col(v.ytd) }}</div>
+    <div class="card">
+      <h2>Year to date {{ estimate() }}</h2>
+      {{ col(v.ytd) }}
+      <p class="muted text-xs mt">Your income so far, with its share of the year's deductions and tax. Tax worked on the income so far alone would give it the whole year's tax-free threshold and look like a refund.</p>
+    </div>
     <div class="card">
       <h2>Projected to 30 June {{ estimate() }}</h2>
       {{ col(v.projected) }}
-      <p class="muted text-xs mt">Income projects your pay schedules to 30 June (gross and withholding from the schedule, or scaled from this year's payslips).</p>
+      <p class="muted text-xs mt">Income projects your pay schedules to 30 June, with gross and tax from the schedule, else from that job's own payslips.</p>
+      {% if v.untaxed %}<p class="text-xs mt">{{ v.untaxed | join(', ') }} {{ 'has' if v.untaxed | length == 1 else 'have' }} no gross or tax figures and no payslips yet, so {{ 'its' if v.untaxed | length == 1 else 'their' }} pay counts as having no tax taken out. The tax on it is in what to set aside.</p>{% endif %}
     </div>
   </div>
   <p class="muted text-xs mt">Tax table: {{ v.year.verified }}</p>

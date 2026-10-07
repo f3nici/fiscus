@@ -19,6 +19,7 @@ from fiscus.models import (
     BudgetSpend,
     Category,
     ForecastCache,
+    PaySchedule,
     Payslip,
     User,
 )
@@ -1107,3 +1108,82 @@ def test_an_overspent_line_shows_a_red_bar(env: Env) -> None:
     page = a.get('/budget').text
     # Over it: the value sits above `high`, which the meter draws red.
     assert 'low="22500" high="24999" optimum="0" value="25000"' in page
+
+
+def test_tax_projection_uses_each_jobs_own_figures(env: Env) -> None:
+    a = env.login(env.user('alex'))
+    acct = make_account(a)
+    # A salaried job with PAYG, and contract pay with no figures at all.
+    a.post(
+        '/pay/schedules',
+        data={
+            'name': 'Acme',
+            'frequency': 'fortnightly',
+            'anchor_date': '2026-10-08',
+            'net': '3000',
+            'gross': '4000',
+            'tax_withheld': '1000',
+            'account_id': str(acct),
+        },
+    )
+    a.post(
+        '/pay/schedules',
+        data={
+            'name': 'Consulting',
+            'frequency': 'quarterly',
+            'anchor_date': '2026-12-30',
+            'net': '4500',
+            'account_id': str(acct),
+        },
+    )
+    with env.db() as db:
+        u = db.execute(select(User).where(User.username == 'alex')).scalar_one()
+        v = taxes.view(db, u, date(2026, 10, 1), env.ctx.tax_dir)
+    acme = 19  # 8 Oct to 24 Jun, fortnightly
+    consulting = 3  # 30 Dec, 30 Mar, 30 Jun
+    assert v.projected.income_cents == acme * 4000_00 + consulting * 4500_00
+    # Consulting's pay counts as having nothing withheld, and the page says so.
+    assert v.projected.withheld_cents == acme * 1000_00
+    assert v.untaxed == ('Consulting',)
+    page = a.get('/tax').text
+    assert 'Consulting has no gross or tax figures' in page
+    # Once Consulting has a payslip of its own, its figures are used.
+    a.post(
+        '/payslips',
+        data={
+            'date': '2026-09-30',
+            'gross': '6000',
+            'tax_withheld': '1500',
+            'net': '4500',
+            'payday': '',
+        },
+    )
+    with env.db() as db:
+        sid = db.execute(select(PaySchedule.id).where(PaySchedule.name == 'Consulting')).scalar()
+        slip = db.execute(select(Payslip)).scalar_one()
+        slip.schedule_id, slip.payday = sid, date(2026, 9, 30)
+        db.commit()
+    with env.db() as db:
+        u = db.execute(select(User).where(User.username == 'alex')).scalar_one()
+        v = taxes.view(db, u, date(2026, 10, 1), env.ctx.tax_dir)
+    assert v.untaxed == ()
+    assert v.projected.withheld_cents == acme * 1000_00 + 1500_00 + consulting * 1500_00
+
+
+def test_tax_page_lists_paydays_without_a_payslip(env: Env) -> None:
+    a = env.login(env.user('alex'))
+    a.post(
+        '/pay/schedules',
+        data={
+            'name': 'Acme',
+            'frequency': 'fortnightly',
+            'anchor_date': '2026-09-03',
+            'net': '3000',
+        },
+    )
+    page = a.get('/tax').text
+    # 3 and 17 Sep have passed with no payslip; 1 Oct is today and is not asked yet.
+    assert '2 paydays without a payslip' in page
+    assert '/pay?payday=' in page and '3 Sep 2026' in page and '17 Sep 2026' in page
+    a.post('/pay/schedules/1/no-pay', data={'payday': '2026-09-03'})
+    assert '1 payday without a payslip' in a.get('/tax').text
