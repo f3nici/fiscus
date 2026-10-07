@@ -51,7 +51,7 @@
       <div class="card mt">
         <div class="field">
           <label class="label" for="bulk-account">Paid into</label>
-          <select class="input" id="bulk-account" name="account_id"><option value="0">Its pay schedule's account, else my spending account</option>{% for a in accounts %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}</select>
+          <select class="input" id="bulk-account" name="account_id"><option value="0">Same as its pay schedule</option>{% for a in accounts %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}</select>
         </div>
         <button class="btn btn-primary" type="submit">Add ticked payslips</button>
       </div>

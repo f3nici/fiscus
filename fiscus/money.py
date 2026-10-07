@@ -68,6 +68,19 @@ def fmt(cents: int | None, *, sign: bool = False, symbol: bool = True) -> str:
     return body
 
 
+def fmt_short(cents: int, symbol: bool = True) -> str:
+    """Whole dollars, and thousands as "$55.1k", for a tight space."""
+    dollars = round_div(abs(cents), 100)
+    sign = ('-' if cents < 0 and dollars else '') + ('$' if symbol else '')
+    if dollars >= 1_000_000:
+        tenths = round_div(dollars, 100_000)
+        return f'{sign}{tenths // 10}.{tenths % 10}m'
+    if dollars >= 10_000:
+        tenths = round_div(dollars, 100)
+        return f'{sign}{tenths // 10}.{tenths % 10}k'
+    return f'{sign}{dollars:,}'
+
+
 def fmt_plain(cents: int) -> str:
     """Form-field value: "1234.50"."""
     return str(to_decimal(cents))

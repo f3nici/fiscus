@@ -5,9 +5,9 @@
   <div class="page-head">
     <h1>Budget</h1>
     <div class="row">
-      <a class="btn btn-sm" href="/budget?month={{ prev.strftime('%Y-%m') }}" aria-label="Previous budget month">‹</a>
+      <a class="btn btn-sm btn-nav" href="/budget?month={{ prev.strftime('%Y-%m') }}" aria-label="Previous budget month">‹</a>
       <strong>{{ start | d('dm') }} to {{ end | d }}</strong>
-      <a class="btn btn-sm" href="/budget?month={{ next.strftime('%Y-%m') }}" aria-label="Next budget month">›</a>
+      <a class="btn btn-sm btn-nav" href="/budget?month={{ next.strftime('%Y-%m') }}" aria-label="Next budget month">›</a>
       <a class="btn btn-sm" href="#import" hx-boost="false">Import spreadsheet</a>
     </div>
   </div>
@@ -132,7 +132,7 @@
                 {%- endif %}
                 <span class="group-count">{{ sec.rows | length }} line{{ '' if sec.rows | length == 1 else 's' }}{{ ', hidden' if folded and sec.rows else '' }}</span>
               </th>
-              <th class="num {{ 'neg' if sec.remaining_cents < 0 else '' }}" data-label="Left">{{ sec.remaining_cents | money }}</th>
+              <th class="num {{ 'neg' if sec.remaining_cents < 0 else '' }}" data-label="Left">{{ sec.remaining_cents | money }}{% if sec.saved_cents %}<div class="text-xs muted fw-normal">incl. {{ sec.saved_cents | money }} saved up</div>{% endif %}</th>
               <th class="num" data-label="Spent">{{ sec.spent_cents | money }}</th>
               <th class="num" data-label="Budget">{{ sec.budget_cents | money }}</th>
               <th class="cell-full cell-actions">
@@ -172,7 +172,7 @@
                 {{ r.category.name }}{% if r.category.is_income %} <span class="pill pill-ok">Income</span>{% endif %}
                 {% if r.has_budget and not r.saving %}<meter min="0" max="{{ r.budget_cents }}" low="{{ r.budget_cents * 9 // 10 }}" high="{{ r.budget_cents - 1 if r.state == 'over' else r.budget_cents }}" optimum="0" value="{{ [r.actual_cents, r.budget_cents] | min }}">{{ r.pct }}%</meter>{% endif %}
                 {% if r.saving %}<div class="text-xs muted">Saving up {{ r.cycle_total_cents | money }} {{ cycles[r.cycle_months] | lower }}</div>{% endif %}
-                {% if r.bills_cents %}<div class="text-xs muted"><a href="/bills?category={{ r.category.id }}">{{ r.bills_cents | money }} of bills</a></div>{% endif %}
+                {% if r.bills_cents %}<div class="text-xs muted"><a href="/bills?category={{ r.category.id }}">{{ r.bills_cents | money }} a month of bills</a></div>{% endif %}
                 {% set dc = due.get(r.category.id) %}
                 {% if dc and dc.due < today %}<div class="text-xs neg">{{ dc.need_cents | money }} overdue since {{ dc.due | d }}: {% if dc.short_cents %}{{ dc.short_cents | money }} short{% else %}the line holds it{% endif %}. <a href="/bills#overdue">Mark it paid</a> once it is.</div>
                 {% elif dc %}<div class="text-xs {{ 'neg' if dc.short_cents else 'pos' }}">{{ dc.need_cents | money }} due {{ dc.due | d }}: {% if dc.short_cents %}{{ dc.short_cents | money }} short by then{% else %}on track{% endif %}</div>{% endif %}
@@ -271,7 +271,6 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="back" value="{{ back }}">
     <h2>Add a budget line</h2>
-    <p class="muted text-sm">Saving for something, like a holiday? Put it in a <a href="/goals">goal</a>: what a goal holds comes off what is free in your accounts, not out of the budget. For money you budget each month but pay every few months (utilities, yearly bills), give the goal its budget lines to save from (one goal can take several), and a Put aside button here spends it from each line and puts it in the goal at once.</p>
     <div class="form-grid">
       <div class="field">
         <label class="label" for="add_category">Category</label>
@@ -307,7 +306,12 @@
       {% endif %}
     </div>
     <button class="btn btn-primary" type="submit">Add budget line</button>
-    <p class="muted text-xs mt">For something paid every few months or once a year (rego, insurance), choose how often. Its monthly share is saved up and what you spend comes out of that, so the month you pay it is not over budget.</p>
+    <details class="mt">
+      <summary class="text-sm">How budget lines work</summary>
+      <p class="muted text-sm mt-sm">A category's budget is the whole amount. Bills in it do not add to it: when you tick one as paid on the <a href="/bills">Bills</a> page, it comes off the budget as spent. The forecast spends what is budgeted beyond the bills, since the bills are forecast from their own dates.</p>
+      <p class="muted text-sm">For something paid every few months or once a year (rego, insurance), choose how often. Its monthly share is saved up and what you spend comes out of that, so the month you pay it is not over budget.</p>
+      <p class="muted text-sm mb-0">Saving for something, like a holiday? Put it in a <a href="/goals">goal</a>: what a goal holds comes off what is free in your accounts, not out of the budget. A goal can also save from budget lines (utilities, yearly bills): a Put aside button on each line then spends from it and puts the money in the goal at once.</p>
+    </details>
   </form>
 
   <form class="card mt row" id="add-group" method="post" action="/budget/groups">
@@ -358,5 +362,4 @@
       <button class="btn btn-primary" type="submit">Upload and preview</button>
     </div>
   </form>
-  <p class="muted text-sm mt">The budget you set for a category is the whole amount. Bills in that category do not add to it: when you tick one as paid on the <a href="/bills">Bills</a> page, it comes off the budget as spent. The forecast spends what is budgeted beyond the bills, since the bills are forecast from their own dates.</p>
 {% endblock %}

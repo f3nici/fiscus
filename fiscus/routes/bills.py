@@ -68,6 +68,14 @@ def list_bills(
     nxt: dict[int, svc.Occurrence] = {}
     for o in upcoming:
         nxt.setdefault(o.bill.id, o)
+    # Due further out than the list looks: just the date.
+    later: dict[int, date] = {}
+    for s in shares:
+        b = s.bill
+        if b.active and b.id not in nxt:
+            due = recurrence.next_on_or_after(b.next_due, b.frequency, today)
+            if due is not None and (b.end_date is None or due <= b.end_date):
+                later[b.id] = due
     amounts = {s.bill_id: svc.share_amounts(s.bill)[user.id] for s in shares}
     monthly = {
         s.bill_id: recurrence.monthly_equivalent(amounts[s.bill_id], s.bill.frequency)
@@ -80,6 +88,7 @@ def list_bills(
         {
             'shares': shares,
             'next': nxt,
+            'later': later,
             'overdue': overdue,
             'amounts': amounts,
             'monthly': monthly,

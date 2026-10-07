@@ -1,7 +1,7 @@
 {# Overdue occurrences with a Mark paid button. Needs `overdue` and `back`. #}
 {% from "_macros.html" import money_cell %}
 {% if overdue %}
-  <div class="card alert-error" id="overdue">
+  <div class="card alert-error mb" id="overdue">
     <h2>Overdue</h2>
     <ul class="list">
       {% for o in overdue %}

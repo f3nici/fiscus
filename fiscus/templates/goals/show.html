@@ -78,14 +78,14 @@
         </div>
       </div>
       {% if goal_lines | length == 1 %}
-        <label class="check"><input type="checkbox" name="as_spent" value="true" checked> Putting in counts as spent on the {{ goal_lines[0].name }} budget line</label>
+        <label class="check"><input type="checkbox" name="as_spent" value="true"> <span>Spend it from the {{ goal_lines[0].name }} budget line (put aside)</span></label>
       {% elif goal_lines %}
         <input type="hidden" name="as_spent" value="true">
         <div class="field">
-          <label class="label" for="move_line">Putting in counts as spent on</label>
+          <label class="label" for="move_line">Spend it from a budget line?</label>
           <select class="input" id="move_line" name="category_id">
-            {% for c in goal_lines %}<option value="{{ c.id }}">The {{ c.name }} budget line</option>{% endfor %}
-            <option value="-1">No budget line</option>
+            <option value="-1">No, just put it in</option>
+            {% for c in goal_lines %}<option value="{{ c.id }}">Yes, from {{ c.name }} (put aside)</option>{% endfor %}
           </select>
         </div>
       {% endif %}
@@ -134,7 +134,7 @@
       </div>
       <div class="full">
         <label class="check"><input type="checkbox" name="keep_aside" value="true" {{ 'checked' if goal.keep_aside else '' }}> Keep this money out of what is free to spend</label>
-        <label class="check"><input type="checkbox" name="is_tax" value="true" {{ 'checked' if goal.is_tax else '' }}> This is my tax money (counted on the <a href="/tax">Tax</a> page)</label>
+        <label class="check"><input type="checkbox" name="is_tax" value="true" {{ 'checked' if goal.is_tax else '' }}> <span>This is my tax money (counted on the <a href="/tax">Tax</a> page)</span></label>
       </div>
     </div>
     <button class="btn btn-primary" type="submit">Save</button>
@@ -146,8 +146,8 @@
       {% for m in moves %}
         <li>
           <span class="grow">
-            <span class="title">{{ 'Put in' if m.amount_cents > 0 else 'Taken out' }}{% if m.note %} · {{ m.note }}{% endif %}{% if m.spend_id %} <span class="pill">Spent from budget</span>{% endif %}</span>
-            <span class="text-xs muted">{{ m.date | d('dm') }}</span>
+            <span class="title">{{ 'Put in' if m.amount_cents > 0 else 'Taken out' }}{% if m.note %} · {{ m.note }}{% endif %}</span>
+            <span class="text-xs muted">{{ m.date | d('dm') }}{% if m.spend_id %} · spent from the budget{% endif %}</span>
           </span>
           <span class="num {{ 'neg' if m.amount_cents < 0 else '' }}">{{ m.amount_cents | money }}</span>
           <form class="inline" method="post" action="/goals/{{ goal.id }}/moves/{{ m.id }}/delete" data-confirm="{{ 'Remove this entry? Its spend on the budget goes too.' if m.spend_id else 'Remove this entry?' }}">

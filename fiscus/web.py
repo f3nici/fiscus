@@ -20,7 +20,7 @@ from fiscus import __version__
 from fiscus.clock import Clock, utcnow_naive
 from fiscus.config import Settings
 from fiscus.models import AuthSession, User
-from fiscus.money import fmt, fmt_plain
+from fiscus.money import fmt, fmt_plain, fmt_short
 from fiscus.security.ratelimit import RateLimiter
 from fiscus.security.tokens import new_token, same, token_hash
 
@@ -216,6 +216,7 @@ def make_templates() -> Jinja2Templates:
     env.filters['money'] = fmt
     env.filters['money_signed'] = lambda c: fmt(c, sign=True)
     env.filters['money_plain'] = fmt_plain
+    env.filters['money_short'] = fmt_short
     env.filters['d'] = _date_fmt
     env.filters['tojson_attr'] = lambda v: json.dumps(v, separators=(',', ':'))
     env.globals['version'] = __version__

@@ -461,7 +461,7 @@ def test_a_paid_bill_comes_off_its_category(env: Env) -> None:
     )
     a.post('/budget', data={'category_id': str(utilities), 'amount': '300'})
     page = a.get('/budget').text
-    assert '$200.00 of bills' in page and 'bills paid' not in page
+    assert '$200.00 a month of bills' in page and 'bills paid' not in page
     a.post(f'/bills/{bill}/occurrence/2026-10-20/paid')
     page = a.get('/budget').text
     assert '$200.00 bills paid' in page and 'nothing over' in page

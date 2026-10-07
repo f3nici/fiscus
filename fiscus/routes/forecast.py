@@ -46,7 +46,16 @@ def chart_payload(
     data: dict[str, Any] = {
         'dates': [d.isoformat() for d in base.dates],
         'combined': base.combined,
-        'accounts': [{'name': names.get(a, str(a)), 'values': v} for a, v in base.accounts.items()],
+        # The account behind a low-balance warning is drawn even when the rest
+        # are hidden, so the warning shows on the chart.
+        'accounts': [
+            {
+                'name': names.get(a, str(a)),
+                'values': v,
+                'low': bool(base.low_balance and base.low_balance['account_id'] == a),
+            }
+            for a, v in base.accounts.items()
+        ],
         'markers': [
             {
                 'date': m['date'].isoformat(),

@@ -106,7 +106,7 @@
           <div class="field"><label class="label" for="slip-tax">Tax withheld</label><input class="input" id="slip-tax" name="tax_withheld" inputmode="decimal" required value="{{ f.tax_withheld }}"></div>
           <div class="field"><label class="label" for="slip-net">Net</label><input class="input" id="slip-net" name="net" inputmode="decimal" required value="{{ f.net }}"></div>
           <div class="field"><label class="label" for="slip-account">Paid into</label>
-            <select class="input" id="slip-account" name="account_id"><option value="0">Its pay schedule's account, else my spending account</option>{% for a in accounts %}<option value="{{ a.id }}" {{ 'selected' if f.account_id == a.id else '' }}>{{ a.name }}</option>{% endfor %}</select>
+            <select class="input" id="slip-account" name="account_id"><option value="0">Same as its pay schedule</option>{% for a in accounts %}<option value="{{ a.id }}" {{ 'selected' if f.account_id == a.id else '' }}>{{ a.name }}</option>{% endfor %}</select>
           </div>
           <div class="field full"><label class="label" for="slip-payday">Which pay</label>
             {% from "pay/_payday.html" import payday_select %}
