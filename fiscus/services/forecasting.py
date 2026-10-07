@@ -6,6 +6,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -213,28 +214,33 @@ def data_version(db: Session, user: User) -> int:
 
 
 def base(db: Session, clock: Clock, user: User, months: int | None = None) -> ForecastResult:
-    """The cached base forecast. Recomputed whenever the user's data or the date moves."""
+    """The cached base forecast. Recomputed whenever the user's data or the date
+    moves. Each horizon asked for is kept beside the others (the dashboard's
+    three months and the forecast page's twelve), so they do not push each
+    other out."""
     today = clock.today()
     if months is None:
         months = settings_for(db, user).forecast_months
     months = min(24, max(1, months))
-    key = f'v{data_version(db, user)}:{today.isoformat()}:{months}'
+    key = f'v{data_version(db, user)}:{today.isoformat()}'
     cached = db.get(ForecastCache, user.id)
-    if cached is not None and cached.cache_key == key:
-        return ForecastResult.from_json(cached.payload)
+    runs: dict[str, Any] = {}
+    if cached is not None and cached.cache_key == key and isinstance(cached.payload, dict):
+        runs = cached.payload.get('runs') or {}
+        if str(months) in runs:
+            return ForecastResult.from_json(runs[str(months)])
     result = run(build_input(db, user, today, months))
+    # A new dict, so the JSON column is seen to change.
+    payload = {'runs': {**runs, str(months): result.to_json()}}
     if cached is None:
         db.add(
             ForecastCache(
-                user_id=user.id,
-                cache_key=key,
-                payload=result.to_json(),
-                created_at=utcnow_naive(clock),
+                user_id=user.id, cache_key=key, payload=payload, created_at=utcnow_naive(clock)
             )
         )
     else:
         cached.cache_key = key
-        cached.payload = result.to_json()
+        cached.payload = payload
         cached.created_at = utcnow_naive(clock)
     db.flush()
     return result

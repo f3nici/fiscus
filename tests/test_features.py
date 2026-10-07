@@ -212,6 +212,22 @@ def test_forecast_page_and_cache_invalidation(env: Env) -> None:
         assert db.get(ForecastCache, alex.id).cache_key != key1  # type: ignore[union-attr]
 
 
+def test_the_dashboard_and_forecast_horizons_share_the_cache(env: Env) -> None:
+    a, alex, _acct = setup_household(env)
+    a.get('/forecast?months=12')
+    a.get('/')  # three months
+    with env.db() as db:
+        cached = db.get(ForecastCache, alex.id)
+        assert cached is not None
+        assert set(cached.payload['runs']) == {'12', '3'}
+        stamp = cached.created_at
+    # Back to the forecast: served from the cache, not run again.
+    env.clock.set(env.clock.now() + timedelta(minutes=5))
+    a.get('/forecast?months=12')
+    with env.db() as db:
+        assert db.get(ForecastCache, alex.id).created_at == stamp  # type: ignore[union-attr]
+
+
 def test_shared_bill_change_invalidates_participants_forecast(env: Env) -> None:
     a, _alex, _ = setup_household(env)
     sam = env.user('sam')
