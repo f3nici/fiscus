@@ -69,6 +69,13 @@
       </div>
     {% else %}
       <ul class="cal-list">
+        {% if g.overdue %}
+          <li class="cal-day" id="cal-overdue">
+            <div class="cal-day-head neg"><span>Overdue, not marked paid</span></div>
+            {% for e in g.overdue %}{{ event_button(e, true) }}{% endfor %}
+            <div class="text-xs muted">The balances below count these as going out tomorrow.</div>
+          </li>
+        {% endif %}
         {% for day in g.days %}
           <li class="cal-day">
             <div class="cal-day-head {{ 'today' if day.is_today else '' }}">

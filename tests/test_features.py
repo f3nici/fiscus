@@ -1230,3 +1230,41 @@ def test_offset_savings_use_the_balance_known_on_each_day(env: Env) -> None:
     assert s.saved_month_from is None
     page = a.get(f'/loans/{loan_id}').text
     assert "since 1 Sep, when the offset's balance was first entered" in page
+
+
+def test_an_overdue_bill_shows_on_the_dashboard_budget_and_agenda(env: Env) -> None:
+    alex = env.user('alex')
+    a = env.login(alex)
+    acct = make_account(a)
+    a.post(
+        '/budget',
+        data={
+            'new_category': 'Council rates',
+            'amount': '2480',
+            'cycle_months': '12',
+            'saved': '620',
+        },
+    )
+    cid = cat_id(env, alex, 'Council rates')
+    bill = create_bill(
+        a,
+        name='Council rates',
+        amount='620',
+        frequency='quarterly',
+        next_due='2026-09-28',
+        account_id=str(acct),
+        category_id=str(cid),
+    )
+    dash = a.get('/').text
+    assert 'id="overdue"' in dash and 'was due 28 Sep 2026' in dash
+    assert f'/bills/{bill}/occurrence/2026-09-28/paid' in dash and 'value="/"' in dash
+    budget = a.get('/budget').text
+    assert '$620.00 overdue since 28 Sep 2026: the line holds it' in budget
+    agenda = a.get('/calendar?view=agenda').text
+    assert 'id="cal-overdue"' in agenda and 'Council rates, due 28 Sep' in agenda
+    # Marked paid from the dashboard, it is gone everywhere.
+    resp = a.post(f'/bills/{bill}/occurrence/2026-09-28/paid', data={'back': '/'})
+    assert resp.headers['location'] == '/'
+    assert 'id="overdue"' not in a.get('/').text
+    assert 'id="cal-overdue"' not in a.get('/calendar?view=agenda').text
+    assert 'overdue since' not in a.get('/budget').text

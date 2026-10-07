@@ -20,6 +20,9 @@ from fiscus.domain.matching import Candidate, OpenOccurrence, assign
 from fiscus.models import Bill, BillPayment, BillShare, Transaction, User
 
 DUE_SOON_DAYS = 7
+# Unpaid this far back is still owed: the forecast pays it tomorrow, and the
+# budget's saved-up lines and the agenda count it.
+OVERDUE_CARRY_DAYS = 62
 
 
 def share_amounts(bill: Bill) -> dict[int, int]:

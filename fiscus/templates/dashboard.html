@@ -19,6 +19,8 @@
     </div>
   {% endif %}
 
+  {% with back="/" %}{% include "bills/_overdue.html" %}{% endwith %}
+
   {% if put_in %}
     <div class="alert alert-info" id="put-in-note">
       {{ put_in | length }} payslip{{ '' if put_in | length == 1 else 's' }} to put in, the latest for {{ put_in[0].name }} on {{ put_in[0].payday | d('dm') }}.

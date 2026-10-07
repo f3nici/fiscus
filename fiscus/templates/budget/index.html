@@ -174,7 +174,8 @@
                 {% if r.saving %}<div class="text-xs muted">Saving up {{ r.cycle_total_cents | money }} {{ cycles[r.cycle_months] | lower }}</div>{% endif %}
                 {% if r.bills_cents %}<div class="text-xs muted"><a href="/bills?category={{ r.category.id }}">{{ r.bills_cents | money }} of bills</a></div>{% endif %}
                 {% set dc = due.get(r.category.id) %}
-                {% if dc %}<div class="text-xs {{ 'neg' if dc.short_cents else 'pos' }}">{{ dc.need_cents | money }} due {{ dc.due | d }}: {% if dc.short_cents %}{{ dc.short_cents | money }} short by then{% else %}on track{% endif %}</div>{% endif %}
+                {% if dc and dc.due < today %}<div class="text-xs neg">{{ dc.need_cents | money }} overdue since {{ dc.due | d }}: {% if dc.short_cents %}{{ dc.short_cents | money }} short{% else %}the line holds it{% endif %}. <a href="/bills#overdue">Mark it paid</a> once it is.</div>
+                {% elif dc %}<div class="text-xs {{ 'neg' if dc.short_cents else 'pos' }}">{{ dc.need_cents | money }} due {{ dc.due | d }}: {% if dc.short_cents %}{{ dc.short_cents | money }} short by then{% else %}on track{% endif %}</div>{% endif %}
                 {% if r.category.id in doubled %}<div class="text-xs neg">Your home loan repayments are already in the budget. Remove this line so they are not counted twice.</div>{% endif %}
                 {% set g = goal_for.get(r.category.id) %}
                 {% if g %}

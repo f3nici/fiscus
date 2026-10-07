@@ -332,7 +332,8 @@ def due_checks(
 ) -> dict[int, saving.DueCheck]:
     """For each saved-up spending line with a bill still to pay: its next due
     date, and whether the line will hold enough by then. From the budget month
-    starting `start`; bills overdue before it are left out."""
+    starting `start`, and bills still unpaid from before it (as far back as
+    the forecast carries them), which the line has to pay first."""
     lines = {
         r.category.id: r
         for r in rs
@@ -341,6 +342,7 @@ def due_checks(
     if not lines:
         return {}
     first = start_day(db, user)
+    owed_from = min(start, today - timedelta(days=bills.OVERDUE_CARRY_DAYS))
     occs = [
         o
         for o in bills.occurrences(db, user, start - DUE_LOOKBACK, start + DUE_LOOKAHEAD, today)
@@ -349,12 +351,12 @@ def due_checks(
     out: dict[int, saving.DueCheck] = {}
     for cid, r in lines.items():
         mine = [o for o in occs if o.share.category_id == cid]
-        unpaid = [o for o in mine if o.payment is None and o.due >= start]
+        unpaid = [o for o in mine if o.payment is None and o.due >= owed_from]
         if not unpaid or r.budget is None or r.saved_cents is None:
             continue
         due = unpaid[0].due
         _ps, due_end = period(db, user, due)
-        before = [o.due for o in mine if o.due < start]
+        before = [o.due for o in mine if o.due < due]
         since = before[-1] + timedelta(days=1) if before else start - DUE_LOOKBACK
         if r.budget.saved_since is not None:
             since = max(since, r.budget.saved_since)

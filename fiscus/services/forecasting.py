@@ -33,7 +33,6 @@ from fiscus.services.users import settings_for
 AVERAGE_DAYS = 90
 # 365.25 / 12 days in a month, scaled to whole numbers.
 DAYS_PER_MONTH_X10000 = 304375
-OVERDUE_CARRY_DAYS = 62
 
 
 @dataclass(frozen=True)
@@ -167,7 +166,9 @@ def build_input(db: Session, user: User, today: date, months: int) -> ForecastIn
             ref = item.schedule.id if item.schedule else None
             flows.append(Flow(item.when, target, item.net_cents, 'pay', item.label, ref))
 
-    for occ in bills.occurrences(db, user, today - timedelta(days=OVERDUE_CARRY_DAYS), end, today):
+    for occ in bills.occurrences(
+        db, user, today - timedelta(days=bills.OVERDUE_CARRY_DAYS), end, today
+    ):
         if occ.payment is not None:
             continue
         target = acct_or_default(occ.share.account_id)

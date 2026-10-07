@@ -55,6 +55,9 @@ class Grid:
     prev: date
     next: date
     weeks: list[list[Day]]
+    # Agenda from today: bills still unpaid from before it, which the
+    # balances count as going out tomorrow.
+    overdue: list[Event] = field(default_factory=list)
 
 
 def events(db: Session, user: User, start: date, end: date, today: date) -> list[Event]:
@@ -172,6 +175,19 @@ def grid(db: Session, clock: Clock, user: User, view: str, focus: date) -> Grid:
         days.append(Day(d, in_scope, d == today, by_day.get(d, []), bal))
         d += timedelta(days=1)
     weeks = [days[i : i + 7] for i in range(0, len(days), 7)] if view in ('month', 'week') else []
+    overdue: list[Event] = []
     if view == 'agenda':
         days = [day for day in days if day.events or day.is_today]
-    return Grid(view, focus, title, days, prev, nxt, weeks)
+        if start <= today <= end:
+            overdue = [
+                Event(
+                    o.due,
+                    'shared' if o.shared else 'bill',
+                    f'{o.bill.name}, due {o.due.day} {o.due.strftime("%b")}',
+                    -o.share_cents,
+                    'overdue',
+                    o.bill.id,
+                )
+                for o in bills.overdue(db, user, today, bills.OVERDUE_CARRY_DAYS)
+            ]
+    return Grid(view, focus, title, days, prev, nxt, weeks, overdue)
