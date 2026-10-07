@@ -270,3 +270,53 @@ def test_a_goal_saves_only_from_a_spending_line(env: Env) -> None:
         cid = cat.id
     resp = a.post('/goals', data={'name': 'X', 'category_id': str(cid)}, follow_redirects=True)
     assert 'Choose a spending category to save from' in resp.text
+
+
+def test_a_goal_cannot_give_out_more_than_it_holds(env: Env) -> None:
+    a = env.login(env.user('alex'))
+    main = make_account(a, 'Main', 'transaction', '5000')
+    trip = _goal(a, name='Trip', account_id=str(main), saved='300', keep_aside='true')
+    resp = a.post(f'/goals/{trip}/move', data={'amount': '301', 'direction': 'out'})
+    assert 'the%20most%20to%20take%20out' in resp.headers['set-cookie']
+    a.post(f'/goals/{trip}/move', data={'amount': '300', 'direction': 'out'})
+    with env.db() as db:
+        g = db.get(Goal, trip)
+        assert g is not None and sum(m.amount_cents for m in g.moves) == 0
+    # Holds now cannot be set below nothing either.
+    resp = a.post(f'/goals/{trip}', data={'name': 'Trip', 'holds': '-50', 'keep_aside': 'true'})
+    assert 'cannot%20be%20negative' in resp.headers['set-cookie']
+
+
+def test_a_goal_below_nothing_frees_no_extra_money(env: Env) -> None:
+    alex = env.user('alex')
+    a = env.login(alex)
+    main = make_account(a, 'Main', 'transaction', '5000')
+    trip = _goal(a, name='Trip', account_id=str(main), keep_aside='true')
+    # An old goal left below nothing (from before taking out was checked).
+    with env.db() as db:
+        db.add(
+            GoalMove(
+                user_id=alex.id,
+                goal_id=trip,
+                date=date(2026, 9, 1),
+                amount_cents=-1_000_00,
+                note='',
+                created_at=env.clock.now(),
+            )
+        )
+        db.commit()
+    assert '$5,000.00 in accounts' in a.get('/budget').text
+
+
+def test_deleting_a_goal_removes_what_was_put_aside_into_it(env: Env) -> None:
+    a = env.login(env.user('alex'))
+    main = make_account(a, 'Main', 'transaction', '5000')
+    a.post('/budget', data={'new_category': 'Utilities', 'amount': '250'})
+    with env.db() as db:
+        cid = db.execute(select(Category.id).where(Category.name == 'Utilities')).scalar_one()
+    goal = _goal(a, name='Pot', account_id=str(main), category_id=str(cid), keep_aside='true')
+    a.post(f'/goals/{goal}/move', data={'amount': '250', 'as_spent': 'true'})
+    a.post(f'/goals/{goal}/delete')
+    with env.db() as db:
+        assert db.execute(select(func.count(BudgetSpend.id))).scalar() == 0
+        assert db.execute(select(func.count(GoalMove.id))).scalar() == 0
