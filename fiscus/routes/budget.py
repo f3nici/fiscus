@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from fiscus.clock import utcnow_naive
 from fiscus.domain import recurrence
 from fiscus.domain.budget_import import MORTGAGE
-from fiscus.domain.csvimport import MAX_BYTES, ImportError_
+from fiscus.domain.uploads import MAX_BYTES, ImportError_
 from fiscus.forms import FormError, money, text
 from fiscus.models import Budget, BudgetGroup, BudgetSpend, Category, Loan, User
 from fiscus.money import fmt

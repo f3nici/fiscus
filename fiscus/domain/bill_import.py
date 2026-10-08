@@ -14,7 +14,7 @@ from datetime import date
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 
-from fiscus.domain.csvimport import ImportError_, decode, read_rows
+from fiscus.domain.uploads import ImportError_, decode, read_rows
 from fiscus.money import MoneyError, parse_cents
 
 FIELDS = ('name', 'amount', 'frequency', 'category', 'due_date', 'shared_with', 'split_percent')

@@ -164,11 +164,8 @@ def auto_match(db: Session, clock: Clock, user: User, txns: list[Transaction]) -
     return len(pairs)
 
 
-def mark_paid(
-    db: Session, clock: Clock, user: User, bill: Bill, due: date, txn: Transaction | None = None
-) -> BillPayment:
-    if txn is not None and txn.user_id != user.id:
-        raise ValueError('not your transaction')
+def mark_paid(db: Session, clock: Clock, user: User, bill: Bill, due: date) -> BillPayment:
+    """Mark one of this person's occurrences paid by hand, today."""
     existing = db.execute(
         select(BillPayment).where(
             BillPayment.bill_id == bill.id,
@@ -177,21 +174,12 @@ def mark_paid(
         )
     ).scalar_one_or_none()
     if existing is not None:
-        db.delete(existing)
-        db.flush()
-    if txn is not None:
-        clash = db.execute(
-            select(BillPayment).where(BillPayment.transaction_id == txn.id)
-        ).scalar_one_or_none()
-        if clash is not None:
-            db.delete(clash)
-            db.flush()
+        return existing
     pay = BillPayment(
         bill_id=bill.id,
         user_id=user.id,
         due_date=due,
-        paid_on=txn.date if txn else clock.today(),
-        transaction_id=txn.id if txn else None,
+        paid_on=clock.today(),
         created_at=utcnow_naive(clock),
     )
     db.add(pay)
@@ -215,20 +203,3 @@ def unmark(db: Session, user: User, bill: Bill, due: date) -> bool:
 
 def is_occurrence(bill: Bill, due: date) -> bool:
     return any(recurrence.occurrences(bill.next_due, bill.frequency, due, due, until=bill.end_date))
-
-
-def match_candidates(db: Session, user: User, occ: Occurrence) -> list[Transaction]:
-    """Transactions a person could pick for a manual match: out, near the date."""
-    window = max(occ.bill.match_window_days, 7) * 2
-    q = (
-        select(Transaction)
-        .where(
-            Transaction.user_id == user.id,
-            Transaction.amount_cents < 0,
-            Transaction.date >= occ.due - timedelta(days=window),
-            Transaction.date <= occ.due + timedelta(days=window),
-        )
-        .order_by(Transaction.date.desc())
-        .limit(50)
-    )
-    return list(db.execute(q).scalars())

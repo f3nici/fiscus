@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import select
 
 from fiscus.domain import payslip
-from fiscus.domain.csvimport import ImportError_
+from fiscus.domain.uploads import ImportError_
 from fiscus.models import Payslip
 from tests.conftest import Env
 from tests.pdfgen import Text, build, right

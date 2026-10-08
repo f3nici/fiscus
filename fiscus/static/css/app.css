@@ -214,9 +214,6 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-
 .dot-overdue { background: var(--danger); }
 
 /* Recategorise: one tap per row on a phone. */
-.recat-row { display: grid; grid-template-columns: 24px 1fr; gap: 6px 10px; padding: 10px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.05); align-items: start; }
-.recat-row .meta { grid-column: 2; display: flex; justify-content: space-between; gap: 8px; }
-.recat-row select { grid-column: 2; }
 .saved { color: var(--success); font-size: 0.8rem; }
 .sticky-actions { position: sticky; bottom: calc(var(--nav-h) + env(safe-area-inset-bottom)); background: var(--surface); padding: 10px 0; border-top: 1px solid var(--line); z-index: 5; }
 @media (min-width: 900px) { .sticky-actions { bottom: 0; } }
@@ -229,7 +226,6 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-
 .nowrap { white-space: nowrap; }
 .fw-normal { font-weight: 400; }
 .center { text-align: center; }
-.recat-row form { grid-column: 2; }
 button.btn-link { font: inherit; color: inherit; text-align: left; cursor: pointer; display: block; }
 button.btn-link .title { color: #fff; }
 .w-auto, .input.w-auto { width: auto; }
@@ -272,10 +268,6 @@ tbody.group tr:not(.group-head) > td:first-child { box-shadow: inset 3px 0 0 rgb
   .budget-import select.input, .budget-import .w-money, .budget-import input[list] { width: 100%; min-width: 0; text-align: left; }
   .budget-import .in-file .pill { display: inline-flex; margin: 0 0 0 6px; }
 }
-.tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--line); overflow-x: auto; }
-.tabs a { padding: 8px 14px; color: var(--mid); border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
-.tabs a:hover { text-decoration: none; color: #fff; }
-.tabs a.active { color: #fff; border-bottom-color: var(--primary); font-weight: 500; }
 
 /*
  * Tables that stack when their box is narrow (a phone, or a half-width card):

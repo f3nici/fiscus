@@ -14,7 +14,7 @@ from fiscus.money import MoneyError, parse_cents
 from fiscus.services import ntfy
 from fiscus.web import local_path
 from tests.conftest import ORIGIN, CsrfClient, Env
-from tests.test_imports_bills import create_bill, make_account
+from tests.test_bills import create_bill, make_account
 
 
 def test_money_refuses_exponents() -> None:

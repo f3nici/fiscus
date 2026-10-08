@@ -13,7 +13,7 @@ from fastapi.responses import PlainTextResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
 from fiscus.domain import bill_import as dom
-from fiscus.domain.csvimport import MAX_BYTES, ImportError_
+from fiscus.domain.uploads import MAX_BYTES, ImportError_
 from fiscus.forms import int_or
 from fiscus.models import User
 from fiscus.services import bill_import as svc

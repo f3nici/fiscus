@@ -10,7 +10,7 @@ from fiscus.domain.pay import expected_pay
 from fiscus.models import PaySchedule
 from fiscus.services import forecasting
 from tests.conftest import CsrfClient, Env
-from tests.test_imports_bills import import_csv, make_account
+from tests.test_bills import add_transactions, make_account
 
 TODAY = date(2026, 10, 1)  # a Thursday
 THURSDAY = date(2026, 9, 3)
@@ -56,7 +56,7 @@ def test_forecast_uses_the_average_of_imported_pays(env: Env) -> None:
     a = env.login(alice)
     acct = make_account(a)
     _casual(a, acct)
-    import_csv(
+    add_transactions(
         a,
         acct,
         '03/09/2026,"400.00","PAY/SALARY CAFE CO"\n'
@@ -66,7 +66,7 @@ def test_forecast_uses_the_average_of_imported_pays(env: Env) -> None:
     )
     # Another person's deposits with the same name are not theirs to average.
     bob = env.login(env.user('bob'))
-    import_csv(bob, make_account(bob), '17/09/2026,"9000.00","PAY/SALARY CAFE CO"\n')
+    add_transactions(bob, make_account(bob), '17/09/2026,"9000.00","PAY/SALARY CAFE CO"\n')
 
     with env.db() as db:
         user = db.merge(alice)

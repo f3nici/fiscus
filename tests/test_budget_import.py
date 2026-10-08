@@ -172,14 +172,14 @@ def test_amount_per_cycle_and_per_year() -> None:
 
 
 def test_a_sheet_without_headings_is_refused() -> None:
-    from fiscus.domain.csvimport import ImportError_
+    from fiscus.domain.uploads import ImportError_
 
     with pytest.raises(ImportError_, match='Item, Amount and Frequency'):
         svc.parse(b'a,b,c\n1,2,3\n', 'x.csv', None, has_loan=False)
 
 
 def test_not_a_spreadsheet() -> None:
-    from fiscus.domain.csvimport import ImportError_
+    from fiscus.domain.uploads import ImportError_
 
     with pytest.raises(ImportError_):
         svc.read_sheets(b'PK\x03\x04garbage', 'x.xlsx')

@@ -17,9 +17,9 @@ from sqlalchemy.orm import Session
 
 from fiscus.domain import payslip as payslip_pdf
 from fiscus.domain import recurrence
-from fiscus.domain.csvimport import MAX_BYTES, ImportError_
 from fiscus.domain.pay import ASK_DAYS, LINK_DAYS, MATCH_DAYS, OpenPayday, Unsure, match_paydays
 from fiscus.domain.tax import fy_bounds
+from fiscus.domain.uploads import MAX_BYTES, ImportError_
 from fiscus.forms import (
     FormError,
     choice,

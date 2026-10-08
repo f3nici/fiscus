@@ -34,7 +34,7 @@ from fiscus.models import (
 )
 from fiscus.services import bills as svc
 from fiscus.services import ledger
-from fiscus.services.access import get_owned, maybe_owned, owned_bill, visible_bill
+from fiscus.services.access import maybe_owned, owned_bill, visible_bill
 from fiscus.web import ctx, current_user, get_db, local_path, redirect, render
 
 router = APIRouter()
@@ -155,21 +155,6 @@ def edit_bill(
     return _form(request, db, user, owned_bill(db, bill_id, user))
 
 
-@router.post('/bills/rematch')
-def rematch(
-    request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
-) -> Response:
-    c = ctx(request)
-    since = c.clock.today() - timedelta(days=120)
-    txns = list(
-        db.execute(
-            select(Transaction).where(Transaction.user_id == user.id, Transaction.date >= since)
-        ).scalars()
-    )
-    n = svc.auto_match(db, c.clock, user, txns)
-    return redirect('/bills', flash=f'Matched {n} payments', request=request)
-
-
 @router.post('/bills')
 @router.post('/bills/{bill_id}')
 async def save_bill(
@@ -216,8 +201,6 @@ async def save_bill(
         if mode != 'equal' and len(everyone) == 1:
             mode = 'equal'
         splits.compute(amount, mode, [splits.ShareSpec(u, v) for u, v in values.items()], user.id)
-        tolerance = max(0, min(50, int_or(f('match_tolerance_pct'), 5)))
-        window = max(0, min(31, int_or(f('match_window_days'), 3)))
     except (FormError, splits.SplitError, ValueError) as exc:
         return _form(request, db, user, bill, str(exc), dict(form))
     acct = maybe_owned(db, Account, int_or(f('account_id')), user)
@@ -238,9 +221,6 @@ async def save_bill(
     bill.next_due = next_due
     bill.end_date = end_date
     bill.split_mode = mode
-    bill.match_tolerance_pct = tolerance
-    bill.match_window_days = window
-    bill.description_hint = f('description_hint').strip()[:120]
     bill.active = ('active' in form) if bill_id else True
     db.flush()
     existing = {s.user_id: s for s in bill.shares}
@@ -352,7 +332,6 @@ def occurrence(
         {
             'o': o,
             'txn': txn,
-            'candidates': svc.match_candidates(db, user, o) if o.payment is None else [],
             'is_owner': bill.owner_id == user.id,
             'expected': svc.expected_out(bill, user.id),
         },
@@ -371,9 +350,7 @@ async def mark_paid(
     bill, _share = visible_bill(db, bill_id, user)
     when = _occ(db, user, bill, due)
     form = await request.form()
-    t = form.get('transaction_id')
-    txn = get_owned(db, Transaction, int(t), user) if isinstance(t, str) and t.isdigit() else None
-    svc.mark_paid(db, c.clock, user, bill, when, txn)
+    svc.mark_paid(db, c.clock, user, bill, when)
     return redirect(
         local_path(form.get('back'), f'/bills/{bill.id}'),
         flash=f'{bill.name} marked paid',

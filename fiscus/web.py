@@ -149,8 +149,6 @@ def admin_user(user: User = Depends(current_user)) -> User:
 
 # ---------------------------------------------------------------------- CSRF
 
-CSRF_EXEMPT = frozenset({'/share-target'})
-
 
 def _origin_ok(request: Request, settings: Settings) -> bool:
     origin = request.headers.get('origin')
@@ -165,7 +163,7 @@ def _origin_ok(request: Request, settings: Settings) -> bool:
 
 
 async def csrf_guard(request: Request) -> None:
-    if request.method not in UNSAFE or request.url.path in CSRF_EXEMPT:
+    if request.method not in UNSAFE:
         return
     settings = ctx(request).settings
     if not _origin_ok(request, settings):

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import sqlite3
 from datetime import UTC, datetime, timedelta
@@ -16,7 +17,7 @@ from fiscus.models import NotificationLog, UserSettings
 from fiscus.routes.pwa import shell_assets
 from fiscus.services import backup, ntfy, reminders
 from tests.conftest import Env
-from tests.test_imports_bills import create_bill, make_account
+from tests.test_bills import create_bill, make_account
 
 # ---------------------------------------------------------------- the worker
 
@@ -34,7 +35,7 @@ def test_service_worker_caches_only_the_shell(env: Env) -> None:
     assert all(u == '/offline' or u.startswith('/static/') for u in urls)
     for forbidden in (
         '/accounts',
-        '/transactions',
+        '/budget',
         '/api',
         '/forecast',
         '/calendar',
@@ -62,7 +63,7 @@ def test_data_responses_are_never_cacheable(env: Env) -> None:
         f'/accounts/{acct}',
         '/forecast',
         '/calendar',
-        '/transactions/export.csv',
+        '/budget/template.csv',
         '/login',
     ]:
         resp = client.get(path)
@@ -85,7 +86,8 @@ def test_manifest(env: Env) -> None:
     m = env.client().get('/manifest.webmanifest').json()
     assert m['name'] == 'Fiscus' and m['display'] == 'standalone' and m['theme_color']
     assert {i['purpose'] for i in m['icons']} == {'any', 'maskable'}
-    assert m['share_target']['action'] == '/share-target'
+    assert 'share_target' not in m
+    assert [s['url'] for s in m['shortcuts']] == ['/budget', '/calendar']
 
 
 def test_security_headers(env: Env) -> None:
@@ -95,26 +97,6 @@ def test_security_headers(env: Env) -> None:
     assert 'unsafe' not in csp
     assert resp.headers['x-frame-options'] == 'DENY'
     assert resp.headers['strict-transport-security']
-
-
-def test_share_target_only_stages(env: Env) -> None:
-    client = env.login(env.user('alex'))
-    make_account(client)
-    from fastapi.testclient import TestClient
-
-    raw = TestClient(env.app, base_url='https://fiscus.test', follow_redirects=False)
-    raw.cookies = client.cookies
-    resp = raw.post(
-        '/share-target', files={'file': ('anz.csv', b'01/10/2026,"-1.00","X"\n', 'text/csv')}
-    )
-    assert resp.status_code == 303 and resp.headers['location'].startswith('/import/')
-    assert 'Preview' in client.get(resp.headers['location']).text
-    anon = TestClient(env.app, base_url='https://fiscus.test', follow_redirects=False)
-    assert (
-        anon.post('/share-target', files={'file': ('a.csv', b'x', 'text/csv')})
-        .headers['location']
-        .startswith('/login')
-    )
 
 
 def test_no_external_assets_in_pages(env: Env) -> None:
@@ -337,15 +319,19 @@ def test_health_and_ready(env: Env) -> None:
 
 def test_housekeeping_removes_stale_uploads(env: Env) -> None:
     client = env.login(env.user('alex'))
-    acct = make_account(client)
+    make_account(client)
     resp = client.post(
-        '/import',
-        data={'account_id': str(acct)},
-        files={'file': ('a.csv', b'01/10/2026,"-1.00","X"\n', 'text/csv')},
+        '/budget/import', files={'file': ('b.csv', b'Item,Amount,Frequency\nRent,1,Monthly\n')}
     )
     assert resp.status_code == 303
-    assert any(env.ctx.settings.upload_dir.iterdir())
-    env.clock.set(env.clock.now() + timedelta(days=2))
+    staged = list(env.ctx.settings.upload_dir.iterdir())
+    assert staged
+    jobs.housekeeping(env.ctx)
+    assert list(env.ctx.settings.upload_dir.iterdir()) == staged  # still fresh
+    # A day and more after the clock's now, nobody is coming back for it.
+    old = (env.clock.now() - timedelta(days=2)).timestamp()
+    for f in staged:
+        os.utime(f, (old, old))
     jobs.housekeeping(env.ctx)
     assert not any(env.ctx.settings.upload_dir.iterdir())
 

@@ -166,17 +166,6 @@ def move_aside(db: Session, user: User, name: str, besides: Category) -> Categor
     return None
 
 
-def spend_by_category(db: Session, user: User, start: date, end: date) -> dict[int | None, int]:
-    """Net movement per category in [start, end], transfers excluded. Spend is negative."""
-    transfer_ids = {c.id for c in categories(db, user) if c.is_transfer}
-    rows = db.execute(
-        select(Transaction.category_id, func.sum(Transaction.amount_cents))
-        .where(Transaction.user_id == user.id, Transaction.date >= start, Transaction.date <= end)
-        .group_by(Transaction.category_id)
-    )
-    return {cid: int(total) for cid, total in rows if cid not in transfer_ids}
-
-
 def matcher_for(db: Session, user: User) -> Matcher:
     rules = db.execute(owned(Rule, user)).scalars().all()
     return Matcher(
@@ -197,10 +186,3 @@ def apply_rules(
             t.category_id = cat
             changed += 1
     return changed
-
-
-def rerun_rules(db: Session, user: User, *, overwrite: bool) -> int:
-    q = owned(Transaction, user)
-    if not overwrite:
-        q = q.where(Transaction.category_id.is_(None))
-    return apply_rules(db, user, list(db.execute(q).scalars()), overwrite=overwrite)

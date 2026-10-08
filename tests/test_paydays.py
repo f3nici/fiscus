@@ -11,7 +11,7 @@ from fiscus.models import PaySchedule, Payslip, User
 from fiscus.services import budgeting, calendar_events, forecasting, pay, taxes
 from tests.conftest import CsrfClient, Env
 from tests.pdfgen import build
-from tests.test_imports_bills import make_account
+from tests.test_bills import make_account
 
 TODAY = date(2026, 10, 1)  # a Thursday, the test clock's default
 

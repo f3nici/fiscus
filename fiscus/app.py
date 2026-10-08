@@ -256,7 +256,6 @@ def create_app(
         forecast,
         goals,
         health,
-        imports,
         loans,
         pay,
         pwa,
@@ -264,7 +263,6 @@ def create_app(
         setup,
         square,
         tax,
-        transactions,
     )
     from fiscus.routes import auth as auth_routes
     from fiscus.routes import categories as category_routes
@@ -278,8 +276,6 @@ def create_app(
         settings_routes,
         dashboard,
         accounts,
-        imports,
-        transactions,
         category_routes,
         bill_import,  # its literal paths before /bills/{bill_id}
         bills,

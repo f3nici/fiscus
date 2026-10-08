@@ -8,10 +8,6 @@
       <span class="muted text-sm">Your share comes to <strong class="num">{{ monthly_total | money }}</strong> a month{% if category %} · <a href="/bills">All bills</a>{% endif %}</span>
     </div>
     <div class="row">
-      <form method="post" action="/bills/rematch">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <button class="btn" type="submit">Match payments</button>
-      </form>
       <a class="btn" href="/bills/import">Import</a>
       <a class="btn btn-primary" href="/bills/new">Add bill</a>
     </div>

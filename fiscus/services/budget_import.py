@@ -11,7 +11,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from fiscus.domain import budget_import as dom
-from fiscus.domain.csvimport import ImportError_, decode, read_rows
+from fiscus.domain.uploads import ImportError_, decode, read_rows
 from fiscus.models import Budget, Category, User
 from fiscus.money import round_div
 from fiscus.services import budgeting

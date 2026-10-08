@@ -22,12 +22,13 @@ from fiscus.models import (
     Loan,
     PaySchedule,
     Payslip,
+    Transaction,
     User,
 )
 from fiscus.services import budgeting, forecasting, ledger, taxes
 from tests.conftest import CsrfClient, Env
+from tests.test_bills import ANZ_SEPT, add_transactions, create_bill, make_account
 from tests.test_budget_import import upload as _upload
-from tests.test_imports_bills import ANZ_SEPT, create_bill, import_csv, make_account
 
 
 def setup_household(env: Env) -> tuple[CsrfClient, User, int]:
@@ -265,7 +266,7 @@ def test_discretionary_spending_uses_average_or_budget(env: Env) -> None:
     alex = env.user('alex')
     a = env.login(alex)
     acct = make_account(a, opening='1000')
-    import_csv(a, acct, '15/09/2026,"-300.00","COLES"\n20/08/2026,"-300.00","COLES"\n')
+    add_transactions(a, acct, '15/09/2026,"-300.00","COLES"\n20/08/2026,"-300.00","COLES"\n')
     with env.db() as db:
         est = forecasting.estimates(db, db.get(User, alex.id), date(2026, 10, 1))  # type: ignore[arg-type]
         assert len(est) == 1 and est[0].source == 'average'
@@ -278,7 +279,10 @@ def test_discretionary_spending_uses_average_or_budget(env: Env) -> None:
             .scalar_one()
             .id
         )
-    a.post('/rules', data={'pattern': 'coles', 'category_id': str(groceries), 'apply_now': 'true'})
+    with env.db() as db:
+        for t in db.execute(select(Transaction)).scalars():
+            t.category_id = groceries
+        db.commit()
     a.post(
         '/budget', data={'category_id': str(groceries), 'amount': '400', 'use_in_forecast': 'true'}
     )
@@ -306,9 +310,8 @@ def test_spending_is_taken_off_the_budget_by_hand(env: Env) -> None:
     a = env.login(alex)
     acct = make_account(a)
     groceries = _groceries(env, alex)
-    a.post('/rules', data={'pattern': 'coles', 'category_id': str(groceries)})
-    # Imported transactions no longer count towards the budget.
-    import_csv(a, acct, '01/10/2026,"-450.00","COLES"\n')
+    # Transactions (from Square, or old imports) do not count towards the budget.
+    add_transactions(a, acct, '01/10/2026,"-450.00","COLES"\n', category_id=groceries)
     a.post('/budget', data={'category_id': str(groceries), 'amount': '400'})
     page = a.get('/budget?month=2026-10').text
     assert '$400.00' in page and '$450.00' not in page
@@ -490,7 +493,7 @@ def test_balances_are_typed_in(env: Env) -> None:
     a = env.login(alex)
     everyday = make_account(a, opening='1000')
     savings = make_account(a, 'Savings', 'savings', opening='5000')
-    import_csv(a, everyday, '15/09/2026,"-300.00","COLES"\n')
+    add_transactions(a, everyday, '15/09/2026,"-300.00","COLES"\n')
     resp = a.post(
         '/accounts/balances',
         data={f'balance_{everyday}': '812.40', f'balance_{savings}': ''},
@@ -1008,7 +1011,7 @@ def test_tax_deductions_are_saved_and_come_off_income(env: Env) -> None:
 
 def test_every_page_renders(env: Env) -> None:
     a, _alex, acct = setup_household(env)
-    import_csv(a, acct, ANZ_SEPT)
+    add_transactions(a, acct, ANZ_SEPT)
     for page in [
         '/',
         '/more',
@@ -1016,11 +1019,7 @@ def test_every_page_renders(env: Env) -> None:
         f'/accounts/{acct}',
         f'/accounts/{acct}/edit',
         '/accounts/new',
-        '/transactions',
-        '/transactions?category_id=none',
-        '/import',
         '/categories',
-        '/recategorise',
         '/bills',
         '/bills/new',
         '/pay',

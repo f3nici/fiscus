@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from fiscus.domain import goals as calc
 from fiscus.models import Account, BudgetSpend, Category, Goal, GoalMove
 from tests.conftest import Env
-from tests.test_imports_bills import make_account
+from tests.test_bills import make_account
 
 
 def test_months_left_counts_budget_months_to_the_one_holding_the_date() -> None:

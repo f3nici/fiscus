@@ -56,14 +56,6 @@
       <small>Each person sees the bill on their calendar, budget and forecast at their share only.</small>
     </fieldset>
 
-    <details>
-      <summary>Payment matching</summary>
-      <div class="form-grid mt">
-        <div class="field"><label class="label" for="description_hint">Description contains (optional)</label><input class="input" id="description_hint" name="description_hint" maxlength="120" value="{{ val('description_hint', bill.description_hint if bill else '') }}"></div>
-        <div class="field"><label class="label" for="match_tolerance_pct">Amount tolerance %</label><input class="input" type="number" id="match_tolerance_pct" name="match_tolerance_pct" min="0" max="50" value="{{ val('match_tolerance_pct', bill.match_tolerance_pct if bill else 5) }}"></div>
-        <div class="field"><label class="label" for="match_window_days">Days either side of due</label><input class="input" type="number" id="match_window_days" name="match_window_days" min="0" max="31" value="{{ val('match_window_days', bill.match_window_days if bill else 3) }}"></div>
-      </div>
-    </details>
     {% if bill %}<label class="check mt"><input type="checkbox" name="active" {{ 'checked' if bill.active else '' }}> Active</label>{% endif %}
     <div class="row mt">
       <button class="btn btn-primary" type="submit">Save</button>
