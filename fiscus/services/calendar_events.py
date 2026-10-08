@@ -178,6 +178,8 @@ def grid(db: Session, clock: Clock, user: User, view: str, focus: date) -> Grid:
     overdue: list[Event] = []
     if view == 'agenda':
         days = [day for day in days if day.events or day.is_today]
+        # Bills overdue from before the agenda's first day (later ones are on
+        # their own days), when the agenda reaches today.
         if start <= today <= end:
             overdue = [
                 Event(
@@ -188,6 +190,7 @@ def grid(db: Session, clock: Clock, user: User, view: str, focus: date) -> Grid:
                     'overdue',
                     o.bill.id,
                 )
-                for o in bills.overdue(db, user, today, bills.OVERDUE_CARRY_DAYS)
+                for o in bills.overdue(db, user, today)
+                if o.due < start
             ]
     return Grid(view, focus, title, days, prev, nxt, weeks, overdue)

@@ -90,7 +90,10 @@ def occurrences(
 
 
 def next_on_or_after(anchor: date, frequency: str, day: date) -> date | None:
-    for d in occurrences(anchor, frequency, day, day + timedelta(days=400)):
+    # A schedule starts at its anchor, however far off; after that the next
+    # one is never more than a year away.
+    lo = max(day, anchor)
+    for d in occurrences(anchor, frequency, lo, lo + timedelta(days=400)):
         return d
     return None
 

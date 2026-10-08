@@ -50,7 +50,7 @@ def due_reminders(db: Session, clock: Clock, user: User) -> list[Reminder]:
                     )
                 )
     if prefs.ntfy_overdue:
-        for occ in bills.overdue(db, user, today, lookback_days=60):
+        for occ in bills.overdue(db, user, today):
             out.append(
                 Reminder(
                     'overdue',
@@ -71,7 +71,8 @@ def due_reminders(db: Session, clock: Clock, user: User) -> list[Reminder]:
                     'payslip',
                     o.key,
                     'Payslip to put in',
-                    f'{o.name} paid on {o.payday.strftime("%a %d %b")}: no payslip in Fiscus yet.',
+                    f'{o.name} paid on {o.payday.strftime("%a %d %b")}: '
+                    'no payslip records it in Fiscus yet.',
                     tags='receipt',
                 )
             )

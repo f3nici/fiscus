@@ -9,7 +9,7 @@ import pytest
 from fiscus.domain import recurrence, saving, splits, uploads
 from fiscus.domain.matching import Candidate, OpenOccurrence, assign, matches
 from fiscus.domain.rules import Matcher, RuleError, RuleSpec, validate
-from fiscus.money import MoneyError, fmt, parse_cents
+from fiscus.money import MoneyError, fmt, fmt_short, parse_cents
 
 # --------------------------------------------------------------------- money
 
@@ -297,3 +297,19 @@ def test_a_saved_up_line_counts_the_months_before_its_bill() -> None:
         put_aside_cents=330_00,
     )
     assert (dc.by_then_cents, dc.short_cents) == (330_00, 0)
+
+
+def test_fmt_short_rounds_before_choosing_the_unit() -> None:
+    assert fmt_short(99_995_000) == '$1.0m'
+    assert fmt_short(99_940_000) == '$999.4k'
+    assert fmt_short(-150_000_000) == '-$1.5m'
+    assert fmt_short(999_900) == '$9,999'
+
+
+def test_the_next_date_of_a_schedule_that_starts_years_away() -> None:
+    far = date(2028, 3, 1)
+    assert recurrence.next_on_or_after(far, 'monthly', date(2026, 10, 1)) == far
+    assert recurrence.next_on_or_after(far, 'yearly', date(2028, 3, 2)) == date(2029, 3, 1)
+    assert recurrence.next_on_or_after(date(2026, 9, 3), 'weekly', date(2026, 10, 1)) == date(
+        2026, 10, 1
+    )

@@ -13,7 +13,7 @@ from fiscus.routes.auth import _json, limit
 from fiscus.security import passwords
 from fiscus.services import audit, ntfy
 from fiscus.services import auth as svc
-from fiscus.services.access import owned
+from fiscus.services.access import in_range, owned
 from fiscus.services.users import has_other_login, passkey_count, settings_for
 from fiscus.web import client_ip, ctx, current_user, get_db, redirect, render
 
@@ -114,7 +114,7 @@ async def add_passkey_verify(
 
 
 def _own_cred(db: Session, user: User, cred_id: int) -> WebAuthnCredential | None:
-    cred = db.get(WebAuthnCredential, cred_id)
+    cred = db.get(WebAuthnCredential, cred_id) if in_range(cred_id) else None
     return cred if cred is not None and cred.user_id == user.id else None
 
 
@@ -225,7 +225,7 @@ def forecast_prefs(
     except MoneyError as exc:
         return _page(request, db, user, {'error': str(exc)}, 400)
     prefs.forecast_months = min(24, max(1, forecast_months))
-    if spending_account_id:
+    if spending_account_id and in_range(spending_account_id):
         acct = db.get(Account, spending_account_id)
         prefs.spending_account_id = acct.id if acct and acct.user_id == user.id else None
     else:

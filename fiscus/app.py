@@ -41,6 +41,29 @@ CSP = (
 )
 
 
+def security_headers(settings: Settings) -> dict[str, str]:
+    """What every response carries, whatever produced it."""
+    out = {
+        'Content-Security-Policy': CSP,
+        'X-Content-Type-Options': 'nosniff',
+        'X-Frame-Options': 'DENY',
+        'Referrer-Policy': 'same-origin',
+        'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+    }
+    if settings.cookie_secure:
+        out['Strict-Transport-Security'] = 'max-age=31536000'
+    return out
+
+
+def wants_json(request: Request) -> bool:
+    """A script's request (fetch with JSON), not a page load."""
+    return (
+        request.url.path.startswith('/api/')
+        or request.headers.get('content-type', '').startswith('application/json')
+        or 'application/json' in request.headers.get('accept', '')
+    )
+
+
 def create_app(
     settings: Settings | None = None,
     *,
@@ -134,13 +157,11 @@ def create_app(
         ensure_csrf_cookie(request)
         response = await call_next(request)
         path = request.url.path
-        response.headers.setdefault('Content-Security-Policy', CSP)
-        response.headers['X-Content-Type-Options'] = 'nosniff'
-        response.headers['X-Frame-Options'] = 'DENY'
-        response.headers['Referrer-Policy'] = 'same-origin'
-        response.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=()'
-        if settings.cookie_secure:
-            response.headers['Strict-Transport-Security'] = 'max-age=31536000'
+        for name, value in security_headers(settings).items():
+            if name == 'Content-Security-Policy':
+                response.headers.setdefault(name, value)
+            else:
+                response.headers[name] = value
         if path.startswith('/static/'):
             response.headers['Cache-Control'] = 'no-cache'
         elif path in ('/sw.js', '/manifest.webmanifest'):
@@ -222,21 +243,16 @@ def create_app(
     @app.exception_handler(Exception)
     async def _crashed(request: Request, exc: Exception) -> Response:
         # Starlette logs the traceback after this answers. This runs outside the
-        # headers middleware, so the page carries its own.
-        safe = {
-            'Content-Security-Policy': CSP,
-            'X-Content-Type-Options': 'nosniff',
-            'X-Frame-Options': 'DENY',
-            'Cache-Control': 'no-store',
-        }
+        # headers middleware, so the answer carries the headers itself.
+        safe = {**security_headers(settings), 'Cache-Control': 'no-store', 'Pragma': 'no-cache'}
+        message = 'That did not work. Nothing was saved. Go back and try again.'
+        if wants_json(request):
+            return JSONResponse({'error': message}, status_code=500, headers=safe)
         try:
             return render(
                 request,
                 'error.html',
-                {
-                    'title': 'Something went wrong',
-                    'message': 'That did not work. Nothing was saved. Go back and try again.',
-                },
+                {'title': 'Something went wrong', 'message': message},
                 status_code=500,
                 headers=safe,
             )

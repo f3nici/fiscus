@@ -4,14 +4,13 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import Response
-from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from fiscus.forms import FormError, text
 from fiscus.models import Budget, Category, User
 from fiscus.services import ledger
-from fiscus.services.access import get_owned
+from fiscus.services.access import get_owned, owned
 from fiscus.web import current_user, get_db, redirect, render
 
 router = APIRouter()
@@ -21,9 +20,7 @@ router = APIRouter()
 def categories(
     request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
 ) -> Response:
-    budgeted = set(
-        db.execute(select(Budget.category_id).where(Budget.user_id == user.id)).scalars()
-    )
+    budgeted = {b.category_id for b in db.execute(owned(Budget, user)).scalars()}
     return render(
         request,
         'categories/index.html',

@@ -72,7 +72,8 @@ def fmt_short(cents: int, symbol: bool = True) -> str:
     """Whole dollars, and thousands as "$55.1k", for a tight space."""
     dollars = round_div(abs(cents), 100)
     sign = ('-' if cents < 0 and dollars else '') + ('$' if symbol else '')
-    if dollars >= 1_000_000:
+    # Rounded first, then the unit: $999,950 is $1.0m, not $1000.0k.
+    if round_div(dollars, 100) >= 10_000:
         tenths = round_div(dollars, 100_000)
         return f'{sign}{tenths // 10}.{tenths % 10}m'
     if dollars >= 10_000:

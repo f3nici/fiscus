@@ -25,6 +25,7 @@ from fiscus.models import (
     GoalMove,
     Loan,
     LoanRate,
+    Owned,
     PaySchedule,
     Payslip,
     RecurringTransfer,
@@ -37,6 +38,7 @@ from tests.test_bills import ANZ_SEPT, add_transactions, create_bill, make_accou
 
 OWNED_TABLES = [
     'accounts',
+    'account_balances',
     'transactions',
     'categories',
     'rules',
@@ -62,6 +64,12 @@ OWNED_TABLES = [
     'square_connections',
     'square_invoices',
 ]
+
+
+def test_every_owned_table_is_checksummed() -> None:
+    """A new owned table joins the scenario checksum, or this fails."""
+    tables = {m.__tablename__ for m in Owned.__subclasses__()}  # type: ignore[attr-defined]
+    assert tables <= set(OWNED_TABLES), tables - set(OWNED_TABLES)
 
 
 def snapshot(env: Env) -> str:

@@ -16,6 +16,14 @@ from sqlalchemy.orm import Session
 
 from fiscus.models import Bill, BillShare, User
 
+# SQLite integers are 64-bit; a bigger id cannot be a row and would not bind.
+_ID_LIMIT = 2**63
+
+
+def in_range(ident: int) -> bool:
+    """Whether `ident` could be a row id at all."""
+    return -_ID_LIMIT <= ident < _ID_LIMIT
+
 
 def owned[T](model: type[T], user: User) -> Select[T]:
     col: Any = model.user_id  # type: ignore[attr-defined]
@@ -23,7 +31,7 @@ def owned[T](model: type[T], user: User) -> Select[T]:
 
 
 def get_owned[T](db: Session, model: type[T], ident: int | None, user: User) -> T:
-    if ident is None:
+    if ident is None or not in_range(ident):
         raise HTTPException(status_code=404)
     obj = db.get(model, ident)
     if obj is None or getattr(obj, 'user_id', None) != user.id:
@@ -38,6 +46,8 @@ def maybe_owned[T](db: Session, model: type[T], ident: int | None, user: User) -
 
 
 def visible_bill(db: Session, bill_id: int, user: User) -> tuple[Bill, BillShare]:
+    if not in_range(bill_id):
+        raise HTTPException(status_code=404)
     share = db.execute(
         select(BillShare).where(BillShare.bill_id == bill_id, BillShare.user_id == user.id)
     ).scalar_one_or_none()
@@ -47,7 +57,7 @@ def visible_bill(db: Session, bill_id: int, user: User) -> tuple[Bill, BillShare
 
 
 def owned_bill(db: Session, bill_id: int, user: User) -> Bill:
-    bill = db.get(Bill, bill_id)
+    bill = db.get(Bill, bill_id) if in_range(bill_id) else None
     if bill is None or bill.owner_id != user.id:
         # A participant sees a 404 for edits too: they cannot change the bill.
         raise HTTPException(status_code=404)
