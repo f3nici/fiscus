@@ -135,7 +135,7 @@ def create_goal(
     try:
         clean, cents, when, acct = _fields(db, user, name, target, target_date, account_id)
         chosen = _chosen(db, user, category_id)
-        saved_cents = money(saved, 'Already saved') if saved.strip() else 0
+        saved_cents = money(saved, 'Already saved', allow_negative=False) if saved.strip() else 0
     except FormError as exc:
         return redirect('/goals', flash=str(exc), request=request)
     goal = Goal(

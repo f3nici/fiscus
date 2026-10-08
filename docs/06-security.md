@@ -33,9 +33,12 @@
   the form field or header, plus an `Origin`/`Referer` check, on every unsafe
   request.
 - Redirects after a form go to a path on this site only (`web.local_path`):
-  never `//host` or a backslash form a browser could read as another origin.
+  never `//host`, a backslash or a control character (browsers drop tabs and
+  newlines, so `/<tab>/host` is `//host`) that a browser could read as
+  another origin.
 - An unexpected error answers with an error page carrying the usual headers
-  and `no-store`; nothing is saved (the request's session rolls back).
+  and `no-store` (JSON instead for a script's request); nothing is saved (the
+  request's session rolls back).
 - Rate limits on `/auth/*` and `/setup/*` per IP and per username.
 - Client IPs come from `X-Forwarded-For` only when the peer is in
   `FISCUS_TRUSTED_PROXIES`.
@@ -45,7 +48,8 @@
 
 ## Data
 
-- Ownership on every query (`services/access.py`); 404 for others' rows.
+- Ownership on every query (`services/access.py`); 404 for others' rows, and
+  for an id too big to be a row.
 - Bill and budget import files are staged under random names in
   `/data/uploads`, size-capped, with the owner's id in the name, checked
   against it; they are deleted on apply or after a day.

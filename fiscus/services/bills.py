@@ -101,10 +101,12 @@ def occurrences(db: Session, user: User, start: date, end: date, today: date) ->
     return out
 
 
-def overdue(db: Session, user: User, today: date, lookback_days: int = 366) -> list[Occurrence]:
+def overdue(db: Session, user: User, today: date) -> list[Occurrence]:
+    """Unpaid occurrences from the last OVERDUE_CARRY_DAYS: the one window the
+    dashboard, bills list, agenda, reminders, budget and forecast share."""
     return [
         o
-        for o in occurrences(db, user, today - timedelta(days=lookback_days), today, today)
+        for o in occurrences(db, user, today - timedelta(days=OVERDUE_CARRY_DAYS), today, today)
         if o.status == 'overdue'
     ]
 

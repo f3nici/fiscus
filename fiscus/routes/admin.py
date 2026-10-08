@@ -13,6 +13,7 @@ from starlette.background import BackgroundTask
 from fiscus.models import AuditLog, SetupLink, User
 from fiscus.services import audit, backup
 from fiscus.services import auth as auth_svc
+from fiscus.services.access import in_range
 from fiscus.services.users import UserError, active_admin_count, create_user, passkey_count
 from fiscus.web import admin_user, client_ip, ctx, get_db, redirect, render
 
@@ -77,7 +78,7 @@ def create(
 
 
 def _target(db: Session, user_id: int) -> User:
-    user = db.get(User, user_id)
+    user = db.get(User, user_id) if in_range(user_id) else None
     if user is None:
         raise HTTPException(status_code=404)
     return user

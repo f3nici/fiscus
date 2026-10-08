@@ -25,7 +25,7 @@ from fiscus.models import (
     Transaction,
     User,
 )
-from fiscus.services import budgeting, forecasting, ledger, taxes
+from fiscus.services import bills, budgeting, forecasting, ledger, reminders, taxes
 from tests.conftest import CsrfClient, Env
 from tests.test_bills import ANZ_SEPT, add_transactions, create_bill, make_account
 from tests.test_budget_import import upload as _upload
@@ -1283,3 +1283,49 @@ def test_an_overdue_bill_shows_on_the_dashboard_budget_and_agenda(env: Env) -> N
     assert 'id="overdue"' not in a.get('/').text
     assert 'id="cal-overdue"' not in a.get('/calendar?view=agenda').text
     assert 'overdue since' not in a.get('/budget').text
+
+
+def test_overdue_is_the_same_two_months_everywhere(env: Env) -> None:
+    alex = env.user('alex')
+    a = env.login(alex)
+    acct = make_account(a)
+    bill = create_bill(
+        a, name='Gym', amount='30', frequency='monthly', next_due='2026-06-01', account_id=str(acct)
+    )
+    # 1 Jun and 1 Jul are further back than the 62 days carried.
+    with env.db() as db:
+        user = db.merge(alex)
+        dues = [o.due for o in bills.overdue(db, user, date(2026, 10, 1))]
+        assert dues == [date(2026, 8, 1), date(2026, 9, 1)]
+        found = reminders.due_reminders(db, env.ctx.clock, user)
+        keys = [r.key for r in found if r.kind == 'overdue']
+        assert keys == [f'{bill}:2026-08-01', f'{bill}:2026-09-01']
+    for path in ('/', '/bills'):
+        page = a.get(path).text
+        assert 'was due 1 Aug 2026' in page and 'was due 1 Sep 2026' in page, path
+        assert 'was due 1 Jul 2026' not in page, path
+    agenda = a.get('/calendar?view=agenda').text
+    assert 'Gym, due 1 Aug' in agenda and 'Gym, due 1 Jul' not in agenda
+
+
+def test_an_agenda_from_an_earlier_day_shows_an_overdue_bill_once(env: Env) -> None:
+    a = env.login(env.user('alex'))
+    acct = make_account(a)
+    create_bill(
+        a,
+        name='Rates',
+        amount='620',
+        frequency='quarterly',
+        next_due='2026-09-28',
+        account_id=str(acct),
+    )
+    assert 'id="cal-overdue"' in a.get('/calendar?view=agenda').text
+    # From 20 Sep the bill is on its own day, so not in the overdue box as well.
+    agenda = a.get('/calendar?view=agenda&date=2026-09-20').text
+    assert 'id="cal-overdue"' not in agenda and 'ev-overdue' in agenda
+
+
+def test_a_bill_due_more_than_a_year_out_shows_its_date(env: Env) -> None:
+    a = env.login(env.user('alex'))
+    create_bill(a, name='Passport', amount='398', frequency='yearly', next_due='2028-03-01')
+    assert '1 Mar 2028' in a.get('/bills').text

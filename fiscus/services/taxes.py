@@ -86,9 +86,11 @@ def view(db: Session, user: User, today: date, tax_dir: Path | None = None) -> T
     per_job = _recent_slips(db, user, today)
     proj_gross, proj_tax = gross, withheld
     untaxed: list[str] = []
-    first = today + timedelta(days=1)
-    for item in pay.items(db, user, first, fy_end, today):
+    # From today: a payday today with no payslip yet is expected, not missing.
+    for item in pay.items(db, user, today, fy_end, today):
         if item.slip is not None:
+            if item.slip.date <= today:
+                continue  # already in the year to date
             proj_gross += item.slip.gross_cents
             proj_tax += item.slip.tax_withheld_cents
             continue

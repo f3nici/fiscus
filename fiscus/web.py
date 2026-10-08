@@ -251,15 +251,16 @@ def render(
 
 def local_path(target: object, fallback: str = '/') -> str:
     """`target` when it is a path on this site, else `fallback`. Never another
-    origin: no `//host`, no backslashes a browser might read as slashes."""
-    if (
-        isinstance(target, str)
-        and target.startswith('/')
-        and not target.startswith('//')
-        and '\\' not in target
-    ):
-        return target
-    return fallback
+    origin: no `//host`, no backslashes a browser might read as slashes, and no
+    control characters, which browsers drop (so `/<tab>/host` is `//host`)."""
+    if not isinstance(target, str) or not target.startswith('/'):
+        return fallback
+    if '\\' in target or any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in target):
+        return fallback
+    parts = urlsplit(target)
+    if target.startswith('//') or parts.scheme or parts.netloc:
+        return fallback
+    return target
 
 
 def redirect(url: str, *, flash: str | None = None, request: Request | None = None) -> Response:

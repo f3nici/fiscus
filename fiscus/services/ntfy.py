@@ -82,23 +82,41 @@ def send(
         headers['Tags'] = tags
     if prefs.ntfy_token:
         headers['Authorization'] = f'Bearer {prefs.ntfy_token}'
-    netloc, extensions = parts.netloc, {}
+    path = f'/{prefs.ntfy_topic.strip()}'
     if addrs and str(addrs[0]) != host:
-        # A name: connect to the address that was checked, still asking for
-        # (and verifying the certificate of) the name.
-        ip = addrs[0]
-        netloc = (f'[{ip}]' if ip.version == 6 else str(ip)) + (
-            f':{parts.port}' if parts.port else ''
-        )
-        headers['Host'] = parts.netloc
-        extensions['sni_hostname'] = host
-    url = urlunsplit((parts.scheme, netloc, f'/{prefs.ntfy_topic.strip()}', '', ''))
-    try:
-        with httpx.Client(timeout=TIMEOUT, follow_redirects=False, trust_env=False) as client:
-            resp = client.post(
-                url, content=message.encode(), headers=headers, extensions=extensions
+        # A name: connect to an address that was checked, still asking for
+        # (and verifying the certificate of) the name. Each in turn, as a
+        # plain connection would, in case the first is unreachable.
+        port = f':{parts.port}' if parts.port else ''
+        tries = [
+            (
+                urlunsplit(
+                    (parts.scheme, (f'[{ip}]' if ip.version == 6 else str(ip)) + port, path, '', '')
+                ),
+                {**headers, 'Host': parts.netloc},
+                {'sni_hostname': host},
             )
-    except httpx.HTTPError as exc:
-        raise NtfyError(f'Could not reach the ntfy server: {exc.__class__.__name__}') from exc
+            for ip in dict.fromkeys(addrs)
+        ]
+    else:
+        tries = [(urlunsplit((parts.scheme, parts.netloc, path, '', '')), headers, {})]
+    resp: httpx.Response | None = None
+    failed: Exception | None = None
+    with httpx.Client(timeout=TIMEOUT, follow_redirects=False, trust_env=False) as client:
+        for url, sent, extensions in tries:
+            try:
+                resp = client.post(
+                    url, content=message.encode(), headers=sent, extensions=extensions
+                )
+                break
+            except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+                failed = exc
+            except httpx.HTTPError as exc:
+                raise NtfyError(
+                    f'Could not reach the ntfy server: {exc.__class__.__name__}'
+                ) from exc
+    if resp is None:
+        name = failed.__class__.__name__ if failed else 'no address'
+        raise NtfyError(f'Could not reach the ntfy server: {name}') from failed
     if resp.status_code >= 300:
         raise NtfyError(f'The ntfy server answered {resp.status_code}')

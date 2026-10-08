@@ -13,7 +13,7 @@
   {% if v.missing %}
     <div class="card alert-warn" id="missing-payslips">
       <h2>{{ v.missing | length }} payday{{ '' if v.missing | length == 1 else 's' }} without a payslip</h2>
-      <p>These are not in the figures below until their payslips are in.</p>
+      <p>No payslip records these paydays, so their pay is not in the figures below. A payslip saved as a one-off counts as extra income: open it on the <a href="/pay">Pay</a> page and choose its payday instead.</p>
       <ul class="list">
         {% for o in v.missing | reverse %}
           <li><span class="grow">{{ o.name }} <span class="muted text-sm">{{ o.payday | d }}</span></span><a class="btn btn-sm" href="/pay?payday={{ o.key }}">Add payslip</a></li>

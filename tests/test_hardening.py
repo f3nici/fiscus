@@ -8,13 +8,14 @@ from typing import Any
 import httpx
 import pytest
 
+from fiscus.domain.uploads import MAX_BYTES, ImportError_, decode
 from fiscus.forms import FormError, int_or, pct_bp, rate
-from fiscus.models import UserSettings
+from fiscus.models import Goal, UserSettings
 from fiscus.money import MoneyError, parse_cents
 from fiscus.services import ntfy
 from fiscus.web import local_path
 from tests.conftest import ORIGIN, CsrfClient, Env
-from tests.test_bills import create_bill, make_account
+from tests.test_bills import count, create_bill, make_account
 
 
 def test_money_refuses_exponents() -> None:
@@ -219,3 +220,90 @@ def test_ntfy_goes_to_the_address_it_checked(monkeypatch: pytest.MonkeyPatch) ->
     assert sent[0]['url'] == 'https://192.168.1.20/fiscus'
     assert sent[0]['headers']['Host'] == 'ntfy.home.lan'
     assert sent[0]['extensions'] == {'sni_hostname': 'ntfy.home.lan'}
+
+
+@pytest.mark.parametrize('target', ['/\t/evil.example', '/\n/evil.example', '/\r\n//evil'])
+def test_local_path_refuses_control_characters(target: str) -> None:
+    # Browsers drop tabs and newlines, so `/<tab>/host` would be `//host`.
+    assert local_path(target, '/fallback') == '/fallback'
+
+
+def test_an_id_too_big_for_the_database_is_not_found(env: Env) -> None:
+    client = env.login(env.user('alex'))
+    huge = '99999999999999999999'
+    for path in (f'/goals/{huge}', f'/bills/{huge}', f'/accounts/{huge}', f'/loans/{huge}'):
+        assert client.get(path).status_code == 404, path
+    assert client.get(f'/pay?slip={huge}').status_code == 404
+    assert client.post(f'/bills/{huge}/occurrence/2026-10-15/paid').status_code == 404
+
+
+def test_a_crash_answers_a_script_with_json(env: Env) -> None:
+    def boom() -> None:
+        raise RuntimeError('boom')
+
+    env.app.add_api_route('/boom', boom, methods=['GET', 'POST'])
+    client = CsrfClient(env.app, base_url=ORIGIN, raise_server_exceptions=False)
+    resp = client.get('/boom', headers={'Accept': 'application/json'})
+    assert resp.status_code == 500
+    assert resp.json() == {'error': 'That did not work. Nothing was saved. Go back and try again.'}
+    resp = client.post('/boom', json={})
+    assert resp.status_code == 500 and 'error' in resp.json()
+    for name in ('referrer-policy', 'permissions-policy', 'strict-transport-security'):
+        assert name in resp.headers, name
+    assert resp.headers['cache-control'] == 'no-store'
+
+
+def _two_addresses(*_a: Any, **_k: Any) -> list[Any]:
+    return [
+        (socket.AF_INET6, socket.SOCK_STREAM, 6, '', ('fd00::20', 443, 0, 0)),
+        (socket.AF_INET, socket.SOCK_STREAM, 6, '', ('192.168.1.20', 443)),
+    ]
+
+
+def test_ntfy_tries_the_next_address_it_checked(monkeypatch: pytest.MonkeyPatch) -> None:
+    urls: list[str] = []
+
+    def fake_post(_client: httpx.Client, url: str, **kw: Any) -> httpx.Response:
+        urls.append(url)
+        if '[' in url:
+            raise httpx.ConnectError('unreachable')
+        return httpx.Response(200)
+
+    monkeypatch.setattr(socket, 'getaddrinfo', _two_addresses)
+    monkeypatch.setattr(httpx.Client, 'post', fake_post)
+    prefs = UserSettings(ntfy_url='https://ntfy.home.lan', ntfy_topic='fiscus', ntfy_token='')
+    ntfy.send(prefs, 'Title', 'Body')
+    assert urls == ['https://[fd00::20]/fiscus', 'https://192.168.1.20/fiscus']
+
+
+def test_ntfy_says_so_when_no_address_answers(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_post(_client: httpx.Client, url: str, **kw: Any) -> httpx.Response:
+        raise httpx.ConnectError('unreachable')
+
+    monkeypatch.setattr(socket, 'getaddrinfo', _two_addresses)
+    monkeypatch.setattr(httpx.Client, 'post', fake_post)
+    prefs = UserSettings(ntfy_url='https://ntfy.home.lan', ntfy_topic='fiscus', ntfy_token='')
+    with pytest.raises(ntfy.NtfyError, match='Could not reach the ntfy server: ConnectError'):
+        ntfy.send(prefs, 'Title', 'Body')
+
+
+def test_a_negative_amount_already_saved_is_refused(env: Env) -> None:
+    client = env.login(env.user('alex'))
+    resp = client.post('/goals', data={'name': 'Trip', 'target': '1000', 'saved': '-50'})
+    assert resp.status_code == 303 and resp.headers['location'] == '/goals'
+    assert count(env, Goal) == 0
+
+
+def test_oversized_and_binary_uploads_are_refused(env: Env) -> None:
+    client = env.login(env.user('alex'))
+    big = b'a' * (MAX_BYTES + 1)
+    for path, back in (('/budget/import', '/budget'), ('/bills/import', '/bills/import')):
+        resp = client.post(path, files={'file': ('x.csv', big, 'text/csv')})
+        assert resp.status_code == 303 and resp.headers['location'] == back, path
+        assert 'larger%20than%2010%20MB' in resp.headers['set-cookie']
+    for path in ('/bills/import', '/budget/import'):
+        resp = client.post(path, files={'file': ('x.csv', b'\x00\x01' * 10, 'text/csv')})
+        page = client.get(resp.headers['location'], follow_redirects=True)
+        assert 'The file is not text' in page.text, path
+    with pytest.raises(ImportError_, match='larger than 10 MB'):
+        decode(big)

@@ -224,7 +224,7 @@ def test_a_payday_without_a_payslip_is_reminded_once(
         m.setattr(httpx.Client, 'post', fake_post)
         # Only the last week's payday (24 Sep); today's (1 Oct) may not be in yet.
         assert jobs.run_reminders(env.ctx) == 1
-        assert sent == ['Acme paid on Thu 24 Sep: no payslip in Fiscus yet.']
+        assert sent == ['Acme paid on Thu 24 Sep: no payslip records it in Fiscus yet.']
         assert jobs.run_reminders(env.ctx) == 0
     # Turned off, nothing is sent for the next one either.
     client.post(

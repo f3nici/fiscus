@@ -178,11 +178,29 @@ def test_a_payslip_for_a_payday_replaces_its_expected_pay(env: Env) -> None:
         events = calendar_events.events(db, user, date(2026, 10, 8), date(2026, 10, 8), TODAY)
         assert sorted(e.amount_cents for e in events if e.kind == 'pay') == [640_00, 700_00]
         tv = taxes.view(db, user, TODAY)
-        # Future: the recorded payslip's 700 gross and the bonus's 1000, then 650 a week.
-        weeks_left = sum(
-            1 for i in pay.items(db, user, date(2026, 10, 2), date(2027, 6, 30), TODAY)
-        )
+        # From today: the recorded payslip's 700 gross and the bonus's 1000, then
+        # 650 a week, today's payday among them.
+        weeks_left = sum(1 for i in pay.items(db, user, TODAY, date(2027, 6, 30), TODAY))
         assert tv.projected.income_cents == 700_00 + 1000_00 + (weeks_left - 2) * 650_00
+
+
+def test_todays_payday_is_in_the_tax_estimate_once(env: Env) -> None:
+    alex = env.user('alex')
+    a = env.login(alex)
+    weekly(a, make_account(a))
+    sid = schedule_id(env)
+    with env.db() as db:
+        user = db.merge(alex)
+        weeks = len(pay.items(db, user, TODAY, date(2027, 6, 30), TODAY))
+        tv = taxes.view(db, user, TODAY)
+        # Today's pay may not be in yet: projected, not listed as missing.
+        assert tv.projected.income_cents == weeks * 650_00
+        assert [o.payday.day for o in tv.missing] == [3, 10, 17, 24]
+    put_in(a, '2026-10-01', '540', schedule=str(sid))
+    with env.db() as db:
+        tv = taxes.view(db, db.merge(alex), TODAY)
+        # In the year to date now, and not projected again.
+        assert tv.projected.income_cents == 700_00 + (weeks - 1) * 650_00
 
 
 def test_auto_matches_by_date_and_one_off_stays_extra(env: Env) -> None:
