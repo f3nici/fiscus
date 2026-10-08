@@ -23,19 +23,17 @@ Rate limited: everything under `/auth/` and `/setup/`, by IP and by username.
 | Area | Paths |
 | --- | --- |
 | Dashboard | `/`, `/more` |
-| Accounts | `/accounts`, `/accounts/new`, `/accounts/{id}`, `/accounts/{id}/edit`, `POST /accounts[/{id}]`, `POST /accounts/{id}/delete` |
-| Import (a tab under Transactions) | `/import`, `POST /import` (CSV or PDF), `/import/{id}` (mapping or preview), `POST /import/{id}/mapping`, `/account`, `/commit`, `/undo`, `/discard`, `POST /share-target` |
-| Transactions | `/transactions`, `POST /transactions`, `POST /transactions/{id}/category`, `/delete`, `/transactions/export.csv` |
-| Categories and rules | `/categories`, `POST /categories[/{id}]`, `/delete`, `POST /rules[/{id}]`, `/delete`, `POST /rules/rerun`, `/recategorise`, `POST /recategorise/bulk` |
-| Bills | `/bills`, `/bills/new`, `/bills/{id}`, `/edit`, `POST /bills[/{id}]`, `/delete`, `/my-share`, `POST /bills/rematch`, `/bills/{id}/occurrence/{date}`, `POST .../paid`, `POST .../unpaid` |
+| Accounts | `/accounts`, `/accounts/new`, `/accounts/{id}`, `/accounts/{id}/edit`, `POST /accounts[/{id}]`, `POST /accounts/balances`, `POST /accounts/{id}/balance`, `POST /accounts/{id}/delete` |
+| Categories | `/categories`, `POST /categories[/{id}]`, `/delete` |
+| Bills | `/bills`, `/bills/new`, `/bills/{id}`, `/edit`, `POST /bills[/{id}]`, `/delete`, `/my-share`, `/bills/{id}/occurrence/{date}`, `POST .../paid`, `POST .../unpaid` (`back` returns to a path on this site only) |
 | Pay | `/pay`, `POST /pay/schedules[/{id}]`, `/delete`, `/pay?slip={id}` and `/pay?payday={schedule}:{date}` (the payslip form), `POST /payslips[/{id}]`, `POST /payslips/read` (PDFs fill the form or the review list), `POST /payslips/bulk`, `POST /pay/schedules/{id}/no-pay`, `/payslips/{id}/delete` |
 | Calendar | `/calendar?view=month\|week\|day\|agenda&date=` (HTMX partial when `HX-Target: cal`) |
 | Loans | `/loans`, `/loans/new`, `/loans/{id}`, `/edit`, `POST /loans[/{id}]`, `/rates`, `/rates/{id}/delete`, `/offsets`, `/offsets/{account}/unlink`, `/delete` |
 | Forecast | `/forecast?months=&scenario_id=`, `POST /transfers`, `/transfers/{id}/delete`, `/scenarios`, `POST /scenarios`, `/scenarios/{id}`, `/delete`, `/adjustments`, `/adjustments/{id}/delete` |
-| Budget | `/budget?month=YYYY-MM`, `POST /budget`, `POST /budget/{category}/move`, `POST /budget/groups`, `POST /budget/groups/{id}`, `/move`, `/delete`, `/budget/template.csv`, `POST /budget/import`, `/budget/import/{file}?sheet=`, `POST .../apply` |
+| Budget | `/budget?month=YYYY-MM`, `POST /budget`, `POST /budget/spend`, `/spend/{id}/delete`, `/start-day`, `POST /budget/{category}/move`, `/remove`, `POST /budget/groups/fold`, `POST /budget/groups`, `POST /budget/groups/{id}`, `/move`, `/delete`, `/budget/template.csv`, `POST /budget/import`, `/budget/import/{file}?sheet=`, `POST .../apply` |
 | Bill import | `/bills/import`, `POST /bills/import`, `/bills/template.csv`, `/bills/template.json`, `/bills/import/{file}`, `POST .../apply`; `/housing` redirects to `/bills` |
 | Goals | `/goals`, `POST /goals`, `/goals/{id}`, `POST /goals/{id}`, `/move`, `/moves/{move}/delete`, `/done`, `/delete` |
-| Tax | `/tax` |
+| Tax | `/tax`, `POST /tax/deductions` |
 | Square | `/square`, `POST /square`, `/square/sync`, `/square/disconnect` |
 | Settings | `/settings`, `POST /settings/passkeys/options`, `/verify`, `/{id}/rename`, `/{id}/revoke`, `POST /settings/password`, `/password/clear`, `POST /settings/forecast`, `POST /settings/ntfy`, `/ntfy/test`, `/ntfy/clear-token` |
 | Sign out | `POST /auth/logout` |

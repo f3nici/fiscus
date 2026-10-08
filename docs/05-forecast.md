@@ -14,7 +14,9 @@ anchor. A bill's "next due" is its anchor.
   over repayments per year.
 - **Interest**: every day, `max(0, balance - offset) x rate / 365` accrues,
   with fractions of a cent carried. The accrual is charged to the balance on
-  the monthly anniversary of the start date (clamped).
+  the monthly anniversary of the start date (clamped). A typed-in balance
+  leaves out what accrued since the last charge, so the first charge after
+  the balance date includes it, worked on that balance and today's offset.
 - **Order within a day**: scheduled repayments first, then every other flow,
   then the evening's interest on the balance and the offset accounts' balances
   as they now stand.
@@ -23,10 +25,15 @@ anchor. A bill's "next due" is its anchor.
   before the loan's balance date reprices from that balance, so a backdated
   change still moves the repayment. The calendar and the loan page step the
   same simulation (`loan.repayments`), with today's offset held steady.
+  The payoff projection steps from the balance date too, so the repayments
+  since an old balance count; its interest is what is still to come after
+  today.
 - **Offset savings** this month and this financial year sum
-  `min(balance, offset at end of day) x rate / 365` over the actual daily
-  offset balances from transactions, holding the loan balance at its current
-  figure. Lifetime figures assume today's rate and offset hold.
+  `min(balance, offset at end of day) x rate / 365` over the offset balance
+  known on each day: the last one typed in on or before it (D39), holding the
+  loan balance at its current figure. Days before the offset was first typed
+  in are left out, and the page says from when it counts. Lifetime figures
+  assume today's rate and offset hold.
 
 ## The engine
 
@@ -36,8 +43,9 @@ today with real balances. Each later day applies:
 1. flows: pay (net, from `services/pay.items`: each schedule payday, or the
    payslip recording it on that payslip's date, and one-off payslips),
    bills at this person's share, planned transfers (both
-   legs), scenario one-offs. Unpaid bills overdue within the last two months
-   are assumed to go out tomorrow;
+   legs), scenario one-offs. Unpaid bills overdue within the last 62 days
+   (`bills.OVERDUE_CARRY_DAYS`) are assumed to go out tomorrow; the agenda
+   lists them above today;
 2. loan repayments, debited from the repayment account;
 3. discretionary spending: a per-day amount with a carried fraction, debited
    from the spending account;
@@ -65,7 +73,8 @@ draws both.
 
 ## Caching
 
-`forecasting.base` caches one result per user in `forecast_cache`, keyed by
-`data_version`, today's date and the horizon. `services/versioning.py` bumps
+`forecasting.base` caches results per user in `forecast_cache`, keyed by
+`data_version` and today's date, one per horizon asked for (the dashboard's
+three months beside the forecast page's twelve). `services/versioning.py` bumps
 `data_version` on any flush touching an owned row, and for every participant
 of a touched bill. Scenario runs are not cached.
