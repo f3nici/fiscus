@@ -20,7 +20,7 @@
           <div class="label">Offset saved {{ estimate() }}</div>
           {% if s.started %}
             <div class="value pos">{{ s.saved_month_cents | money }}</div>
-            <span class="text-sm muted">this month, {{ s.saved_year_cents | money }} this financial year</span>
+            <span class="text-sm muted">this month, {{ s.saved_year_cents | money }} this financial year{% if s.saved_year_from %} (since {{ s.saved_year_from | d('dm') }}){% endif %}</span>
           {% else %}
             <div class="value">-</div>
             <span class="text-sm muted">Loan starts {{ s.loan.start_date | d }}</span>

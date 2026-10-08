@@ -78,6 +78,7 @@
         <label class="check"><input type="checkbox" name="bills_due" value="true" {{ 'checked' if prefs.ntfy_bills_due }}> Bills coming up</label>
         <label class="check"><input type="checkbox" name="overdue" value="true" {{ 'checked' if prefs.ntfy_overdue }}> Overdue bills</label>
         <label class="check"><input type="checkbox" name="low_balance" value="true" {{ 'checked' if prefs.ntfy_low_balance }}> Low-balance warnings</label>
+        <label class="check"><input type="checkbox" name="payslips" value="true" {{ 'checked' if prefs.ntfy_payslips }}> A payday with no payslip yet</label>
         <div class="row">
           <button class="btn btn-primary" type="submit">Save</button>
         </div>

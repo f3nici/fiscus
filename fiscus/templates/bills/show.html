@@ -49,7 +49,7 @@
     <ul class="list">
       {% for o in occ %}
         <li>
-          <span class="grow"><span class="title">{{ o.due | d('long') }}</span>{% if o.payment %}<span class="text-xs muted">paid {{ o.payment.paid_on | d }}{{ ' (matched)' if o.payment.transaction_id else ' (by hand)' }}</span>{% endif %}</span>
+          <span class="grow"><span class="title">{{ o.due | d('long') }}</span>{% if o.payment %}<span class="text-xs muted">paid {{ o.payment.paid_on | d }}{{ ' (matched to a payment)' if o.payment.transaction_id else '' }}</span>{% endif %}</span>
           {{ status_pill(o.status) }}
           <button class="btn btn-sm" type="button" data-sheet="/bills/{{ bill.id }}/occurrence/{{ o.due.isoformat() }}">Details</button>
         </li>

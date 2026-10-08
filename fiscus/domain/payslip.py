@@ -18,8 +18,8 @@ from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from datetime import date
 
-from fiscus.domain.csvimport import ImportError_
-from fiscus.domain.pdfstatement import Cell, Line, extract_chars, is_pdf, lines_from_chars
+from fiscus.domain.pdftext import Cell, Line, extract_chars, is_pdf, lines_from_chars
+from fiscus.domain.uploads import ImportError_
 from fiscus.money import MoneyError, parse_cents
 
 MAX_PAGES = 5

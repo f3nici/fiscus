@@ -180,7 +180,7 @@ def save_goal(
     try:
         clean, cents, when, acct = _fields(db, user, name, target, target_date, account_id)
         chosen = _chosen(db, user, category_id)
-        holds_cents = money(holds, 'Holds now') if holds.strip() else None
+        holds_cents = money(holds, 'Holds now', allow_negative=False) if holds.strip() else None
     except FormError as exc:
         return redirect(f'/goals/{goal.id}', flash=str(exc), request=request)
     goal.name = clean
@@ -225,6 +225,13 @@ def add_move(
     except FormError as exc:
         return redirect(target, flash=str(exc), request=request)
     if direction == 'out':
+        held = service.held(db, user).get(goal.id, 0)
+        if cents > held:
+            return redirect(
+                target,
+                flash=f'{goal.name} holds {fmt(max(0, held))}, so that is the most to take out',
+                request=request,
+            )
         service.move(db, c.clock, user, goal, -cents, when, note)
         msg = f'{fmt(cents)} out of {goal.name}'
     elif as_spent and line is not None:
@@ -278,5 +285,5 @@ def delete_goal(
     db: Session = Depends(get_db),
 ) -> Response:
     goal = get_owned(db, Goal, goal_id, user)
-    db.delete(goal)
+    service.delete_goal(db, user, goal)
     return redirect('/goals', flash=f'Deleted {goal.name}', request=request)

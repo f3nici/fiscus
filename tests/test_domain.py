@@ -6,7 +6,7 @@ from datetime import date
 
 import pytest
 
-from fiscus.domain import csvimport, recurrence, saving, splits
+from fiscus.domain import recurrence, saving, splits, uploads
 from fiscus.domain.matching import Candidate, OpenOccurrence, assign, matches
 from fiscus.domain.rules import Matcher, RuleError, RuleSpec, validate
 from fiscus.money import MoneyError, fmt, parse_cents
@@ -163,72 +163,13 @@ def test_percent_must_total_100_and_owner_must_hold_a_share() -> None:
         splits.compute(100_00, 'equal', [S(1), S(1)], 1)
 
 
-# ------------------------------------------------------------------- csv/dedup
-
-ANZ = """01/09/2026,"-4.50","EFTPOS COFFEE CO"
-01/09/2026,"-4.50","EFTPOS COFFEE CO"
-02/09/2026,"2500.00","PAY/SALARY ACME"
-03/09/2026,"-120.35","ORIGIN ENERGY BPAY"
-"""
+# ------------------------------------------------------------------- uploads
 
 
-def test_anz_is_detected_and_parsed() -> None:
-    rows = csvimport.read_rows(ANZ)
-    assert csvimport.is_anz(rows)
-    parsed = csvimport.parse(rows, csvimport.ANZ)
-    assert not parsed.errors
-    assert parsed.rows[2].amount_cents == 2500_00
-    assert parsed.rows[3].date == date(2026, 9, 3)
-
-
-def test_headered_file_is_not_anz() -> None:
-    rows = csvimport.read_rows('Date,Amount,Description\n01/09/2026,-4.50,Coffee\n')
-    assert not csvimport.is_anz(rows)
-
-
-def test_identical_rows_in_one_file_are_both_kept() -> None:
-    rows = csvimport.parse(csvimport.read_rows(ANZ), csvimport.ANZ).rows
-    hashes = csvimport.dedup_hashes(7, rows)
-    assert len(set(hashes)) == 4
-
-
-def test_overlapping_exports_produce_the_same_hashes() -> None:
-    first = csvimport.parse(csvimport.read_rows(ANZ), csvimport.ANZ).rows
-    overlap = csvimport.parse(
-        csvimport.read_rows(ANZ + '04/09/2026,"-9.99","NETFLIX"\n'), csvimport.ANZ
-    ).rows
-    a = set(csvimport.dedup_hashes(7, first))
-    b = csvimport.dedup_hashes(7, overlap)
-    assert len([h for h in b if h not in a]) == 1
-
-
-def test_hash_depends_on_account() -> None:
-    rows = csvimport.parse(csvimport.read_rows(ANZ), csvimport.ANZ).rows
-    assert set(csvimport.dedup_hashes(1, rows)).isdisjoint(csvimport.dedup_hashes(2, rows))
-
-
-def test_mapping_with_debit_and_credit_columns() -> None:
-    text = (
-        'Date,Details,Debit,Credit\n2026-09-01,Coffee,4.50,\n2026-09-02,Pay,,2500.00\nbad,row,,\n'
-    )
-    m = csvimport.Mapping(
-        has_header=True,
-        date_col=0,
-        date_format='YYYY-MM-DD',
-        amount_col=None,
-        debit_col=2,
-        credit_col=3,
-        description_cols=(1,),
-    )
-    parsed = csvimport.parse(csvimport.read_rows(text), m)
-    assert [r.amount_cents for r in parsed.rows] == [-450, 2500_00]
-    assert len(parsed.errors) == 1
-
-
-def test_csv_formula_injection_guard() -> None:
-    assert csvimport.csv_safe('=HYPERLINK("x")') == '\'=HYPERLINK("x")'
-    assert csvimport.csv_safe('-12.00') == "'-12.00"
-    assert csvimport.csv_safe('Coffee') == 'Coffee'
+def test_csv_rows_are_read_with_their_delimiter() -> None:
+    assert uploads.read_rows('Item;Amount\nRent;1\n\n') == [['Item', 'Amount'], ['Rent', '1']]
+    with pytest.raises(uploads.ImportError_):
+        uploads.decode(b'\x00binary')
 
 
 # --------------------------------------------------------------------- rules

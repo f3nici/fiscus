@@ -129,6 +129,17 @@ def remove_move(db: Session, user: User, row: GoalMove) -> None:
     db.flush()
 
 
+def delete_goal(db: Session, user: User, goal: Goal) -> None:
+    """Delete a goal and what was put aside into it from budget lines: both
+    halves of each go, as when one entry is removed (D34)."""
+    for row in list(goal.moves):
+        spend = maybe_owned(db, BudgetSpend, row.spend_id, user)
+        if spend is not None:
+            db.delete(spend)
+    db.delete(goal)
+    db.flush()
+
+
 def remove_spend(db: Session, user: User, spend: BudgetSpend) -> None:
     """Remove a budget spend and the goal move recorded with it."""
     for row in db.execute(owned(GoalMove, user).where(GoalMove.spend_id == spend.id)).scalars():
@@ -208,8 +219,9 @@ def held_outside(db: Session, user: User, accounts: list[Account]) -> int:
     that is in the accounts but not free to spend."""
     ids = {a.id for a in accounts}
     now = held(db, user)
+    # A goal below nothing (taken out past what it held) frees nothing extra.
     return sum(
-        now.get(g.id, 0)
+        max(0, now.get(g.id, 0))
         for g in goals(db, user)
         if g.keep_aside and (g.account_id is None or g.account_id in ids)
     )

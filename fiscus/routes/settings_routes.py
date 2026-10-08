@@ -245,6 +245,7 @@ def ntfy_prefs(
     bills_due: bool = Form(False),
     overdue: bool = Form(False),
     low_balance: bool = Form(False),
+    payslips: bool = Form(False),
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> Response:
@@ -265,6 +266,7 @@ def ntfy_prefs(
     prefs.ntfy_bills_due = bills_due
     prefs.ntfy_overdue = overdue
     prefs.ntfy_low_balance = low_balance
+    prefs.ntfy_payslips = payslips
     return redirect('/settings', flash='Reminder settings saved', request=request)
 
 

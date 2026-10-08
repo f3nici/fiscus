@@ -13,7 +13,8 @@ from fastapi.responses import PlainTextResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
 from fiscus.domain import bill_import as dom
-from fiscus.domain.csvimport import MAX_BYTES, ImportError_
+from fiscus.domain.uploads import MAX_BYTES, ImportError_
+from fiscus.forms import int_or
 from fiscus.models import User
 from fiscus.services import bill_import as svc
 from fiscus.web import ctx, current_user, get_db, redirect, render
@@ -83,8 +84,14 @@ def _mapping(request: Request) -> dict[str, int | None] | None:
     out: dict[str, int | None] = {}
     for f in dom.FIELDS:
         v = q.get(f'map_{f}', '')
-        out[f] = int(v) if v.isdigit() else None
+        out[f] = _column(v)
     return out
+
+
+def _column(value: object) -> int | None:
+    """A chosen column number, or None for "not in the file"."""
+    n = int_or(value, -1)
+    return n if n >= 0 else None
 
 
 def _parse(data: bytes, kind: str, mapping: dict[str, int | None] | None) -> dom.ParsedBills:
@@ -147,7 +154,7 @@ async def apply(
         mapping = {}
         for f in dom.FIELDS:
             v = form.get(f'map_{f}')
-            mapping[f] = int(v) if isinstance(v, str) and v.isdigit() else None
+            mapping[f] = _column(v)
     try:
         parsed = _parse(data, kind, mapping)
         result = svc.apply_diff(

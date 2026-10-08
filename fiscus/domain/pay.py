@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 
 from fiscus.domain import recurrence
+from fiscus.money import round_div
 
 WINDOW_DAYS = 91  # thirteen weeks
 # Paid every few months: a year, so the average covers four paydays.
@@ -49,7 +50,7 @@ def expected_pay(
     paydays = sum(
         1 for _d in recurrence.occurrences(anchor, frequency, start, end, not_before=start)
     )
-    return round(sum(c for _d, c in seen) / max(paydays, 1))
+    return round_div(sum(c for _d, c in seen), max(paydays, 1))
 
 
 # ------------------------------------------------------------------ payslips

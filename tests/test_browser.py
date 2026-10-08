@@ -26,7 +26,6 @@ from fiscus.services.budget_import import template_csv
 from tests.conftest import settings_for
 from tests.test_paydays import simple_slip
 from tests.test_payslip_pdf import payslip_pdf
-from tests.test_pdf_import import statement
 
 pytestmark = pytest.mark.browser
 
@@ -142,21 +141,6 @@ def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any
     ]:
         page.goto(f'{base}{path}')
         page.wait_for_load_state('networkidle')
-    # Import is a tab under Transactions; a PDF statement goes through it.
-    page.goto(f'{base}/transactions')
-    page.click('nav.tabs a[href="/import"]')
-    page.wait_for_url(f'{base}/import')
-    page.set_input_files(
-        '#file',
-        files=[{'name': 'statement.pdf', 'mimeType': 'application/pdf', 'buffer': statement()}],
-    )
-    page.click('#import-form button[type=submit]')
-    page.wait_for_url(f'{base}/import/*')
-    assert 'PDF statement' in page.content()
-    assert 'EFTPOS COFFEE CO PERTH WA' in page.content()
-    page.click('form[action$="/commit"] button')
-    page.wait_for_url(f'{base}/accounts/*')
-    assert 'Imported 4 transactions' in page.content()
     page.goto(f'{base}/pay')
     page.check('input[name=varies]')
     page.fill('#ps-net', '450')
@@ -250,7 +234,7 @@ def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any
     )
     # Car rego came back from the file at its own amount, not the old $900.
     table = page.inner_text('main table')
-    assert 'Saving up $1,109.04 every year' in table and '$900.00' not in table
+    assert 'Saving up $1,109.00 every year' in table and '$900.00' not in table
     page.goto(f'{base}/accounts')
     page.fill('input[name^=balance_]', '2400')
     page.click('form[action="/accounts/balances"] button[type=submit]')

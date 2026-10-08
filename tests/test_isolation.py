@@ -23,20 +23,17 @@ from fiscus.models import (
     Category,
     Goal,
     GoalMove,
-    Import,
     Loan,
     LoanRate,
     PaySchedule,
     Payslip,
     RecurringTransfer,
-    Rule,
     Scenario,
     ScenarioAdjustment,
-    Transaction,
     User,
 )
 from tests.conftest import CsrfClient, Env
-from tests.test_imports_bills import ANZ_SEPT, create_bill, import_csv, make_account, upload
+from tests.test_bills import ANZ_SEPT, add_transactions, create_bill, make_account
 
 OWNED_TABLES = [
     'accounts',
@@ -80,11 +77,7 @@ def snapshot(env: Env) -> str:
 @dataclass
 class Ids:
     account: int
-    txn: int
     category: int
-    rule: int
-    imp: int
-    pending_imp: int
     bill: int
     schedule: int
     payslip: int
@@ -106,8 +99,7 @@ def seeded(env: Env) -> tuple[CsrfClient, CsrfClient, Ids, User, User]:
     a, b = env.login(alex), env.login(blake)
     acct = make_account(a)
     savings = make_account(a, 'Savings', 'savings')
-    import_csv(a, acct, ANZ_SEPT)
-    pending = upload(a, acct, ANZ_SEPT + '30/09/2026,"-1.00","X"\n')
+    add_transactions(a, acct, ANZ_SEPT)
     bill = create_bill(a, account_id=str(acct))
     a.post(
         '/pay/schedules',
@@ -175,7 +167,6 @@ def seeded(env: Env) -> tuple[CsrfClient, CsrfClient, Ids, User, User]:
     with env.db() as db:
         cat = db.execute(select(Category).where(Category.user_id == alex.id)).scalars().first()
         assert cat is not None
-        a.post('/rules', data={'pattern': 'coffee', 'category_id': str(cat.id)})
         a.post('/budget', data={'category_id': str(cat.id), 'amount': '300'})
         a.post(
             '/budget/spend', data={'category_id': str(cat.id), 'amount': '42', 'note': 'Bunnings'}
@@ -201,14 +192,7 @@ def seeded(env: Env) -> tuple[CsrfClient, CsrfClient, Ids, User, User]:
 
         ids = Ids(
             account=acct,
-            txn=one(Transaction),
             category=cat.id,
-            rule=one(Rule),
-            imp=int(
-                db.execute(select(Import.id).where(Import.status == 'committed')).scalars().first()
-                or 0
-            ),
-            pending_imp=pending,
             bill=bill,
             schedule=one(PaySchedule),
             payslip=one(Payslip),
@@ -229,7 +213,6 @@ def seeded(env: Env) -> tuple[CsrfClient, CsrfClient, Ids, User, User]:
 READS = [
     '/accounts/{account}',
     '/accounts/{account}/edit',
-    '/import/{pending_imp}',
     '/bills/{bill}',
     '/bills/{bill}/edit',
     '/bills/{bill}/occurrence/2026-10-15',
@@ -247,21 +230,8 @@ READS = [
 WRITES: list[tuple[str, dict[str, Any]]] = [
     ('/accounts/{account}', {'name': 'pwned', 'type': 'transaction'}),
     ('/accounts/{account}/delete', {}),
-    ('/transactions/{txn}/category', {'category_id': '0'}),
-    ('/transactions/{txn}/delete', {}),
-    (
-        '/transactions',
-        {'account_id': '{account}', 'date': '2026-10-01', 'amount': '-1', 'description': 'x'},
-    ),
     ('/categories/{category}', {'name': 'pwned'}),
     ('/categories/{category}/delete', {}),
-    ('/rules/{rule}', {'pattern': 'x', 'category_id': '{category}'}),
-    ('/rules/{rule}/delete', {}),
-    ('/import', {'account_id': '{account}'}),
-    ('/import/{imp}/undo', {}),
-    ('/import/{pending_imp}/commit', {}),
-    ('/import/{pending_imp}/discard', {}),
-    ('/import/{pending_imp}/account', {'account_id': '{account}'}),
     (
         '/bills/{bill}',
         {'name': 'x', 'amount': '1', 'frequency': 'monthly', 'next_due': '2026-10-01'},
@@ -348,12 +318,7 @@ def test_b_cannot_write_a(env: Env, seeded: tuple[CsrfClient, CsrfClient, Ids, U
     for path, data in WRITES:
         url = fill(path, ids)
         form = {k: fill(v, ids) if isinstance(v, str) else v for k, v in data.items()}
-        files = (
-            {'file': ('x.csv', b'01/10/2026,"-1.00","X"\n', 'text/csv')}
-            if path == '/import'
-            else None
-        )
-        resp = b.post(url, data=form, files=files)
+        resp = b.post(url, data=form)
         assert resp.status_code == 404, f'POST {url} answered {resp.status_code}'
     # The bulk balance form only reads B's own accounts: A's id is ignored.
     b.post('/accounts/balances', data={f'balance_{ids.account}': '1'})
@@ -365,7 +330,6 @@ def test_b_lists_show_none_of_a(seeded: tuple[CsrfClient, CsrfClient, Ids, User,
     pages = [
         '/',
         '/accounts',
-        '/transactions',
         '/bills',
         '/pay',
         '/calendar?view=agenda',
@@ -375,8 +339,7 @@ def test_b_lists_show_none_of_a(seeded: tuple[CsrfClient, CsrfClient, Ids, User,
         '/budget',
         f'/bills?category={ids.category}',
         '/tax',
-        '/import',
-        '/recategorise',
+        '/categories',
         '/square',
         '/goals',
     ]
@@ -397,8 +360,6 @@ def test_b_lists_show_none_of_a(seeded: tuple[CsrfClient, CsrfClient, Ids, User,
         body = b.get(page).text
         for m in markers:
             assert m not in body, f"{m!r} from A appears on B's {page}"
-    export = b.get('/transactions/export.csv').text
-    assert 'COFFEE' not in export
 
 
 def test_b_cannot_add_a_to_their_rows(
@@ -433,9 +394,6 @@ def test_b_cannot_add_a_to_their_rows(
             },
         ).status_code
         == 404
-    )
-    assert (
-        b.post('/rules', data={'pattern': 'x', 'category_id': str(ids.category)}).status_code == 404
     )
     assert (
         b.post(

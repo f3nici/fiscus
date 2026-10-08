@@ -19,6 +19,8 @@
     </div>
   {% endif %}
 
+  {% with back="/" %}{% include "bills/_overdue.html" %}{% endwith %}
+
   {% if put_in %}
     <div class="alert alert-info" id="put-in-note">
       {{ put_in | length }} payslip{{ '' if put_in | length == 1 else 's' }} to put in, the latest for {{ put_in[0].name }} on {{ put_in[0].payday | d('dm') }}.
@@ -64,7 +66,8 @@
         <div class="value">-</div><span class="text-sm muted">Loan starts {{ loans[0].loan.start_date | d }}</span>
       {% elif loans %}
         <div class="value pos">{{ loans | sum(attribute='saved_month_cents') | money }}</div>
-        <span class="text-sm muted">{{ loans | sum(attribute='saved_year_cents') | money }} this financial year</span>
+        {% set counted_from = loans | map(attribute='saved_year_from') | select | list %}
+        <span class="text-sm muted">{{ loans | sum(attribute='saved_year_cents') | money }} this financial year{% if counted_from %} (since {{ counted_from | max | d('dm') }}){% endif %}</span>
       {% else %}
         <div class="value">-</div><a class="text-sm" href="/loans/new">Add your home loan</a>
       {% endif %}
@@ -119,7 +122,7 @@
       <div class="row between"><h2 class="mb-0">Budget left</h2><a class="text-sm" href="/budget">Budget</a></div>
       <ul class="list">
         {% for r in spending %}
-          <li><span class="title">{{ r.category.name }}</span><span class="num {{ 'neg' if r.state == 'over' else '' }}">{{ r.remaining_cents | money }} <span class="text-xs muted">of {{ r.budget_cents | money }}</span></span></li>
+          <li><span class="title">{{ r.category.name }}</span><span class="num {{ 'neg' if r.state == 'over' else '' }}">{{ r.remaining_cents | money }} <span class="text-xs muted">{% if r.saving %}saved up{% else %}of {{ r.budget_cents | money }}{% endif %}</span></span></li>
         {% else %}
           <li class="muted"><a href="/budget">Set a budget</a> to see what is left until {{ budget_end | d('dm') }}.</li>
         {% endfor %}
@@ -138,7 +141,7 @@
             <li>
               <span class="grow">
                 <a class="title" href="/goals/{{ v.goal.id }}">{{ v.goal.name }}</a>
-                {% if v.goal.target_cents %}<meter min="0" max="{{ v.goal.target_cents }}" optimum="{{ v.goal.target_cents }}" low="{{ (v.goal.target_cents * 0.5) | int }}" value="{{ [[v.held_cents, 0] | max, v.goal.target_cents] | min }}">{{ v.progress.pct }}%</meter>{% endif %}
+                {% if v.goal.target_cents %}<meter min="0" max="{{ v.goal.target_cents }}" optimum="{{ v.goal.target_cents }}" low="{{ v.goal.target_cents // 2 }}" value="{{ [[v.held_cents, 0] | max, v.goal.target_cents] | min }}">{{ v.progress.pct }}%</meter>{% endif %}
               </span>
               <span class="num">{{ v.held_cents | money }}{% if v.goal.target_cents %} <span class="text-xs muted">of {{ v.goal.target_cents | money }}</span>{% endif %}</span>
             </li>

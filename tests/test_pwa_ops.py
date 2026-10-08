@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import re
 import sqlite3
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -16,7 +17,7 @@ from fiscus.models import NotificationLog, UserSettings
 from fiscus.routes.pwa import shell_assets
 from fiscus.services import backup, ntfy, reminders
 from tests.conftest import Env
-from tests.test_imports_bills import create_bill, make_account
+from tests.test_bills import create_bill, make_account
 
 # ---------------------------------------------------------------- the worker
 
@@ -34,7 +35,7 @@ def test_service_worker_caches_only_the_shell(env: Env) -> None:
     assert all(u == '/offline' or u.startswith('/static/') for u in urls)
     for forbidden in (
         '/accounts',
-        '/transactions',
+        '/budget',
         '/api',
         '/forecast',
         '/calendar',
@@ -62,7 +63,7 @@ def test_data_responses_are_never_cacheable(env: Env) -> None:
         f'/accounts/{acct}',
         '/forecast',
         '/calendar',
-        '/transactions/export.csv',
+        '/budget/template.csv',
         '/login',
     ]:
         resp = client.get(path)
@@ -85,7 +86,8 @@ def test_manifest(env: Env) -> None:
     m = env.client().get('/manifest.webmanifest').json()
     assert m['name'] == 'Fiscus' and m['display'] == 'standalone' and m['theme_color']
     assert {i['purpose'] for i in m['icons']} == {'any', 'maskable'}
-    assert m['share_target']['action'] == '/share-target'
+    assert 'share_target' not in m
+    assert [s['url'] for s in m['shortcuts']] == ['/budget', '/calendar']
 
 
 def test_security_headers(env: Env) -> None:
@@ -95,26 +97,6 @@ def test_security_headers(env: Env) -> None:
     assert 'unsafe' not in csp
     assert resp.headers['x-frame-options'] == 'DENY'
     assert resp.headers['strict-transport-security']
-
-
-def test_share_target_only_stages(env: Env) -> None:
-    client = env.login(env.user('alex'))
-    make_account(client)
-    from fastapi.testclient import TestClient
-
-    raw = TestClient(env.app, base_url='https://fiscus.test', follow_redirects=False)
-    raw.cookies = client.cookies
-    resp = raw.post(
-        '/share-target', files={'file': ('anz.csv', b'01/10/2026,"-1.00","X"\n', 'text/csv')}
-    )
-    assert resp.status_code == 303 and resp.headers['location'].startswith('/import/')
-    assert 'Preview' in client.get(resp.headers['location']).text
-    anon = TestClient(env.app, base_url='https://fiscus.test', follow_redirects=False)
-    assert (
-        anon.post('/share-target', files={'file': ('a.csv', b'x', 'text/csv')})
-        .headers['location']
-        .startswith('/login')
-    )
 
 
 def test_no_external_assets_in_pages(env: Env) -> None:
@@ -196,11 +178,11 @@ def test_reminders_sent_once_each(env: Env, monkeypatch: pytest.MonkeyPatch) -> 
     )
     sent: list[dict[str, Any]] = []
 
-    def fake_post(url: str, **kw: Any) -> httpx.Response:
+    def fake_post(_client: httpx.Client, url: str, **kw: Any) -> httpx.Response:
         sent.append({'url': url, **kw})
         return httpx.Response(200)
 
-    monkeypatch.setattr(httpx, 'post', fake_post)
+    monkeypatch.setattr(httpx.Client, 'post', fake_post)
     assert jobs.run_reminders(env.ctx) == 3
     titles = sorted(s['headers']['Title'] for s in sent)
     assert titles == ['Low balance ahead', 'Phone is overdue', 'Rent due on Sat 03 Oct']
@@ -212,6 +194,49 @@ def test_reminders_sent_once_each(env: Env, monkeypatch: pytest.MonkeyPatch) -> 
         assert len(db.execute(select(NotificationLog)).scalars().all()) == 3
 
 
+def test_a_payday_without_a_payslip_is_reminded_once(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    alex = env.user('alex')
+    client = env.login(alex)
+    client.post(
+        '/pay/schedules',
+        data={'name': 'Acme', 'frequency': 'weekly', 'anchor_date': '2026-09-03', 'net': '900'},
+    )
+    client.post(
+        '/settings/ntfy',
+        data={
+            'enabled': 'true',
+            'url': 'http://192.168.1.20',
+            'topic': 'f',
+            'hour': '10',
+            'payslips': 'true',
+        },
+    )
+    sent: list[str] = []
+
+    def fake_post(_client: httpx.Client, url: str, **kw: Any) -> httpx.Response:
+        sent.append(kw['content'].decode())
+        return httpx.Response(200)
+
+    # TestClient is an httpx.Client too: only patch it while the job runs.
+    with monkeypatch.context() as m:
+        m.setattr(httpx.Client, 'post', fake_post)
+        # Only the last week's payday (24 Sep); today's (1 Oct) may not be in yet.
+        assert jobs.run_reminders(env.ctx) == 1
+        assert sent == ['Acme paid on Thu 24 Sep: no payslip in Fiscus yet.']
+        assert jobs.run_reminders(env.ctx) == 0
+    # Turned off, nothing is sent for the next one either.
+    client.post(
+        '/settings/ntfy',
+        data={'enabled': 'true', 'url': 'http://192.168.1.20', 'topic': 'f', 'hour': '10'},
+    )
+    env.clock.set(datetime(2026, 10, 2, 2, 0, tzinfo=UTC))
+    with monkeypatch.context() as m:
+        m.setattr(httpx.Client, 'post', fake_post)
+        assert jobs.run_reminders(env.ctx) == 0
+
+
 def test_reminders_wait_for_the_chosen_hour(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
     alex = env.user('alex')
     client = env.login(alex)
@@ -219,7 +244,7 @@ def test_reminders_wait_for_the_chosen_hour(env: Env, monkeypatch: pytest.Monkey
         '/settings/ntfy',
         data={'enabled': 'true', 'url': 'http://192.168.1.20', 'topic': 'f', 'hour': '7'},
     )
-    monkeypatch.setattr(httpx, 'post', lambda *a, **k: pytest.fail('sent at the wrong hour'))
+    monkeypatch.setattr(httpx.Client, 'post', lambda *a, **k: pytest.fail('sent at the wrong hour'))
     with env.db() as db:
         from fiscus.models import User
 
@@ -294,15 +319,19 @@ def test_health_and_ready(env: Env) -> None:
 
 def test_housekeeping_removes_stale_uploads(env: Env) -> None:
     client = env.login(env.user('alex'))
-    acct = make_account(client)
+    make_account(client)
     resp = client.post(
-        '/import',
-        data={'account_id': str(acct)},
-        files={'file': ('a.csv', b'01/10/2026,"-1.00","X"\n', 'text/csv')},
+        '/budget/import', files={'file': ('b.csv', b'Item,Amount,Frequency\nRent,1,Monthly\n')}
     )
     assert resp.status_code == 303
-    assert any(env.ctx.settings.upload_dir.iterdir())
-    env.clock.set(env.clock.now() + timedelta(days=2))
+    staged = list(env.ctx.settings.upload_dir.iterdir())
+    assert staged
+    jobs.housekeeping(env.ctx)
+    assert list(env.ctx.settings.upload_dir.iterdir()) == staged  # still fresh
+    # A day and more after the clock's now, nobody is coming back for it.
+    old = (env.clock.now() - timedelta(days=2)).timestamp()
+    for f in staged:
+        os.utime(f, (old, old))
     jobs.housekeeping(env.ctx)
     assert not any(env.ctx.settings.upload_dir.iterdir())
 

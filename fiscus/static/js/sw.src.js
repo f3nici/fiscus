@@ -32,11 +32,6 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('message', (event) => {
   const data = event.data || {};
   if (data.type === 'SKIP_WAITING') self.skipWaiting();
-  if (data.type === 'TAKE_SHARED_FILE') {
-    const file = sharedFile;
-    sharedFile = null;
-    event.source.postMessage({ type: 'SHARED_FILE', file });
-  }
 });
 
 /** Only these are ever answered from the cache. */
@@ -44,30 +39,10 @@ function isShell(url) {
   return url.origin === self.location.origin && (url.pathname.startsWith('/static/') || url.pathname === '/offline');
 }
 
-// A CSV shared from another app (Android share sheet). Held in memory only,
-// handed to the import page once, then dropped. Never written to a cache.
-let sharedFile = null;
-
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
-
-  if (request.method === 'POST' && url.pathname === '/share-target') {
-    event.respondWith(
-      (async () => {
-        try {
-          const form = await request.formData();
-          const file = form.get('file');
-          sharedFile = file && typeof file !== 'string' ? file : null;
-        } catch (e) {
-          sharedFile = null;
-        }
-        return Response.redirect('/import?shared=1', 303);
-      })(),
-    );
-    return;
-  }
 
   if (request.method !== 'GET') return;
 

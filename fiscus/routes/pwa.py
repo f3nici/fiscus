@@ -69,21 +69,8 @@ def manifest() -> Response:
                 'purpose': 'maskable',
             },
         ],
-        'share_target': {
-            'action': '/share-target',
-            'method': 'POST',
-            'enctype': 'multipart/form-data',
-            'params': {
-                'files': [
-                    {
-                        'name': 'file',
-                        'accept': ['text/csv', '.csv', 'text/plain', 'application/pdf', '.pdf'],
-                    }
-                ]
-            },
-        },
         'shortcuts': [
-            {'name': 'Import statement', 'url': '/import'},
+            {'name': 'Budget', 'url': '/budget'},
             {'name': 'Calendar', 'url': '/calendar'},
         ],
     }

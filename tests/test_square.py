@@ -16,7 +16,7 @@ from fiscus.domain import square as dom
 from fiscus.models import AuditLog, Category, Import, SquareConnection, Transaction
 from fiscus.services import square as svc
 from tests.conftest import CsrfClient, Env
-from tests.test_imports_bills import make_account
+from tests.test_bills import make_account
 
 PERTH = ZoneInfo('Australia/Perth')
 TOKEN = 'EAAAtest-token'

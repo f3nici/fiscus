@@ -62,13 +62,20 @@
                 </div>
                 {% if day.events %}<a class="vuecal__cell-events-count" href="{{ url('day', day.date) }}" data-cal-nav>{{ day.events | length }}</a>{% endif %}
               </div>
-              {% if day.balance is not none %}<span class="cell-balance {{ 'low' if low else '' }}">{{ (day.balance | money).split('.')[0] }}</span>{% endif %}
+              {% if day.balance is not none %}<span class="cell-balance {{ 'low' if low else '' }}" title="{{ day.balance | money }}"><span class="wide">{{ day.balance | money_short }}</span><span class="narrow">{{ day.balance | money_short(false) }}</span></span>{% endif %}
             </div>
           {% endfor %}
         </div>
       </div>
     {% else %}
       <ul class="cal-list">
+        {% if g.overdue %}
+          <li class="cal-day" id="cal-overdue">
+            <div class="cal-day-head neg"><span>Overdue, not marked paid</span></div>
+            {% for e in g.overdue %}{{ event_button(e, true) }}{% endfor %}
+            <div class="text-xs muted">The balances below count these as going out tomorrow.</div>
+          </li>
+        {% endif %}
         {% for day in g.days %}
           <li class="cal-day">
             <div class="cal-day-head {{ 'today' if day.is_today else '' }}">

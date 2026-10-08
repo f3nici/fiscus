@@ -30,8 +30,12 @@
 - Disabling a user deletes their sessions; every request re-checks the user is
   active.
 - CSRF: a `__Host-` cookie, `SameSite=Strict`, compared in constant time with
-  the form field or header, plus an `Origin`/`Referer` check. The share target
-  is exempt and can only stage a file.
+  the form field or header, plus an `Origin`/`Referer` check, on every unsafe
+  request.
+- Redirects after a form go to a path on this site only (`web.local_path`):
+  never `//host` or a backslash form a browser could read as another origin.
+- An unexpected error answers with an error page carrying the usual headers
+  and `no-store`; nothing is saved (the request's session rolls back).
 - Rate limits on `/auth/*` and `/setup/*` per IP and per username.
 - Client IPs come from `X-Forwarded-For` only when the peer is in
   `FISCUS_TRUSTED_PROXIES`.
@@ -42,22 +46,23 @@
 ## Data
 
 - Ownership on every query (`services/access.py`); 404 for others' rows.
-- Uploads are staged under random names in `/data/uploads`, size-capped,
-  text-only, and deleted on commit, discard or after a day.
-- Bill and budget import file names embed the owner's id and are checked
+- Bill and budget import files are staged under random names in
+  `/data/uploads`, size-capped, with the owner's id in the name, checked
   against it; they are deleted on apply or after a day.
 - XLSX files are size-checked before unzipping and parsed through defusedxml
   (no entity expansion); only cached cell values are read, nothing is executed.
-- PDF statements are size-checked (10 MB, 100 pages), parsed off the event
-  loop, and only their text is kept: the staged file is the extracted table as
-  CSV, never the PDF. Nothing in a PDF is executed; encrypted ones are refused.
-- CSV exports guard against formula injection.
+- Payslip PDFs are size-checked (10 MB, 100 pages), parsed off the event loop
+  and read in memory; the file is never kept. Nothing in a PDF is executed;
+  encrypted ones are refused.
 - The service worker never stores data responses; offline shows a static
   screen.
 - Square: off by default, per user, read only, only to `connect.squareup.com`
   with redirects off. The access token is write-only in the UI, stored in the
   database like the ntfy token (so it is in backups), and setting or removing
   it is audited. Disconnecting forgets it.
-- ntfy: off by default; refuses loopback, link-local and unspecified targets;
-  messages carry bill names, dates and amounts only.
+- ntfy: off by default; refuses loopback, link-local and unspecified targets,
+  and connects to the address it checked (a name is resolved once, then the
+  request goes to that address with the name as Host and for TLS), so a name
+  cannot be rebound to the container between the check and the send.
+  Messages carry bill and employer names, dates and amounts only.
 - Backups contain everyone's data: admin only, audited.

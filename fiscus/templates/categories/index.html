@@ -1,27 +1,24 @@
 {% extends "base.html" %}
-{% block title %}Categories and rules{% endblock %}
+{% block title %}Categories{% endblock %}
 {% block content %}
   <div class="page-head">
-    <h1>Categories and rules</h1>
-    <a class="btn btn-primary" href="/recategorise">Recategorise ({{ uncategorised }})</a>
+    <h1>Categories</h1>
   </div>
-  <div class="grid grid-2">
-    <div class="card">
-      <h2>Categories</h2>
+  <div class="card">
       <div class="table-wrap">
         <table class="stack-table">
-          <thead><tr><th>Name</th><th>Flags</th><th class="num">Used</th><th></th></tr></thead>
+          <thead><tr><th>Name</th><th>Flags</th><th></th></tr></thead>
           <tbody>
             {% for c in cats %}
               <tr>
                 <td>{{ c.name }}</td>
                 <td>
+                  {% if c.id in budgeted %}<a class="pill pill-upcoming" href="/budget#line-{{ c.id }}">Budget line</a>{% endif %}
                   {% if c.is_income %}<span class="pill pill-ok">Income</span>{% endif %}
                   {% if c.is_business %}<span class="pill pill-upcoming">Business</span>{% endif %}
                   {% if c.is_deductible %}<span class="pill pill-shared">Deductible</span>{% endif %}
                   {% if c.is_transfer %}<span class="pill">Transfer</span>{% endif %}
                 </td>
-                <td class="num" data-label="Used">{{ counts.get(c.id, 0) }}</td>
                 <td class="cell-full">
                   <details>
                     <summary class="text-sm">Edit</summary>
@@ -34,7 +31,7 @@
                       <label class="check"><input type="checkbox" name="is_transfer" value="true" {{ 'checked' if c.is_transfer }}> Transfer between my accounts</label>
                       <button class="btn btn-sm btn-primary" type="submit">Save</button>
                     </form>
-                    <form method="post" action="/categories/{{ c.id }}/delete" class="mt-sm" data-confirm="Delete {{ c.name }}? Its transactions become uncategorised.">
+                    <form method="post" action="/categories/{{ c.id }}/delete" class="mt-sm" data-confirm="Delete {{ c.name }}? Its budget line and what was taken off it go too.">
                       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                       <button class="btn btn-sm btn-danger" type="submit">Delete</button>
                     </form>
@@ -57,49 +54,5 @@
         </div>
         <button class="btn btn-primary" type="submit">Add category</button>
       </form>
-    </div>
-
-    <div class="card">
-      <h2>Rules</h2>
-      <p class="muted text-sm">Applied on import, highest priority first. The first match wins.</p>
-      <ul class="list">
-        {% for r in rules %}
-          <li>
-            <span class="grow">
-              <span class="title"><code>{{ r.pattern }}</code>{% if r.is_regex %} <span class="pill">regex</span>{% endif %}</span>
-              <span class="text-xs muted">to {{ names.get(r.category_id, '?') }} · priority {{ r.priority }}</span>
-            </span>
-            <form class="inline" method="post" action="/rules/{{ r.id }}/delete">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-              <button class="btn btn-sm" type="submit" aria-label="Delete rule">✕</button>
-            </form>
-          </li>
-        {% else %}
-          <li class="muted">No rules yet.</li>
-        {% endfor %}
-      </ul>
-      <h3 class="mt">New rule</h3>
-      <form method="post" action="/rules">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <div class="form-grid">
-          <div class="field"><label class="label" for="pattern">Description contains</label><input class="input" id="pattern" name="pattern" required maxlength="200"></div>
-          <div class="field"><label class="label" for="category_id">Category</label>
-            <select class="input" id="category_id" name="category_id">{% for c in cats %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select>
-          </div>
-          <div class="field"><label class="label" for="priority">Priority</label><input class="input" id="priority" name="priority" type="number" value="100" min="0" max="10000"></div>
-          <div class="field">
-            <label class="check"><input type="checkbox" name="is_regex" value="true"> It is a regular expression</label>
-            <label class="check"><input type="checkbox" name="apply_now" value="true" checked> Apply to uncategorised now</label>
-          </div>
-        </div>
-        <button class="btn btn-primary" type="submit">Add rule</button>
-      </form>
-      <h3 class="mt">Re-run rules</h3>
-      <form method="post" action="/rules/rerun" class="row">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <label class="check"><input type="checkbox" name="overwrite" value="true"> Also recategorise ones already categorised</label>
-        <button class="btn" type="submit">Re-run</button>
-      </form>
-    </div>
   </div>
 {% endblock %}

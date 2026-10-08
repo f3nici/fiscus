@@ -44,6 +44,12 @@ class Section:
     def remaining_cents(self) -> int:
         return sum(r.remaining_cents for r in self.spending)
 
+    @property
+    def saved_cents(self) -> int:
+        """What saved-up lines hold, which is in `remaining_cents` and can be
+        more than a month's budget."""
+        return sum(max(0, r.remaining_cents) for r in self.spending if r.saving)
+
 
 def sections(db: Session, user: User, rows: list[BudgetRow]) -> list[Section]:
     """Each group in order with its lines, then the lines in no group. Empty

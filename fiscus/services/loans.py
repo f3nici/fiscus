@@ -25,6 +25,10 @@ class LoanSummary:
     offset_balance_cents: int
     saved_month_cents: int
     saved_year_cents: int
+    # The first day of each that is counted, when the offset's balance was
+    # first typed in after the month or year began.
+    saved_month_from: date | None
+    saved_year_from: date | None
     with_offset: loan_math.Payoff
     without_offset: loan_math.Payoff
     # False until settlement: there is no interest, so nothing saved yet.
@@ -50,20 +54,23 @@ def summarise(db: Session, user: User, loan: Loan, today: date) -> LoanSummary:
     month_start = today.replace(day=1)
     fy_start, _ = fy_bounds(today)
 
-    def saved_since(start: date) -> int:
+    def saved_since(start: date) -> tuple[int, date | None]:
         start = max(start, loan.start_date)
         if start > today:
-            return 0
-        daily = ledger.daily_balances(db, user, list(spec.offset_account_ids), start, today)
-        return loan_math.interest_saved(loan.balance_cents, spec.rates, daily)
+            return 0, None
+        daily, known = ledger.balance_history(db, user, list(spec.offset_account_ids), start, today)
+        saved = loan_math.interest_saved(loan.balance_cents, spec.rates, daily)
+        return saved, (known if known > start else None)
 
     # The current repayment, after any rate changes up to today.
-    sim = loan_math.LoanSim(spec)
+    sim = loan_math.LoanSim(spec, opening_offset_cents=offset_now)
     day = spec.balance_date
     while day < today:
         day += timedelta(days=1)
         sim.repayments_due(day)
         sim.end_of_day(day, offset_now)
+    month_saved, month_from = saved_since(month_start)
+    year_saved, year_from = saved_since(fy_start)
     projected_from = max(today, spec.balance_date)
     with_offset = loan_math.project_payoff(spec, projected_from, lambda _d: offset_now)
     without = loan_math.project_payoff(spec, projected_from, lambda _d: 0)
@@ -73,8 +80,10 @@ def summarise(db: Session, user: User, loan: Loan, today: date) -> LoanSummary:
         repayment_cents=sim.payment,
         offset_ids=spec.offset_account_ids,
         offset_balance_cents=offset_now,
-        saved_month_cents=saved_since(month_start),
-        saved_year_cents=saved_since(fy_start),
+        saved_month_cents=month_saved,
+        saved_year_cents=year_saved,
+        saved_month_from=month_from,
+        saved_year_from=year_from,
         with_offset=with_offset,
         without_offset=without,
         started=loan.start_date <= today,

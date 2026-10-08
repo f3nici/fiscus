@@ -11,7 +11,17 @@ from sqlalchemy.orm import Session
 
 from fiscus.clock import utcnow_naive
 from fiscus.domain.forecast import SCENARIO_KINDS, ForecastResult
-from fiscus.forms import FormError, choice, money, opt_date, rate, req_date, text
+from fiscus.forms import (
+    FormError,
+    choice,
+    ends_after,
+    int_or,
+    money,
+    opt_date,
+    rate,
+    req_date,
+    text,
+)
 from fiscus.models import (
     FREQUENCIES,
     Account,
@@ -36,7 +46,16 @@ def chart_payload(
     data: dict[str, Any] = {
         'dates': [d.isoformat() for d in base.dates],
         'combined': base.combined,
-        'accounts': [{'name': names.get(a, str(a)), 'values': v} for a, v in base.accounts.items()],
+        # The account behind a low-balance warning is drawn even when the rest
+        # are hidden, so the warning shows on the chart.
+        'accounts': [
+            {
+                'name': names.get(a, str(a)),
+                'values': v,
+                'low': bool(base.low_balance and base.low_balance['account_id'] == a),
+            }
+            for a, v in base.accounts.items()
+        ],
         'markers': [
             {
                 'date': m['date'].isoformat(),
@@ -113,6 +132,7 @@ def add_transfer(
     try:
         if src.id == dst.id:
             raise FormError('Choose two different accounts')
+        first = req_date(anchor_date, 'First transfer')
         db.add(
             RecurringTransfer(
                 user_id=user.id,
@@ -121,8 +141,8 @@ def add_transfer(
                 to_account_id=dst.id,
                 amount_cents=money(amount, 'Amount', allow_negative=False),
                 frequency=choice(frequency, FREQUENCIES, 'Frequency'),
-                anchor_date=req_date(anchor_date, 'First transfer'),
-                end_date=opt_date(end_date, 'End date'),
+                anchor_date=first,
+                end_date=ends_after(first, opt_date(end_date, 'End date')),
                 is_tax_set_aside=is_tax_set_aside,
             )
         )
@@ -227,7 +247,7 @@ async def add_adjustment(
     try:
         params: dict[str, Any]
         if kind == 'one_off':
-            acct = get_owned(db, Account, int(f('account_id') or 0), user)
+            acct = get_owned(db, Account, int_or(f('account_id')), user)
             amount = money(f('amount'), 'Amount')
             if f('direction') != 'in':
                 amount = -abs(amount)
@@ -238,7 +258,7 @@ async def add_adjustment(
                 'label': f('label')[:80] or 'One-off',
             }
         elif kind == 'income_change':
-            ps = maybe_owned(db, PaySchedule, int(f('pay_schedule_id') or 0), user)
+            ps = maybe_owned(db, PaySchedule, int_or(f('pay_schedule_id')), user)
             params = {
                 'from_date': req_date(f('from_date'), 'From').isoformat(),
                 'pay_schedule_id': ps.id if ps else None,
@@ -248,26 +268,27 @@ async def add_adjustment(
                 'delta_cents': money(f('delta'), 'Change') if f('delta') else 0,
             }
         elif kind == 'rate_change':
-            loan = get_owned(db, Loan, int(f('loan_id') or 0), user)
+            loan = get_owned(db, Loan, int_or(f('loan_id')), user)
             params = {
                 'loan_id': loan.id,
                 'from_date': req_date(f('from_date'), 'From').isoformat(),
                 'rate': rate(f('rate'), 'Rate'),
             }
         elif kind == 'new_bill':
-            acct = get_owned(db, Account, int(f('account_id') or 0), user)
-            end = opt_date(f('end_date'), 'End')
+            acct = get_owned(db, Account, int_or(f('account_id')), user)
+            start = req_date(f('start_date'), 'Start')
+            end = ends_after(start, opt_date(f('end_date'), 'End'))
             params = {
                 'name': f('name')[:80] or 'New bill',
                 'account_id': acct.id,
                 'amount_cents': money(f('amount'), 'Amount', allow_negative=False),
                 'frequency': choice(f('frequency'), FREQUENCIES, 'Frequency'),
-                'start_date': req_date(f('start_date'), 'Start').isoformat(),
+                'start_date': start.isoformat(),
                 'end_date': end.isoformat() if end else None,
             }
         elif kind == 'extra_repayment':
-            loan = get_owned(db, Loan, int(f('loan_id') or 0), user)
-            from_acct = maybe_owned(db, Account, int(f('account_id') or 0), user)
+            loan = get_owned(db, Loan, int_or(f('loan_id')), user)
+            from_acct = maybe_owned(db, Account, int_or(f('account_id')), user)
             params = {
                 'loan_id': loan.id,
                 'date': req_date(f('date'), 'Date').isoformat(),

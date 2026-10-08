@@ -63,7 +63,7 @@
       values.push(data.scenario.combined);
     }
     data.accounts.forEach((a, i) => {
-      series.push({ label: a.name, stroke: COLOURS[i % COLOURS.length], width: 1, show: data.accounts.length <= 4, value: (u, v) => money(v) });
+      series.push({ label: a.name, stroke: COLOURS[i % COLOURS.length], width: a.low ? 2 : 1, show: data.accounts.length <= 4 || a.low, value: (u, v) => money(v) });
       values.push(a.values);
     });
     const threshold = el.hasAttribute('data-threshold') ? Number(el.getAttribute('data-threshold')) : null;

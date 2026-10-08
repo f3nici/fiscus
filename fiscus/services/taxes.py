@@ -9,6 +9,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from fiscus.domain import tax
+from fiscus.domain.pay import OpenPayday
 from fiscus.models import Account, Goal, Payslip, TaxDeduction, User
 from fiscus.money import round_div
 from fiscus.services import goals, ledger, pay
@@ -26,6 +27,10 @@ class TaxView:
     # The goal holding tax money, and what of the actual figure it adds.
     goal: Goal | None = None
     goal_cents: int = 0
+    # Paydays this year with no payslip: not in these figures.
+    missing: tuple[OpenPayday, ...] = ()
+    # Schedules projected with nothing withheld, for want of any figures.
+    untaxed: tuple[str, ...] = ()
 
     @property
     def year_end_set_aside_cents(self) -> int:
@@ -75,43 +80,35 @@ def view(db: Session, user: User, today: date, tax_dir: Path | None = None) -> T
     withheld = sum(p.tax_withheld_cents for p in slips)
     row = deductions_row(db, user, year.label)
     deductions = row.amount_cents if row else 0
-    ytd = tax.position(year, gross, withheld, deductions)
 
-    # Rest of the year: scheduled pays, with gross and withholding taken from the
-    # schedule, or scaled from this year's payslips when the schedule has none.
-    ratio_gross = (
-        gross / sum(p.net_cents for p in slips)
-        if slips and sum(p.net_cents for p in slips)
-        else None
-    )
-    ratio_tax = withheld / gross if gross else None
+    # Rest of the year: each payday's payslip once it is in, else the
+    # schedule's expected pay with its gross and tax (tax.gross_and_tax).
+    per_job = _recent_slips(db, user, today)
     proj_gross, proj_tax = gross, withheld
+    untaxed: list[str] = []
     first = today + timedelta(days=1)
     for item in pay.items(db, user, first, fy_end, today):
         if item.slip is not None:
             proj_gross += item.slip.gross_cents
             proj_tax += item.slip.tax_withheld_cents
             continue
-        ps, net = item.schedule, item.net_cents
-        if ps is not None:
-            # A varying pay's gross and tax scale with its average, not the guess.
-            g = ps.gross_cents
-            if g is not None and ps.varies and ps.net_cents:
-                g = round(g * net / ps.net_cents)
-            if g is None:
-                g = round(net * ratio_gross) if ratio_gross else net
-            w = ps.tax_withheld_cents
-            if w is not None and ps.varies and ps.gross_cents:
-                w = round(w * g / ps.gross_cents)
-            if w is None:
-                w = round(g * ratio_tax) if ratio_tax else g - net
-            proj_gross += g
-            proj_tax += w
+        ps = item.schedule
+        if ps is None:
+            continue
+        figures = tax.PayFigures(ps.gross_cents, ps.tax_withheld_cents, ps.net_cents, ps.varies)
+        g, w, known = tax.gross_and_tax(item.net_cents, figures, per_job.get(ps.id))
+        proj_gross += g
+        proj_tax += w
+        if not known and ps.name not in untaxed:
+            untaxed.append(ps.name)
     elapsed = (today - fy_start).days + 1
     total_days = (fy_end - fy_start).days + 1
     projected = tax.position(year, proj_gross, proj_tax, deductions)
+    ytd = tax.share_of(projected, gross, withheld)
     bal = ledger.balances(db, user, today)
-    set_aside = db.execute(owned(Account, user).where(Account.is_set_aside.is_(True))).scalars()
+    set_aside = db.execute(
+        owned(Account, user).where(Account.is_set_aside.is_(True), Account.archived.is_(False))
+    ).scalars()
     ids = {a.id for a in set_aside}
     actual = sum(bal.get(i, 0) for i in ids)
     # The tax goal counts too, unless it sits in a set-aside account whose
@@ -119,5 +116,34 @@ def view(db: Session, user: User, today: date, tax_dir: Path | None = None) -> T
     goal = goals.tax_goal(db, user)
     goal_cents = 0
     if goal is not None and goal.account_id not in ids:
-        goal_cents = goals.held(db, user).get(goal.id, 0)
-    return TaxView(year, ytd, projected, actual + goal_cents, elapsed, total_days, goal, goal_cents)
+        goal_cents = max(0, goals.held(db, user).get(goal.id, 0))
+    return TaxView(
+        year,
+        ytd,
+        projected,
+        actual + goal_cents,
+        elapsed,
+        total_days,
+        goal,
+        goal_cents,
+        missing=tuple(pay.open_paydays(db, user, fy_start, today - timedelta(days=1))),
+        untaxed=tuple(untaxed),
+    )
+
+
+def _recent_slips(db: Session, user: User, today: date) -> dict[int, tuple[int, int, int]]:
+    """Each schedule's payslips over the last year added up: (gross, withheld, net)."""
+    out: dict[int, tuple[int, int, int]] = {}
+    for s in db.execute(
+        owned(Payslip, user).where(
+            Payslip.schedule_id.is_not(None),
+            Payslip.date > today - timedelta(days=365),
+            Payslip.date <= today,
+            Payslip.net_cents > 0,
+        )
+    ).scalars():
+        if s.schedule_id is None:
+            continue
+        g, w, n = out.get(s.schedule_id, (0, 0, 0))
+        out[s.schedule_id] = (g + s.gross_cents, w + s.tax_withheld_cents, n + s.net_cents)
+    return out

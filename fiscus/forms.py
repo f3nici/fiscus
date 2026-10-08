@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from fiscus.money import MoneyError, parse_cents
 
@@ -22,6 +23,25 @@ def opt_date(value: str | None, label: str) -> date | None:
     if value is None or not value.strip():
         return None
     return req_date(value, label)
+
+
+def ends_after(start: date, end: date | None, label: str = 'The end date') -> date | None:
+    """`end`, refused when it is before `start`."""
+    if end is not None and end < start:
+        raise FormError(f'{label} is before the start')
+    return end
+
+
+def int_or(value: object, default: int = 0) -> int:
+    """A whole number from a form or query value, else `default`."""
+    if isinstance(value, int):
+        return value
+    if not isinstance(value, str):
+        return default
+    try:
+        return int(value.strip())
+    except ValueError:
+        return default
 
 
 def money(value: str, label: str, *, allow_negative: bool = True) -> int:
@@ -53,18 +73,19 @@ def text(value: str, label: str, max_len: int = 120) -> str:
 def pct_bp(value: str, label: str) -> int:
     """'12.5' percent to 1250 basis points."""
     try:
-        return round(float(value) * 100)
-    except ValueError as exc:
+        pct = Decimal(value.strip().rstrip('%'))
+    except InvalidOperation as exc:
         raise FormError(f'{label}: enter a percentage') from exc
+    if not pct.is_finite() or not 0 <= pct <= 100:
+        raise FormError(f'{label}: enter a percentage from 0 to 100')
+    return int((pct * 100).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
 
 
 def rate(value: str, label: str) -> str:
-    from decimal import Decimal, InvalidOperation
-
     try:
         r = Decimal(value.strip().rstrip('%'))
     except InvalidOperation as exc:
         raise FormError(f'{label}: enter a rate such as 6.24') from exc
-    if not 0 <= r < 50:
+    if not r.is_finite() or not 0 <= r < 50:
         raise FormError(f'{label}: enter a yearly rate between 0 and 50')
     return str(r.normalize()) if r != 0 else '0'

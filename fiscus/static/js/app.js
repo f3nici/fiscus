@@ -218,12 +218,6 @@
     monthHint(row, yearly, cycle);
   });
 
-  // ------------------------------------------------- recategorise select all
-  document.addEventListener('change', (e) => {
-    if (!e.target.matches('[data-select-all]')) return;
-    document.querySelectorAll('input[name="txn"]').forEach((cb) => { cb.checked = e.target.checked; });
-  });
-
   // ------------------------------------------------ scenario form switcher
   function showKind(root) {
     root.querySelectorAll('select[data-kind-switch]').forEach((sel) => {

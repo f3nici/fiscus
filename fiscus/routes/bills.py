@@ -4,14 +4,24 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from fiscus.clock import utcnow_naive
 from fiscus.domain import recurrence, splits
-from fiscus.forms import FormError, choice, money, opt_date, pct_bp, req_date, text
+from fiscus.forms import (
+    FormError,
+    choice,
+    ends_after,
+    int_or,
+    money,
+    opt_date,
+    pct_bp,
+    req_date,
+    text,
+)
 from fiscus.models import (
     FREQUENCIES,
     SPLIT_MODES,
@@ -24,8 +34,8 @@ from fiscus.models import (
 )
 from fiscus.services import bills as svc
 from fiscus.services import ledger
-from fiscus.services.access import get_owned, maybe_owned, owned_bill, visible_bill
-from fiscus.web import ctx, current_user, get_db, redirect, render
+from fiscus.services.access import maybe_owned, owned_bill, visible_bill
+from fiscus.web import ctx, current_user, get_db, local_path, redirect, render
 
 router = APIRouter()
 
@@ -58,6 +68,14 @@ def list_bills(
     nxt: dict[int, svc.Occurrence] = {}
     for o in upcoming:
         nxt.setdefault(o.bill.id, o)
+    # Due further out than the list looks: just the date.
+    later: dict[int, date] = {}
+    for s in shares:
+        b = s.bill
+        if b.active and b.id not in nxt:
+            due = recurrence.next_on_or_after(b.next_due, b.frequency, today)
+            if due is not None and (b.end_date is None or due <= b.end_date):
+                later[b.id] = due
     amounts = {s.bill_id: svc.share_amounts(s.bill)[user.id] for s in shares}
     monthly = {
         s.bill_id: recurrence.monthly_equivalent(amounts[s.bill_id], s.bill.frequency)
@@ -70,6 +88,7 @@ def list_bills(
         {
             'shares': shares,
             'next': nxt,
+            'later': later,
             'overdue': overdue,
             'amounts': amounts,
             'monthly': monthly,
@@ -136,21 +155,6 @@ def edit_bill(
     return _form(request, db, user, owned_bill(db, bill_id, user))
 
 
-@router.post('/bills/rematch')
-def rematch(
-    request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
-) -> Response:
-    c = ctx(request)
-    since = c.clock.today() - timedelta(days=120)
-    txns = list(
-        db.execute(
-            select(Transaction).where(Transaction.user_id == user.id, Transaction.date >= since)
-        ).scalars()
-    )
-    n = svc.auto_match(db, c.clock, user, txns)
-    return redirect('/bills', flash=f'Matched {n} payments', request=request)
-
-
 @router.post('/bills')
 @router.post('/bills/{bill_id}')
 async def save_bill(
@@ -174,13 +178,9 @@ async def save_bill(
             raise FormError('Amount: enter more than zero')
         frequency = choice(f('frequency'), FREQUENCIES, 'Frequency')
         next_due = req_date(f('next_due'), 'Next due')
-        end_date = opt_date(f('end_date'), 'End date')
-        if end_date and end_date < next_due:
-            raise FormError('The end date is before the next due date')
+        end_date = ends_after(next_due, opt_date(f('end_date'), 'End date'))
         mode = choice(f('split_mode', 'equal'), SPLIT_MODES, 'Split')
-        participants = [
-            int(v) for v in form.getlist('participants') if isinstance(v, str) and v.isdigit()
-        ]
+        participants = [int_or(v) for v in form.getlist('participants') if int_or(v) > 0]
         valid_others = {
             u.id for u in db.execute(select(User).where(User.is_active.is_(True))).scalars()
         }
@@ -201,12 +201,10 @@ async def save_bill(
         if mode != 'equal' and len(everyone) == 1:
             mode = 'equal'
         splits.compute(amount, mode, [splits.ShareSpec(u, v) for u, v in values.items()], user.id)
-        tolerance = max(0, min(50, int(f('match_tolerance_pct', '5') or 5)))
-        window = max(0, min(31, int(f('match_window_days', '3') or 3)))
     except (FormError, splits.SplitError, ValueError) as exc:
         return _form(request, db, user, bill, str(exc), dict(form))
-    acct = maybe_owned(db, Account, int(f('account_id', '0') or 0), user)
-    cat = maybe_owned(db, Category, int(f('category_id', '0') or 0), user)
+    acct = maybe_owned(db, Account, int_or(f('account_id')), user)
+    cat = maybe_owned(db, Category, int_or(f('category_id')), user)
     if bill is None:
         bill = Bill(
             owner_id=user.id,
@@ -223,9 +221,6 @@ async def save_bill(
     bill.next_due = next_due
     bill.end_date = end_date
     bill.split_mode = mode
-    bill.match_tolerance_pct = tolerance
-    bill.match_window_days = window
-    bill.description_hint = f('description_hint').strip()[:120]
     bill.active = ('active' in form) if bill_id else True
     db.flush()
     existing = {s.user_id: s for s in bill.shares}
@@ -292,18 +287,19 @@ async def my_share(
     form = await request.form()
     a = form.get('account_id')
     k = form.get('category_id')
-    acct = maybe_owned(db, Account, int(a) if isinstance(a, str) and a.isdigit() else None, user)
-    cat = maybe_owned(db, Category, int(k) if isinstance(k, str) and k.isdigit() else None, user)
+    acct = maybe_owned(db, Account, int_or(a), user)
+    cat = maybe_owned(db, Category, int_or(k), user)
     share.account_id = acct.id if acct else None
     share.category_id = cat.id if cat else None
     return redirect(f'/bills/{bill_id}', flash='Saved', request=request)
 
 
 def _occ(db: Session, user: User, bill: Bill, due_raw: str) -> date:
-    due = date.fromisoformat(due_raw)
+    try:
+        due = date.fromisoformat(due_raw)
+    except ValueError:
+        raise HTTPException(status_code=404) from None
     if not svc.is_occurrence(bill, due):
-        from fastapi import HTTPException
-
         raise HTTPException(status_code=404)
     return due
 
@@ -323,8 +319,6 @@ def occurrence(
     today = c.clock.today()
     occs = [o for o in svc.occurrences(db, user, when, when, today) if o.bill.id == bill.id]
     if not occs:
-        from fastapi import HTTPException
-
         raise HTTPException(status_code=404)
     o = occs[0]
     txn = (
@@ -338,7 +332,6 @@ def occurrence(
         {
             'o': o,
             'txn': txn,
-            'candidates': svc.match_candidates(db, user, o) if o.payment is None else [],
             'is_owner': bill.owner_id == user.id,
             'expected': svc.expected_out(bill, user.id),
         },
@@ -357,12 +350,9 @@ async def mark_paid(
     bill, _share = visible_bill(db, bill_id, user)
     when = _occ(db, user, bill, due)
     form = await request.form()
-    t = form.get('transaction_id')
-    txn = get_owned(db, Transaction, int(t), user) if isinstance(t, str) and t.isdigit() else None
-    svc.mark_paid(db, c.clock, user, bill, when, txn)
-    back = form.get('back')
+    svc.mark_paid(db, c.clock, user, bill, when)
     return redirect(
-        back if isinstance(back, str) and back.startswith('/') else f'/bills/{bill.id}',
+        local_path(form.get('back'), f'/bills/{bill.id}'),
         flash=f'{bill.name} marked paid',
         request=request,
     )
@@ -380,9 +370,8 @@ async def mark_unpaid(
     when = _occ(db, user, bill, due)
     svc.unmark(db, user, bill, when)
     form = await request.form()
-    back = form.get('back')
     return redirect(
-        back if isinstance(back, str) and back.startswith('/') else f'/bills/{bill.id}',
+        local_path(form.get('back'), f'/bills/{bill.id}'),
         flash=f'{bill.name} marked unpaid',
         request=request,
     )

@@ -59,6 +59,7 @@
           </div>
           <div class="field"><label class="label" for="ps-end">Ends (optional)</label><input class="input" type="date" id="ps-end" name="end_date" value="{{ e.end_date.isoformat() if e and e.end_date else '' }}"></div>
           <label class="check full"><input type="checkbox" name="varies" {{ 'checked' if e and e.varies else '' }}> The amount varies (casual or shift work)</label>
+          <p class="muted text-xs full">Gross and tax are for the tax estimate. Left blank, it uses this job's payslips once there are some, and until then counts the pay as having no tax taken out, as for contract work.</p>
         </div>
         <div class="row">
           <button class="btn btn-primary" type="submit">Save</button>
@@ -105,7 +106,7 @@
           <div class="field"><label class="label" for="slip-tax">Tax withheld</label><input class="input" id="slip-tax" name="tax_withheld" inputmode="decimal" required value="{{ f.tax_withheld }}"></div>
           <div class="field"><label class="label" for="slip-net">Net</label><input class="input" id="slip-net" name="net" inputmode="decimal" required value="{{ f.net }}"></div>
           <div class="field"><label class="label" for="slip-account">Paid into</label>
-            <select class="input" id="slip-account" name="account_id"><option value="0">Its pay schedule's account, else my spending account</option>{% for a in accounts %}<option value="{{ a.id }}" {{ 'selected' if f.account_id == a.id else '' }}>{{ a.name }}</option>{% endfor %}</select>
+            <select class="input" id="slip-account" name="account_id"><option value="0">Same as its pay schedule</option>{% for a in accounts %}<option value="{{ a.id }}" {{ 'selected' if f.account_id == a.id else '' }}>{{ a.name }}</option>{% endfor %}</select>
           </div>
           <div class="field full"><label class="label" for="slip-payday">Which pay</label>
             {% from "pay/_payday.html" import payday_select %}

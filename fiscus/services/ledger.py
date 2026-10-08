@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from bisect import bisect_right
 from collections import defaultdict
 from datetime import date, timedelta
 
@@ -9,7 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from fiscus.domain.rules import Matcher, RuleSpec
-from fiscus.models import Account, Budget, Category, Rule, Transaction, User
+from fiscus.models import Account, AccountBalance, Budget, Category, Rule, Transaction, User
 from fiscus.services.access import owned
 
 
@@ -35,49 +36,87 @@ def balances(db: Session, user: User, as_of: date | None = None) -> dict[int, in
 
 
 def set_balance(db: Session, user: User, acct: Account, cents: int, today: date) -> None:
-    """Make the account's balance today `cents` by moving its opening balance."""
+    """Make the account's balance today `cents` by moving its opening balance,
+    and keep it as that day's figure in the account's history."""
     current = balances(db, user, today).get(acct.id, 0)
     acct.opening_balance_cents += cents - current
     acct.balance_updated_on = today
+    row = db.execute(
+        owned(AccountBalance, user).where(
+            AccountBalance.account_id == acct.id, AccountBalance.date == today
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        db.add(AccountBalance(user_id=user.id, account_id=acct.id, date=today, balance_cents=cents))
+    else:
+        row.balance_cents = cents
     db.flush()
 
 
-def daily_balances(
+def balance_history(
     db: Session, user: User, account_ids: list[int], start: date, end: date
-) -> dict[date, int]:
-    """Combined end-of-day balance of the given accounts for each day in [start, end]."""
+) -> tuple[dict[date, int], date]:
+    """The accounts' combined end-of-day balance for each day in [start, end],
+    as known on the day, and the first day all of them are known.
+
+    An account's balance is its last typed-in figure on or before the day,
+    with any transactions after it added. Before its first one the account is
+    unknown and left out. An account never typed in (transactions only) is its
+    opening balance and transactions, as before.
+    """
+    days = [start + timedelta(days=i) for i in range((end - start).days + 1)]
+    out = dict.fromkeys(days, 0)
+    known_from = start
     if not account_ids:
-        return {start + timedelta(days=i): 0 for i in range((end - start).days + 1)}
-    opening = sum(
-        a.opening_balance_cents
-        for a in accounts(db, user, include_archived=True)
-        if a.id in account_ids
-    )
-    before = db.scalar(
-        select(func.coalesce(func.sum(Transaction.amount_cents), 0)).where(
+        return out, known_from
+    accts = {a.id: a for a in accounts(db, user, include_archived=True) if a.id in account_ids}
+    records: dict[int, list[tuple[date, int]]] = defaultdict(list)
+    for r in db.execute(
+        owned(AccountBalance, user)
+        .where(AccountBalance.account_id.in_(account_ids), AccountBalance.date <= end)
+        .order_by(AccountBalance.date)
+    ).scalars():
+        records[r.account_id].append((r.date, r.balance_cents))
+    moves: dict[int, list[tuple[date, int]]] = defaultdict(list)
+    for aid, d, amt in db.execute(
+        select(Transaction.account_id, Transaction.date, Transaction.amount_cents)
+        .where(
             Transaction.user_id == user.id,
             Transaction.account_id.in_(account_ids),
-            Transaction.date < start,
-        )
-    )
-    running = opening + int(before or 0)
-    moves: dict[date, int] = defaultdict(int)
-    for d, amt in db.execute(
-        select(Transaction.date, Transaction.amount_cents).where(
-            Transaction.user_id == user.id,
-            Transaction.account_id.in_(account_ids),
-            Transaction.date >= start,
             Transaction.date <= end,
         )
+        .order_by(Transaction.date)
     ):
-        moves[d] += amt
-    out: dict[date, int] = {}
-    day = start
-    while day <= end:
-        running += moves.get(day, 0)
-        out[day] = running
-        day += timedelta(days=1)
-    return out
+        moves[aid].append((d, amt))
+    for aid, acct in accts.items():
+        moved = _Running(moves[aid])
+        recs = records.get(aid)
+        if not recs:
+            for day in days:
+                out[day] += acct.opening_balance_cents + moved.to(day)
+            continue
+        rec_dates = [d for d, _ in recs]
+        known_from = max(known_from, rec_dates[0])
+        for day in days:
+            i = bisect_right(rec_dates, day) - 1
+            if i < 0:
+                continue
+            on, cents = recs[i]
+            out[day] += cents + moved.to(day) - moved.to(on)
+    return out, known_from
+
+
+class _Running:
+    """Transactions added up to any day, from a date-ordered list."""
+
+    def __init__(self, moves: list[tuple[date, int]]) -> None:
+        self.dates = [d for d, _ in moves]
+        self.totals = [0]
+        for _d, amt in moves:
+            self.totals.append(self.totals[-1] + amt)
+
+    def to(self, day: date) -> int:
+        return self.totals[bisect_right(self.dates, day)]
 
 
 def categories(db: Session, user: User) -> list[Category]:
@@ -127,17 +166,6 @@ def move_aside(db: Session, user: User, name: str, besides: Category) -> Categor
     return None
 
 
-def spend_by_category(db: Session, user: User, start: date, end: date) -> dict[int | None, int]:
-    """Net movement per category in [start, end], transfers excluded. Spend is negative."""
-    transfer_ids = {c.id for c in categories(db, user) if c.is_transfer}
-    rows = db.execute(
-        select(Transaction.category_id, func.sum(Transaction.amount_cents))
-        .where(Transaction.user_id == user.id, Transaction.date >= start, Transaction.date <= end)
-        .group_by(Transaction.category_id)
-    )
-    return {cid: int(total) for cid, total in rows if cid not in transfer_ids}
-
-
 def matcher_for(db: Session, user: User) -> Matcher:
     rules = db.execute(owned(Rule, user)).scalars().all()
     return Matcher(
@@ -158,10 +186,3 @@ def apply_rules(
             t.category_id = cat
             changed += 1
     return changed
-
-
-def rerun_rules(db: Session, user: User, *, overwrite: bool) -> int:
-    q = owned(Transaction, user)
-    if not overwrite:
-        q = q.where(Transaction.category_id.is_(None))
-    return apply_rules(db, user, list(db.execute(q).scalars()), overwrite=overwrite)

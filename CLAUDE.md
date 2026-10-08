@@ -5,13 +5,20 @@ Docker container on a homelab behind a reverse proxy with HTTPS, installable as
 a PWA on phones. No external calls, no telemetry, no CDN.
 
 **Status: v1 complete.** Passkeys, setup links and recovery, users and admin;
-accounts and ANZ/mapped CSV import with dedup and undo; categories, rules and
-recategorising; bills with shares, matching and states; pay schedules and
-payslips; the calendar; home loan and offset; forecasting with scenarios;
-the budget (bills paid out of it); bill import; the tax estimate; the dashboard; ntfy reminders;
-backups; PDF statement import; payslip PDFs, single or in bulk, recording schedule paydays; casual pay; Square sync; savings goals inside accounts, out of the budget, one of them the tax money, any of them saved from budget lines, one goal from several (D32 to D34, D36); saved-up lines say if they will cover their next bill (D36); budget lines in groups and in an order set by hand (D35). Since D25 the budget is
-kept by hand (spending taken off, balances typed in) and transactions, import,
-rules and Square are hidden from the menus but not removed. Next steps are in `docs/10-decisions.md` §3.
+accounts with balances typed in and kept by day (D39); categories; bills with
+shares and states; pay schedules and payslips; the calendar; home loan and
+offset; forecasting with scenarios; the budget (bills paid out of it); bill
+import; the tax estimate, each job taxed on its own figures (D38); the
+dashboard; ntfy reminders, payslips to put in among them; backups; payslip
+PDFs, single or in bulk, recording schedule paydays; casual pay; Square sync;
+savings goals inside accounts, out of the budget, one of them the tax money,
+any of them saved from budget lines, one goal from several (D32 to D34, D36);
+saved-up lines say if they will cover their next bill, overdue ones first
+(D36, D40); budget lines in groups and in an order set by hand (D35). Since
+D25 the budget is kept by hand (spending taken off, balances typed in); the
+transactions, statement import, rules and matching screens were removed in
+D37 (their tables stay, and Square still writes to them; its page is
+unlinked). Next steps are in `docs/10-decisions.md` §3.
 
 ## Read before building
 
@@ -53,8 +60,8 @@ doc 10 wins.
 - **The forecast cache is keyed on `users.data_version`.** A flush that
   touches an `Owned` row bumps its user (and every participant of a touched
   bill) in `services/versioning.py`. Bulk `DELETE`/`UPDATE` statements skip
-  the ORM, so pair them with an ORM change to an owned row, as `imports.undo`
-  does.
+  the ORM, so pair them with an ORM change to an owned row, as Square's sync
+  does after clearing its invoices.
 - **The audit log is append-only**, enforced by SQLite triggers. Logins,
   failed logins, every credential change, setup links and admin actions.
 - **Passkeys refuse to run unless the origin is HTTPS** (localhost excepted).
@@ -79,8 +86,6 @@ doc 10 wins.
   because that is where a homelab ntfy lives. Square only ever goes to the
   fixed `connect.squareup.com` host (no address from a form), reads only, and
   tests never reach it (`conftest.no_square`).
-- **A CSV field starting `=`, `+`, `-` or `@` is prefixed with an apostrophe**
-  on export (`csv_safe`).
 - **Every tax figure is labelled an estimate.** Rates live in
   `config/tax/<year>.yaml`, one per financial year, checked each July.
 - Australian English in all user-facing strings. No em dashes in prose.
@@ -104,14 +109,14 @@ doc 10 wins.
 ```
 fiscus/
   config.py clock.py money.py db.py models.py web.py app.py jobs.py cli.py
-  domain/     recurrence, splits, csvimport, rules, matching, loan, forecast,
-              tax, bill_import, budget_import, pdfstatement, payslip, pay,
-              square, goals.
+  domain/     recurrence, splits, uploads, rules, matching, loan, forecast,
+              tax, bill_import, budget_import, pdftext, payslip, pay,
+              square, goals, saving, arrange.
               Pure, no I/O.
   services/   access (ownership), auth (sessions, links, WebAuthn), users,
-              ledger, imports, pay, bills, forecasting, loans, taxes, budgeting,
-              bill_import, calendar_events, reminders, ntfy, square, backup,
-              versioning, audit, goals
+              ledger, pay, bills, forecasting, loans, taxes, budgeting,
+              budget_import, budget_groups, bill_import, calendar_events,
+              reminders, ntfy, square, backup, versioning, audit, goals
   routes/     one module per screen
   templates/  Jinja2 + HTMX
   static/     css, js (app, webauthn, calendar, forecast-chart, sw.src.js),
@@ -126,7 +131,7 @@ scripts/      smoke.sh, generate_icons.py, icon.svg
 
 Python 3.12, FastAPI, SQLAlchemy 2.1 + Alembic on SQLite (WAL), Jinja2 +
 HTMX, py_webauthn, argon2-cffi, httpx (ntfy and Square only), openpyxl + defusedxml
-(budget XLSX import), pdfminer.six (PDF statements). uPlot for the forecast
+(budget XLSX import), pdfminer.six (payslip PDFs). uPlot for the forecast
 chart, vue-cal's stylesheet for the calendar. pytest, ruff, mypy --strict,
 djlint, Playwright.
 
@@ -152,7 +157,7 @@ FISCUS_DATA_DIR=./data FISCUS_BASE_URL=http://localhost:8000 python -m fiscus
 - **One uvicorn worker, always.** SQLite, the in-memory rate limiter and the
   background jobs assume a single process. `python -m fiscus` enforces it.
 - **Route order matters** for literal paths beside `{id}` paths
-  (`/rules/rerun` before `/rules/{rule_id}`; the `bill_import` router before
+  (`/payslips/read` before `/payslips/{slip_id}`; the `bill_import` router before
   `bills`, for `/bills/import` beside `/bills/{bill_id}`). FastAPI matches the
   first, then fails validation.
 - **The calendar uses vue-cal's class names on server-rendered markup.** If a
@@ -165,9 +170,8 @@ FISCUS_DATA_DIR=./data FISCUS_BASE_URL=http://localhost:8000 python -m fiscus
 - **iOS installed PWAs need a user gesture for WebAuthn.** Every
   `navigator.credentials` call starts from a click, except the conditional
   (autofill) request on the login page, which iOS allows.
-- **iOS has no `beforeinstallprompt` and no share target.** Install is a
-  Share-menu instruction (README). The CSV share target is Android only;
-  iOS users use the file picker, which works in standalone mode.
+- **iOS has no `beforeinstallprompt`.** Install is a Share-menu instruction
+  (README). File uploads use the file picker, which works in standalone mode.
 - **A test that patches the clock** uses `env.clock.set(...)`; the default is
   10:00 on Thursday 1 October 2026 in Perth.
 - Templates see `user` as a `UserView` snapshot, not the ORM object, so an

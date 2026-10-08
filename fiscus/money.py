@@ -28,6 +28,9 @@ def parse_cents(text: str | int | Decimal | None, *, allow_negative: bool = True
             raw = raw[1:]
         if raw == '':
             raise MoneyError('An amount is required')
+        if 'e' in raw.lower():
+            # Decimal reads "1e3" as 1000; nobody means that in an amount.
+            raise MoneyError(f'"{text}" is not an amount')
         try:
             value = Decimal(raw)
         except InvalidOperation as exc:
@@ -63,6 +66,19 @@ def fmt(cents: int | None, *, sign: bool = False, symbol: bool = True) -> str:
     if sign and cents > 0:
         return '+' + body
     return body
+
+
+def fmt_short(cents: int, symbol: bool = True) -> str:
+    """Whole dollars, and thousands as "$55.1k", for a tight space."""
+    dollars = round_div(abs(cents), 100)
+    sign = ('-' if cents < 0 and dollars else '') + ('$' if symbol else '')
+    if dollars >= 1_000_000:
+        tenths = round_div(dollars, 100_000)
+        return f'{sign}{tenths // 10}.{tenths % 10}m'
+    if dollars >= 10_000:
+        tenths = round_div(dollars, 100)
+        return f'{sign}{tenths // 10}.{tenths % 10}k'
+    return f'{sign}{dollars:,}'
 
 
 def fmt_plain(cents: int) -> str:

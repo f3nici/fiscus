@@ -19,13 +19,16 @@ from fiscus.models import (
     BudgetSpend,
     Category,
     ForecastCache,
+    Loan,
+    PaySchedule,
     Payslip,
+    Transaction,
     User,
 )
 from fiscus.services import budgeting, forecasting, ledger, taxes
 from tests.conftest import CsrfClient, Env
+from tests.test_bills import ANZ_SEPT, add_transactions, create_bill, make_account
 from tests.test_budget_import import upload as _upload
-from tests.test_imports_bills import ANZ_SEPT, create_bill, import_csv, make_account
 
 
 def setup_household(env: Env) -> tuple[CsrfClient, User, int]:
@@ -210,6 +213,22 @@ def test_forecast_page_and_cache_invalidation(env: Env) -> None:
         assert db.get(ForecastCache, alex.id).cache_key != key1  # type: ignore[union-attr]
 
 
+def test_the_dashboard_and_forecast_horizons_share_the_cache(env: Env) -> None:
+    a, alex, _acct = setup_household(env)
+    a.get('/forecast?months=12')
+    a.get('/')  # three months
+    with env.db() as db:
+        cached = db.get(ForecastCache, alex.id)
+        assert cached is not None
+        assert set(cached.payload['runs']) == {'12', '3'}
+        stamp = cached.created_at
+    # Back to the forecast: served from the cache, not run again.
+    env.clock.set(env.clock.now() + timedelta(minutes=5))
+    a.get('/forecast?months=12')
+    with env.db() as db:
+        assert db.get(ForecastCache, alex.id).created_at == stamp  # type: ignore[union-attr]
+
+
 def test_shared_bill_change_invalidates_participants_forecast(env: Env) -> None:
     a, _alex, _ = setup_household(env)
     sam = env.user('sam')
@@ -247,7 +266,7 @@ def test_discretionary_spending_uses_average_or_budget(env: Env) -> None:
     alex = env.user('alex')
     a = env.login(alex)
     acct = make_account(a, opening='1000')
-    import_csv(a, acct, '15/09/2026,"-300.00","COLES"\n20/08/2026,"-300.00","COLES"\n')
+    add_transactions(a, acct, '15/09/2026,"-300.00","COLES"\n20/08/2026,"-300.00","COLES"\n')
     with env.db() as db:
         est = forecasting.estimates(db, db.get(User, alex.id), date(2026, 10, 1))  # type: ignore[arg-type]
         assert len(est) == 1 and est[0].source == 'average'
@@ -260,7 +279,10 @@ def test_discretionary_spending_uses_average_or_budget(env: Env) -> None:
             .scalar_one()
             .id
         )
-    a.post('/rules', data={'pattern': 'coles', 'category_id': str(groceries), 'apply_now': 'true'})
+    with env.db() as db:
+        for t in db.execute(select(Transaction)).scalars():
+            t.category_id = groceries
+        db.commit()
     a.post(
         '/budget', data={'category_id': str(groceries), 'amount': '400', 'use_in_forecast': 'true'}
     )
@@ -288,9 +310,8 @@ def test_spending_is_taken_off_the_budget_by_hand(env: Env) -> None:
     a = env.login(alex)
     acct = make_account(a)
     groceries = _groceries(env, alex)
-    a.post('/rules', data={'pattern': 'coles', 'category_id': str(groceries)})
-    # Imported transactions no longer count towards the budget.
-    import_csv(a, acct, '01/10/2026,"-450.00","COLES"\n')
+    # Transactions (from Square, or old imports) do not count towards the budget.
+    add_transactions(a, acct, '01/10/2026,"-450.00","COLES"\n', category_id=groceries)
     a.post('/budget', data={'category_id': str(groceries), 'amount': '400'})
     page = a.get('/budget?month=2026-10').text
     assert '$400.00' in page and '$450.00' not in page
@@ -459,7 +480,7 @@ def test_a_paid_bill_comes_off_its_category(env: Env) -> None:
     )
     a.post('/budget', data={'category_id': str(utilities), 'amount': '300'})
     page = a.get('/budget').text
-    assert '$200.00 of bills' in page and 'bills paid' not in page
+    assert '$200.00 a month of bills' in page and 'bills paid' not in page
     a.post(f'/bills/{bill}/occurrence/2026-10-20/paid')
     page = a.get('/budget').text
     assert '$200.00 bills paid' in page and 'nothing over' in page
@@ -472,7 +493,7 @@ def test_balances_are_typed_in(env: Env) -> None:
     a = env.login(alex)
     everyday = make_account(a, opening='1000')
     savings = make_account(a, 'Savings', 'savings', opening='5000')
-    import_csv(a, everyday, '15/09/2026,"-300.00","COLES"\n')
+    add_transactions(a, everyday, '15/09/2026,"-300.00","COLES"\n')
     resp = a.post(
         '/accounts/balances',
         data={f'balance_{everyday}': '812.40', f'balance_{savings}': ''},
@@ -990,7 +1011,7 @@ def test_tax_deductions_are_saved_and_come_off_income(env: Env) -> None:
 
 def test_every_page_renders(env: Env) -> None:
     a, _alex, acct = setup_household(env)
-    import_csv(a, acct, ANZ_SEPT)
+    add_transactions(a, acct, ANZ_SEPT)
     for page in [
         '/',
         '/more',
@@ -998,11 +1019,7 @@ def test_every_page_renders(env: Env) -> None:
         f'/accounts/{acct}',
         f'/accounts/{acct}/edit',
         '/accounts/new',
-        '/transactions',
-        '/transactions?category_id=none',
-        '/import',
         '/categories',
-        '/recategorise',
         '/bills',
         '/bills/new',
         '/pay',
@@ -1079,3 +1096,190 @@ def test_a_bimonthly_bill_in_bills_and_budget(env: Env) -> None:
     with env.db() as db:
         row = db.execute(select(Budget)).scalar_one()
         assert (row.monthly_cents, row.cycle_months) == (90_00, 2)
+
+
+def test_a_yearly_line_reads_back_and_saves_exactly_what_was_typed(env: Env) -> None:
+    alex = env.user('alex')
+    a = env.login(alex)
+    a.post(
+        '/budget', data={'new_category': 'Council rates', 'amount': '2480', 'cycle_months': '12'}
+    )
+    page = a.get('/budget?month=2026-10').text
+    assert 'Saving up $2,480.00 every year' in page
+    assert 'value="2480.00"' in page
+    # Twelve budget months save $2,480.00, not 12 x $206.67.
+    assert _saved(env, alex, date(2027, 9, 1))['Council rates'] == (2480_00, 'ok')
+
+
+def test_an_overspent_line_shows_a_red_bar(env: Env) -> None:
+    alex = env.user('alex')
+    a = env.login(alex)
+    a.post('/budget', data={'new_category': 'Eating out', 'amount': '250'})
+    cid = cat_id(env, alex, 'Eating out')
+    a.post('/budget/spend', data={'category_id': str(cid), 'amount': '250'})
+    page = a.get('/budget').text
+    # At the budget: amber, as from 90 %.
+    assert 'low="22500" high="25000" optimum="0" value="25000"' in page
+    a.post('/budget/spend', data={'category_id': str(cid), 'amount': '10'})
+    page = a.get('/budget').text
+    # Over it: the value sits above `high`, which the meter draws red.
+    assert 'low="22500" high="24999" optimum="0" value="25000"' in page
+
+
+def test_tax_projection_uses_each_jobs_own_figures(env: Env) -> None:
+    a = env.login(env.user('alex'))
+    acct = make_account(a)
+    # A salaried job with PAYG, and contract pay with no figures at all.
+    a.post(
+        '/pay/schedules',
+        data={
+            'name': 'Acme',
+            'frequency': 'fortnightly',
+            'anchor_date': '2026-10-08',
+            'net': '3000',
+            'gross': '4000',
+            'tax_withheld': '1000',
+            'account_id': str(acct),
+        },
+    )
+    a.post(
+        '/pay/schedules',
+        data={
+            'name': 'Consulting',
+            'frequency': 'quarterly',
+            'anchor_date': '2026-12-30',
+            'net': '4500',
+            'account_id': str(acct),
+        },
+    )
+    with env.db() as db:
+        u = db.execute(select(User).where(User.username == 'alex')).scalar_one()
+        v = taxes.view(db, u, date(2026, 10, 1), env.ctx.tax_dir)
+    acme = 19  # 8 Oct to 24 Jun, fortnightly
+    consulting = 3  # 30 Dec, 30 Mar, 30 Jun
+    assert v.projected.income_cents == acme * 4000_00 + consulting * 4500_00
+    # Consulting's pay counts as having nothing withheld, and the page says so.
+    assert v.projected.withheld_cents == acme * 1000_00
+    assert v.untaxed == ('Consulting',)
+    page = a.get('/tax').text
+    assert 'Consulting has no gross or tax figures' in page
+    # Once Consulting has a payslip of its own, its figures are used.
+    a.post(
+        '/payslips',
+        data={
+            'date': '2026-09-30',
+            'gross': '6000',
+            'tax_withheld': '1500',
+            'net': '4500',
+            'payday': '',
+        },
+    )
+    with env.db() as db:
+        sid = db.execute(select(PaySchedule.id).where(PaySchedule.name == 'Consulting')).scalar()
+        slip = db.execute(select(Payslip)).scalar_one()
+        slip.schedule_id, slip.payday = sid, date(2026, 9, 30)
+        db.commit()
+    with env.db() as db:
+        u = db.execute(select(User).where(User.username == 'alex')).scalar_one()
+        v = taxes.view(db, u, date(2026, 10, 1), env.ctx.tax_dir)
+    assert v.untaxed == ()
+    assert v.projected.withheld_cents == acme * 1000_00 + 1500_00 + consulting * 1500_00
+
+
+def test_tax_page_lists_paydays_without_a_payslip(env: Env) -> None:
+    a = env.login(env.user('alex'))
+    a.post(
+        '/pay/schedules',
+        data={
+            'name': 'Acme',
+            'frequency': 'fortnightly',
+            'anchor_date': '2026-09-03',
+            'net': '3000',
+        },
+    )
+    page = a.get('/tax').text
+    # 3 and 17 Sep have passed with no payslip; 1 Oct is today and is not asked yet.
+    assert '2 paydays without a payslip' in page
+    assert '/pay?payday=' in page and '3 Sep 2026' in page and '17 Sep 2026' in page
+    a.post('/pay/schedules/1/no-pay', data={'payday': '2026-09-03'})
+    assert '1 payday without a payslip' in a.get('/tax').text
+
+
+def test_offset_savings_use_the_balance_known_on_each_day(env: Env) -> None:
+    alex = env.user('alex')
+    # The offset is first entered on 1 Sep at $10,000 and updated to $30,000
+    # on 15 Sep. Today is 1 Oct.
+    env.clock.set(datetime(2026, 9, 1, 2, tzinfo=UTC))
+    a = env.login(alex)
+    resp = a.post('/accounts', data={'name': 'Offset', 'type': 'offset', 'balance': '10000'})
+    offset = int(resp.headers['location'].rsplit('/', 1)[1])
+    resp = a.post(
+        '/loans',
+        data={
+            'name': 'Home',
+            'principal': '500000',
+            'start_date': '2024-01-15',
+            'initial_rate': '6',
+            'balance': '480000',
+            'balance_date': '2026-09-01',
+        },
+    )
+    loan_id = int(resp.headers['location'].rsplit('/', 1)[1])
+    a.post(f'/loans/{loan_id}/offsets', data={'account_id': str(offset)})
+    env.clock.set(datetime(2026, 9, 15, 2, tzinfo=UTC))
+    a.post(f'/accounts/{offset}/balance', data={'balance': '30000'})
+    env.clock.set(datetime(2026, 10, 1, 2, tzinfo=UTC))
+    from fiscus.services import loans as loan_service
+
+    with env.db() as db:
+        u = db.get(User, alex.id)
+        loan = db.get(Loan, loan_id)
+        assert u is not None and loan is not None
+        s = loan_service.summarise(db, u, loan, date(2026, 10, 1))
+    # 1 to 14 Sep on $10,000 and 15 Sep to 1 Oct on $30,000, at 6 %; nothing
+    # before 1 Sep, when the offset was first entered.
+    expected = (14 * 10_000_00 + 17 * 30_000_00) * Decimal('0.06') / 365
+    assert s.saved_year_cents == L.cents(expected)
+    assert s.saved_year_from == date(2026, 9, 1)
+    assert s.saved_month_cents == L.cents(30_000_00 * Decimal('0.06') / 365)
+    assert s.saved_month_from is None
+    page = a.get(f'/loans/{loan_id}').text
+    assert "since 1 Sep, when the offset's balance was first entered" in page
+
+
+def test_an_overdue_bill_shows_on_the_dashboard_budget_and_agenda(env: Env) -> None:
+    alex = env.user('alex')
+    a = env.login(alex)
+    acct = make_account(a)
+    a.post(
+        '/budget',
+        data={
+            'new_category': 'Council rates',
+            'amount': '2480',
+            'cycle_months': '12',
+            'saved': '620',
+        },
+    )
+    cid = cat_id(env, alex, 'Council rates')
+    bill = create_bill(
+        a,
+        name='Council rates',
+        amount='620',
+        frequency='quarterly',
+        next_due='2026-09-28',
+        account_id=str(acct),
+        category_id=str(cid),
+    )
+    dash = a.get('/').text
+    assert 'id="overdue"' in dash and 'was due 28 Sep 2026' in dash
+    assert f'/bills/{bill}/occurrence/2026-09-28/paid' in dash and 'value="/"' in dash
+    budget = a.get('/budget').text
+    assert '$620.00 overdue since 28 Sep 2026: the line holds it' in budget
+    agenda = a.get('/calendar?view=agenda').text
+    assert 'id="cal-overdue"' in agenda and 'Council rates, due 28 Sep' in agenda
+    # Marked paid from the dashboard, it is gone everywhere.
+    resp = a.post(f'/bills/{bill}/occurrence/2026-09-28/paid', data={'back': '/'})
+    assert resp.headers['location'] == '/'
+    assert 'id="overdue"' not in a.get('/').text
+    assert 'id="cal-overdue"' not in a.get('/calendar?view=agenda').text
+    assert 'overdue since' not in a.get('/budget').text

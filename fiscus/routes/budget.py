@@ -13,10 +13,10 @@ from sqlalchemy.orm import Session
 from fiscus.clock import utcnow_naive
 from fiscus.domain import recurrence
 from fiscus.domain.budget_import import MORTGAGE
-from fiscus.domain.csvimport import MAX_BYTES, ImportError_
+from fiscus.domain.uploads import MAX_BYTES, ImportError_
 from fiscus.forms import FormError, money, text
 from fiscus.models import Budget, BudgetGroup, BudgetSpend, Category, Loan, User
-from fiscus.money import fmt, round_div
+from fiscus.money import fmt
 from fiscus.services import budget_groups, budgeting, goals, ledger, loans
 from fiscus.services import budget_import as importer
 from fiscus.services.access import get_owned, maybe_owned, owned
@@ -478,7 +478,7 @@ async def budget_apply(
             if cycle not in budgeting.CYCLES:
                 raise FormError(f'{label}: choose how often it is spent')
             if cents:
-                chosen.append(importer.Chosen(category, round_div(cents, cycle), cycle))
+                chosen.append(importer.Chosen(category, cents, cycle))
     except (FormError, ValueError) as exc:
         return redirect(f'/budget/import/{name}', flash=str(exc), request=request)
     if not chosen:

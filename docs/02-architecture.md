@@ -6,7 +6,7 @@
 | --- | --- |
 | Python 3.12, FastAPI | Small, typed, fast enough for a household; the brief asked for it. |
 | SQLite (WAL) via SQLAlchemy 2.1, Alembic | One file on one volume. A household's data is tiny. The online backup API gives safe hot backups. |
-| Jinja2 + HTMX | Server-rendered pages that work without a build step; HTMX for in-place updates (calendar paging, recategorise, event sheets). |
+| Jinja2 + HTMX | Server-rendered pages that work without a build step; HTMX for in-place updates (calendar paging, event sheets). |
 | Vanilla JS only where needed | WebAuthn, the calendar's gestures, the forecast chart, the service worker. About 600 lines in total. |
 | uPlot (vendored) | 45 KB, fast with 730 points per series, overlays a scenario cleanly. |
 | vue-cal 4 stylesheet (vendored) | CareLane's calendar is vue-cal. Rendering vue-cal's DOM on the server and reusing its CSS reproduces the layout exactly without Vue. |
@@ -33,8 +33,9 @@ browser ─HTTPS─ NPMplus ─HTTP─ uvicorn (proxy headers from trusted IPs o
 
 ## Layers
 
-- `domain/`: pure functions and dataclasses. Recurrence, splits, CSV parsing
-  and dedup, rules, bill matching, loan maths, the forecast engine and
+- `domain/`: pure functions and dataclasses. Recurrence, splits, reading
+  uploaded files and PDF text, rules and bill matching (for Square), payslip
+  reading, loan maths, the forecast engine and
   scenarios, tax, bill import parsing and diffs. No database, no clock.
 - `services/`: database work for one concern each. Every per-user query goes
   through `access.owned` / `get_owned`.

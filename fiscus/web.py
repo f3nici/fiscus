@@ -20,7 +20,7 @@ from fiscus import __version__
 from fiscus.clock import Clock, utcnow_naive
 from fiscus.config import Settings
 from fiscus.models import AuthSession, User
-from fiscus.money import fmt, fmt_plain
+from fiscus.money import fmt, fmt_plain, fmt_short
 from fiscus.security.ratelimit import RateLimiter
 from fiscus.security.tokens import new_token, same, token_hash
 
@@ -149,8 +149,6 @@ def admin_user(user: User = Depends(current_user)) -> User:
 
 # ---------------------------------------------------------------------- CSRF
 
-CSRF_EXEMPT = frozenset({'/share-target'})
-
 
 def _origin_ok(request: Request, settings: Settings) -> bool:
     origin = request.headers.get('origin')
@@ -165,7 +163,7 @@ def _origin_ok(request: Request, settings: Settings) -> bool:
 
 
 async def csrf_guard(request: Request) -> None:
-    if request.method not in UNSAFE or request.url.path in CSRF_EXEMPT:
+    if request.method not in UNSAFE:
         return
     settings = ctx(request).settings
     if not _origin_ok(request, settings):
@@ -216,6 +214,7 @@ def make_templates() -> Jinja2Templates:
     env.filters['money'] = fmt
     env.filters['money_signed'] = lambda c: fmt(c, sign=True)
     env.filters['money_plain'] = fmt_plain
+    env.filters['money_short'] = fmt_short
     env.filters['d'] = _date_fmt
     env.filters['tojson_attr'] = lambda v: json.dumps(v, separators=(',', ':'))
     env.globals['version'] = __version__
@@ -248,6 +247,19 @@ def render(
     if data['flash']:
         resp.delete_cookie('fiscus_flash', path='/')
     return resp
+
+
+def local_path(target: object, fallback: str = '/') -> str:
+    """`target` when it is a path on this site, else `fallback`. Never another
+    origin: no `//host`, no backslashes a browser might read as slashes."""
+    if (
+        isinstance(target, str)
+        and target.startswith('/')
+        and not target.startswith('//')
+        and '\\' not in target
+    ):
+        return target
+    return fallback
 
 
 def redirect(url: str, *, flash: str | None = None, request: Request | None = None) -> Response:

@@ -5,14 +5,15 @@ accounts, budget, forecast and tax stay their own; bills can be shared. Runs
 as one Docker container on your homelab, signs in with passkeys, and installs
 on your phone as an app. Nothing leaves your network.
 
-- Import ANZ CSVs (other banks by column mapping) and PDF statements, with dedup and undo
-- Categories and rules, and a fast recategorise screen for the phone
-- Bills, shared and split, matched to payments automatically
+- Account balances typed in as you go, with the history kept
+- A budget kept by hand: take spending off as you go, with saved-up lines for
+  yearly and quarterly costs and savings goals inside your accounts
+- Bills, shared and split, marked paid in a tap
+- Payslips, typed in or read from their PDFs, with a reminder for any not in
 - A calendar of bills and paydays with your projected balance on every day
 - Home loan with offset: interest saved and payoff date
 - Forecast 1 to 24 months ahead, with what-if scenarios
-- A budget that counts your bills for you, and an Australian tax estimate
-  against your set-aside
+- An Australian tax estimate against your set-aside
 - Optional reminders through your own ntfy server
 - Optional sync from a Square seller account (payments, fees, payouts, unpaid invoices)
 
@@ -25,7 +26,6 @@ financial or tax advice.
 - [First run: the bootstrap link](#first-run-the-bootstrap-link)
 - [Adding people and passkeys](#adding-people-and-passkeys)
 - [Installing the app on iOS and Android](#installing-the-app-on-ios-and-android)
-- [Exporting a CSV from ANZ](#exporting-a-csv-from-anz)
 - [Budget import from a spreadsheet](#budget-import-from-a-spreadsheet)
 - [Importing bills from a file](#importing-bills-from-a-file)
 - [Reminders with ntfy](#reminders-with-ntfy)
@@ -161,8 +161,8 @@ than old numbers.
 3. Open Fiscus from the home screen. Your passkey works inside the app
    (Face ID or Touch ID). iOS 16 or later is needed for passkeys.
 
-iOS has no share target, so import CSVs with the file picker on the Import
-screen (it opens the Files app, including iCloud Drive and Downloads).
+File uploads (budget spreadsheets, bill files, payslip PDFs) use the file
+picker, which opens the Files app, including iCloud Drive and Downloads.
 
 **Android (Chrome)**
 
@@ -171,50 +171,10 @@ screen (it opens the Files app, including iCloud Drive and Downloads).
    screen**).
 3. Open Fiscus from the home screen or app drawer.
 
-When installed, Fiscus appears in Android's **share sheet** for CSV files:
-share a downloaded bank CSV to Fiscus and it opens the import screen with the
-file ready. Nothing is imported until you choose the account and press
-Import.
-
 **Desktop (Chrome, Edge)**: the install icon in the address bar.
 
 **Updates**: when a new version is deployed the app shows "A new version of
 Fiscus is ready" with a Reload button.
-
-## Exporting a CSV from ANZ
-
-From **ANZ Internet Banking** in a browser (the ANZ App does not export
-CSVs):
-
-1. Log on and open the account.
-2. Choose **Transactions** (or **Search transactions**) and set the date
-   range. Overlapping a previous export is fine: duplicates are skipped.
-3. Choose **Download** / **Export**, format **CSV**, and save.
-
-In Fiscus: Transactions, the **Import** tab, choose the account, pick the
-file, Upload and preview.
-ANZ's headerless `date, amount, description` format is recognised
-automatically. Check the preview (new rows, duplicates, unreadable rows), then
-Import. Every import is in the log on the Import page and can be undone.
-
-**Other banks**: upload the CSV and Fiscus asks which column is the date (and
-its format), the amount (or debit and credit columns) and the description.
-The mapping is saved for that account, so next time it goes straight to the
-preview. If your bank shows spending as positive, tick "flip the sign".
-
-If ANZ changes its export format or you use ANZ Plus and the file is not
-recognised, the mapping screen handles it the same way.
-
-**PDF statements**: upload the statement PDF the same way. Fiscus reads the
-transaction table (dates, descriptions, and the withdrawal, deposit and
-balance columns by their position), skips opening and closing balance lines,
-and joins descriptions that wrap onto a second line. Dates without a year take
-it from the statement period. If the columns are not labelled clearly, it asks
-which is which once and remembers it for that account's statements, separately
-from any CSV mapping. Scanned statements are pictures with no text and cannot
-be read; download the statement from online banking instead. A statement and a
-CSV of the same period may describe transactions slightly differently, so
-import one or the other for a given period.
 
 ## Budget import from a spreadsheet
 
@@ -314,8 +274,10 @@ third-party push service is involved.
    and the token, choose what to hear about, Save, then "Send a test".
 
 You get one push per bill due within your chosen number of days, one per
-overdue bill, and one per low-balance warning, each once, at the hour you
-choose. Messages contain the bill name, date and amount only. Private LAN
+overdue bill, one per low-balance warning, and one per payday that passed
+without a payslip (the day after, for the last week's paydays), each once, at
+the hour you choose. Messages contain the bill or employer name, date and
+amount only. Private LAN
 addresses are allowed; the container's own loopback and link-local addresses
 are not.
 
@@ -330,16 +292,18 @@ It only reads, only talks to Square's API, and is off until you connect it.
 2. In Fiscus, add an account for the Square balance (for example "Square",
    opening balance 0), and categories: one marked income and business for
    payments, one marked business for fees, and a transfer category for payouts.
-3. Open **Square** (sidebar, or Menu on a phone), tick **Sync from Square**,
+3. Open `/square` (it has been out of the menus since the budget became
+   hand-kept), tick **Sync from Square**,
    paste the token, choose the account, categories and the date to fetch
    from, Save, then **Sync now**.
 
 After that it syncs every six hours. Each payment is income at its full
-amount, with Square's fee as a separate expense, so the tax estimate sees
-gross income and the fee as a deduction. Refunds come out, and a payout is
-money leaving the Square account; the deposit in your bank import is the other
-side, so put both in the transfer category. Unpaid invoices are listed on the
-Square page and on the calendar on their due date.
+amount, with Square's fee as a separate expense; the forecast averages them
+as business income. Refunds come out, and a payout is money leaving the
+Square account, so put payouts in the transfer category. Bills are matched to
+synced payments. Unpaid invoices are listed on the Square page and on the
+calendar on their due date. For the tax estimate, enter the income as pay
+(D31).
 
 Disconnect forgets the token; transactions already synced stay. Anyone with
 the token can read your Square data, so treat it like a password; it is kept

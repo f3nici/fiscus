@@ -17,10 +17,19 @@ from sqlalchemy.orm import Session
 
 from fiscus.domain import payslip as payslip_pdf
 from fiscus.domain import recurrence
-from fiscus.domain.csvimport import MAX_BYTES, ImportError_
 from fiscus.domain.pay import ASK_DAYS, LINK_DAYS, MATCH_DAYS, OpenPayday, Unsure, match_paydays
 from fiscus.domain.tax import fy_bounds
-from fiscus.forms import FormError, choice, money, opt_date, opt_money, req_date, text
+from fiscus.domain.uploads import MAX_BYTES, ImportError_
+from fiscus.forms import (
+    FormError,
+    choice,
+    ends_after,
+    int_or,
+    money,
+    opt_date,
+    req_date,
+    text,
+)
 from fiscus.models import PAY_FREQUENCIES, Account, PaySchedule, Payslip, User
 from fiscus.money import fmt, fmt_plain
 from fiscus.services import ledger, pay
@@ -108,7 +117,7 @@ def pay_page(
 ) -> Response:
     q = request.query_params
     today = ctx(request).clock.today()
-    slip = maybe_owned(db, Payslip, int(q.get('slip', '0') or 0), user)
+    slip = maybe_owned(db, Payslip, int_or(q.get('slip')), user)
     form: SlipForm | None = None
     if slip is not None:
         form = SlipForm(
@@ -169,15 +178,17 @@ def _page(
                 'tax': sum(p.tax_withheld_cents for p in ytd),
                 'net': sum(p.net_cents for p in ytd),
             },
-            'edit': maybe_owned(
-                db, PaySchedule, int(request.query_params.get('edit', '0') or 0), user
-            ),
+            'edit': maybe_owned(db, PaySchedule, int_or(request.query_params.get('edit')), user),
             'to_put_in': pay.to_put_in(db, user, today),
             'form': form or SlipForm(date=today.isoformat()),
             'slip': slip,
             'options': options,
         },
     )
+
+
+def _opt_positive(value: str, label: str) -> int | None:
+    return money(value, label, allow_negative=False) if value.strip() else None
 
 
 @router.post('/pay/schedules')
@@ -201,14 +212,15 @@ def save_schedule(
 ) -> Response:
     ps = get_owned(db, PaySchedule, schedule_id, user) if schedule_id else None
     try:
+        anchor = req_date(anchor_date, 'A payday')
         values = dict(
             name=text(name, 'Name', 80),
             frequency=choice(frequency, PAY_FREQUENCIES, 'Frequency'),
-            anchor_date=req_date(anchor_date, 'A payday'),
+            anchor_date=anchor,
             net_cents=money(net, 'Net pay', allow_negative=False),
-            gross_cents=opt_money(gross, 'Gross pay'),
-            tax_withheld_cents=opt_money(tax_withheld, 'Tax withheld'),
-            end_date=opt_date(end_date, 'End date'),
+            gross_cents=_opt_positive(gross, 'Gross pay'),
+            tax_withheld_cents=_opt_positive(tax_withheld, 'Tax withheld'),
+            end_date=ends_after(anchor, opt_date(end_date, 'End date')),
             varies=varies == 'on',
             match_text=' '.join(match_text.split())[:120],
         )
@@ -488,6 +500,13 @@ def _match(
     return [next(it) if d is not None else None for d, _e in dated]
 
 
+def _iso(value: str) -> Date | None:
+    try:
+        return Date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
 def _review(
     request: Request,
     user: User,
@@ -497,7 +516,7 @@ def _review(
     today: Date,
     saved: str = '',
 ) -> Response:
-    dates = [Date.fromisoformat(r.form.date) for r in rows if r.form.date]
+    dates = [d for d in (_iso(r.form.date) for r in rows) if d is not None]
     lo = min([*dates, today]) - timedelta(days=LINK_DAYS)
     hi = max([*dates, today]) + timedelta(days=AHEAD_DAYS)
     options = pay.open_paydays(db, user, lo, hi)
@@ -535,10 +554,7 @@ async def save_bulk(
     )
     names = values('file_name')
     include = set(values('include'))
-    try:
-        account_id = int(str(data.get('account_id', '0')) or 0)
-    except ValueError:
-        account_id = 0
+    account_id = int_or(data.get('account_id'))
     n = len(dates)
     if not all(len(v) == n for v in (sources, grosses, taxes, nets, paydays, names)):
         return redirect(

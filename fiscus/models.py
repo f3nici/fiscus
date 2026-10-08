@@ -180,6 +180,8 @@ class UserSettings(Base, Owned):
     ntfy_bills_due: Mapped[bool] = mapped_column(Boolean, default=True)
     ntfy_overdue: Mapped[bool] = mapped_column(Boolean, default=True)
     ntfy_low_balance: Mapped[bool] = mapped_column(Boolean, default=True)
+    # A payday that passed without a payslip.
+    ntfy_payslips: Mapped[bool] = mapped_column(Boolean, default=True)
     ntfy_hour: Mapped[int] = mapped_column(Integer, default=8)
     # The budget month runs from this day to the day before it next month.
     budget_start_day: Mapped[int] = mapped_column(Integer, default=1)
@@ -254,6 +256,20 @@ class Account(Base, Owned):
     created_at: Mapped[datetime] = mapped_column(DateTime)
     # The day the balance was last typed in by hand.
     balance_updated_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+
+class AccountBalance(Base, Owned):
+    """A balance typed in for an account, one a day: the account's history, so
+    a past day's balance is what was known then, not today's."""
+
+    __tablename__ = 'account_balances'
+    __table_args__ = (UniqueConstraint('account_id', 'date'),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'), index=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey('accounts.id', ondelete='CASCADE'))
+    date: Mapped[date] = mapped_column(Date)
+    balance_cents: Mapped[int] = mapped_column(Integer)
 
 
 class ImportMapping(Base, Owned):
@@ -539,9 +555,12 @@ class Budget(Base, Owned):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'), index=True)
     category_id: Mapped[int] = mapped_column(ForeignKey('categories.id', ondelete='CASCADE'))
-    # Set aside on top of this person's bills in the category. The budget shown
-    # is the bills' monthly equivalent plus this.
+    # What is allocated each month; this person's bills in the category are
+    # paid out of it (D29).
     monthly_cents: Mapped[int] = mapped_column(Integer)
+    # The amount as typed, for one cycle ($2,480 a year), so it reads back
+    # exactly and a saved-up line saves exactly that over its cycle.
+    total_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Use this amount instead of the rolling average in the forecast.
     use_in_forecast: Mapped[bool] = mapped_column(Boolean, default=False)
     # Spent every few months (rego, insurance): the monthly share is saved up
