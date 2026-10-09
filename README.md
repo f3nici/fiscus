@@ -5,7 +5,8 @@ accounts, budget, forecast and tax stay their own; bills can be shared. Runs
 as one Docker container on your homelab, signs in with passkeys, and installs
 on your phone as an app. Nothing leaves your network.
 
-- Account balances typed in as you go, with the history kept
+- Account balances typed in as you go, with the history kept, and moved by
+  the bills you mark paid and the payslips you add in between
 - A budget kept by hand: take spending off as you go, with saved-up lines for
   yearly and quarterly costs and savings goals inside your accounts
 - Bills, shared and split, marked paid in a tap

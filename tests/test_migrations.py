@@ -161,3 +161,58 @@ def test_a_goal_line_moves_onto_the_category(tmp_path: Path) -> None:
         rows = c.execute(text('SELECT id, category_id FROM goals ORDER BY id'))
         assert [tuple(r) for r in rows] == [(1, None), (2, 10), (3, None)]
     engine.dispose()
+
+
+def test_transactions_rebuilt_keep_the_bill_payments_matched_to_them(tmp_path: Path) -> None:
+    url = f'sqlite:///{tmp_path / "fiscus.db"}'
+    cfg = alembic_config(url)
+    command.upgrade(cfg, '0019')
+    engine = create_engine(url)
+    with engine.begin() as c:
+        c.execute(
+            text(
+                'INSERT INTO users (id, username, display_name, is_admin, is_active,'
+                ' user_handle, password_enabled, data_version, created_at)'
+                " VALUES (1, 'alex', 'alex', 0, 1, :h, 0, 0, '2026-01-01')"
+            ),
+            {'h': bytes([1]) * 64},
+        )
+        c.execute(
+            text(
+                'INSERT INTO accounts (id, user_id, name, type, opening_balance_cents,'
+                " is_set_aside, archived, created_at) VALUES (1, 1, 'Everyday', 'transaction',"
+                " 0, 0, 0, '2026-01-01')"
+            )
+        )
+        c.execute(
+            text(
+                'INSERT INTO transactions (id, user_id, account_id, date, amount_cents,'
+                " description, dedup_hash, created_at) VALUES (1, 1, 1, '2026-09-15', -12140,"
+                " 'ORIGIN ENERGY', 'h', '2026-09-15')"
+            )
+        )
+        c.execute(
+            text(
+                'INSERT INTO bills (id, owner_id, name, amount_cents, frequency, next_due,'
+                ' split_mode, match_tolerance_pct, match_window_days, description_hint,'
+                " active, created_at) VALUES (1, 1, 'Power', 12140, 'monthly', '2026-09-15',"
+                " 'equal', 5, 3, '', 1, '2026-01-01')"
+            )
+        )
+        c.execute(
+            text(
+                'INSERT INTO bill_payments (id, bill_id, user_id, due_date, paid_on,'
+                " transaction_id, created_at) VALUES (1, 1, 1, '2026-09-15', '2026-09-15', 1,"
+                " '2026-09-15')"
+            )
+        )
+    command.upgrade(cfg, '0020')
+    cols = {col['name'] for col in inspect(engine).get_columns('transactions')}
+    assert {'bill_payment_id', 'payslip_id'} <= cols
+    with engine.connect() as c:
+        assert c.execute(text('SELECT transaction_id FROM bill_payments')).scalar_one() == 1
+        assert c.execute(text('SELECT dedup_hash FROM transactions')).scalar_one() == 'h'
+    command.downgrade(cfg, '0019')
+    with engine.connect() as c:
+        assert c.execute(text('SELECT transaction_id FROM bill_payments')).scalar_one() == 1
+    engine.dispose()

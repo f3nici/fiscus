@@ -14,9 +14,11 @@ from datetime import date, timedelta
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
+from fiscus.clock import Clock
 from fiscus.domain import recurrence
 from fiscus.domain.pay import ASK_DAYS, LINK_DAYS, OpenPayday, expected_pay, window_days
 from fiscus.models import PaySchedule, Payslip, Transaction, User
+from fiscus.services import ledger
 from fiscus.services.access import owned
 
 
@@ -41,10 +43,30 @@ def deposits(db: Session, user: User, ps: PaySchedule, today: date) -> list[tupl
             Transaction.date > since,
             Transaction.date <= today,
             Transaction.amount_cents > 0,
+            Transaction.payslip_id.is_(None),
             func.instr(func.lower(Transaction.description), needle) > 0,
         )
     ).scalars()
     return [(t.date, t.amount_cents) for t in rows]
+
+
+def follow(db: Session, clock: Clock, user: User, slip: Payslip) -> None:
+    """Keep the payslip's net in the balance of the account it is paid into
+    (its own, else its schedule's), on its date (D42)."""
+    ps = db.get(PaySchedule, slip.schedule_id) if slip.schedule_id else None
+    account_id = slip.account_id
+    if account_id is None and ps is not None:
+        account_id = ps.account_id
+    ledger.follow(
+        db,
+        clock,
+        user,
+        slip,
+        account_id=account_id,
+        day=slip.date,
+        cents=slip.net_cents,
+        description=ps.name if ps else slip.source or 'Payslip',
+    )
 
 
 def net_per_pay(db: Session, user: User, ps: PaySchedule, today: date) -> int:

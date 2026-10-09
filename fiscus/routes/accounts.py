@@ -27,15 +27,16 @@ TYPE_LABELS = {
 def list_accounts(
     request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
 ) -> Response:
+    today = ctx(request).clock.today()
     accts = ledger.accounts(db, user, include_archived=True)
-    bal = ledger.balances(db, user)
+    bal = ledger.balances(db, user, today)
     loans = {loan.id: loan for loan in db.execute(owned(Loan, user)).scalars()}
     return render(
         request,
         'accounts/list.html',
         {
             'accounts': accts,
-            'splits': goals.splits(db, user, bal, ctx(request).clock.today()),
+            'splits': goals.splits(db, user, bal, today),
             'balances': bal,
             'loans': loans,
             'labels': TYPE_LABELS,
@@ -96,7 +97,9 @@ def _form(
         'accounts/form.html',
         {
             'account': account,
-            'balance': ledger.balances(db, user).get(account.id, 0) if account else 0,
+            'balance': ledger.balances(db, user, ctx(request).clock.today()).get(account.id, 0)
+            if account
+            else 0,
             'types': ACCOUNT_TYPES,
             'labels': TYPE_LABELS,
             'loans': loans,
@@ -175,14 +178,16 @@ def show_account(
     db: Session = Depends(get_db),
 ) -> Response:
     acct = get_owned(db, Account, account_id, user)
-    bal = ledger.balances(db, user)
+    today = ctx(request).clock.today()
+    bal = ledger.balances(db, user, today)
     return render(
         request,
         'accounts/show.html',
         {
             'account': acct,
             'balance': bal.get(acct.id, 0),
-            'split': goals.splits(db, user, bal, ctx(request).clock.today()).get(acct.id),
+            'split': goals.splits(db, user, bal, today).get(acct.id),
+            'moves': ledger.moved_since_typed(db, user, acct, today),
             'labels': TYPE_LABELS,
         },
     )

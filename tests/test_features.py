@@ -889,8 +889,9 @@ def test_another_users_staged_bill_file_is_unreachable(env: Env) -> None:
 
 def test_future_payslip_is_one_off_income(env: Env) -> None:
     a, alex, acct = setup_household(env)
+    a.post(f'/accounts/{acct}/balance', data={'balance': '3000'})
     before = chart_data(a.get('/forecast?months=1').text)
-    # A bonus paid on 20 Oct, and one already paid (in the balance already).
+    # A bonus paid on 20 Oct, and one already paid (in the balance typed in today).
     a.post(
         '/payslips',
         data={

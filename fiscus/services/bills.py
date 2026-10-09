@@ -18,6 +18,7 @@ from fiscus.clock import Clock, utcnow_naive
 from fiscus.domain import recurrence, splits
 from fiscus.domain.matching import Candidate, OpenOccurrence, assign
 from fiscus.models import Bill, BillPayment, BillShare, Transaction, User
+from fiscus.services import ledger
 
 DUE_SOON_DAYS = 7
 # Unpaid this far back is still owed: the forecast pays it tomorrow, and the
@@ -167,7 +168,8 @@ def auto_match(db: Session, clock: Clock, user: User, txns: list[Transaction]) -
 
 
 def mark_paid(db: Session, clock: Clock, user: User, bill: Bill, due: date) -> BillPayment:
-    """Mark one of this person's occurrences paid by hand, today."""
+    """Mark one of this person's occurrences paid by hand, today. Their share
+    comes off their account for it today (D42), as the forecast had it."""
     existing = db.execute(
         select(BillPayment).where(
             BillPayment.bill_id == bill.id,
@@ -186,6 +188,18 @@ def mark_paid(db: Session, clock: Clock, user: User, bill: Bill, due: date) -> B
     )
     db.add(pay)
     db.flush()
+    share = next(s for s in bill.shares if s.user_id == user.id)
+    ledger.follow(
+        db,
+        clock,
+        user,
+        pay,
+        account_id=share.account_id,
+        day=pay.paid_on,
+        cents=-share_amounts(bill)[user.id],
+        description=bill.name,
+        category_id=share.category_id,
+    )
     return pay
 
 
