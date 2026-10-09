@@ -24,9 +24,9 @@ user's `data_version` (the forecast cache key).
 
 | Table | Notes |
 | --- | --- |
-| accounts (owned) | type, opening balance, set-aside flag, `loan_id` for an offset, archived, `balance_updated_on`. Typing in today's balance moves the opening balance so opening plus transactions comes to it |
-| account_balances (owned) | each balance typed in: account, date (one a day, the last wins), cents. A past day's balance is the last one on or before it, plus later transactions; offset savings read it (D39) |
-| transactions (owned) | date, signed amount, description, category, import, `dedup_hash` unique per account. Written by Square sync and kept from imports before D37; no screen shows them |
+| accounts (owned) | type, opening balance (used only while no balance has been typed in), set-aside flag, `loan_id` for an offset, archived, `balance_updated_on` |
+| account_balances (owned) | each balance typed in: account, date (one a day, the last wins), cents. Any day's balance, today's too, is the last one on or before it plus the transactions dated after that day; offset savings read it (D39, D42) |
+| transactions (owned) | date, signed amount, description, category, import, `dedup_hash` unique per account. Written by Square sync, kept from imports before D37, and written for a bill marked paid by hand (`bill_payment_id`) or a payslip (`payslip_id`) so the balance moves with it; deleted with that row (D42). The account page lists those since the balance was typed in |
 | imports (owned) | a Square sync batch, or a statement import from before D37 |
 | import_mappings (owned) | column mappings from statement imports before D37; no longer read |
 | categories (owned) | name unique per user; income, business, deductible, transfer flags; the budget group its line sits in and its place there (0 until moved); the goal its line saves into (optional) |

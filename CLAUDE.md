@@ -5,7 +5,8 @@ Docker container on a homelab behind a reverse proxy with HTTPS, installable as
 a PWA on phones. No external calls, no telemetry, no CDN.
 
 **Status: v1 complete.** Passkeys, setup links and recovery, users and admin;
-accounts with balances typed in and kept by day (D39); categories; bills with
+accounts with balances typed in and kept by day (D39), moved by bills marked
+paid and payslips until the next is typed in (D42); categories; bills with
 shares and states; pay schedules and payslips; the calendar; home loan and
 offset; forecasting with scenarios; the budget (bills paid out of it); bill
 import; the tax estimate, each job taxed on its own figures (D38); the
@@ -17,8 +18,8 @@ saved-up lines say if they will cover their next bill, overdue ones first
 (D36, D40); budget lines in groups and in an order set by hand (D35). Since
 D25 the budget is kept by hand (spending taken off, balances typed in); the
 transactions, statement import, rules and matching screens were removed in
-D37 (their tables stay, and Square still writes to them; its page is
-unlinked). Next steps are in `docs/10-decisions.md` §3.
+D37 (their tables stay; Square, bills marked paid and payslips write to
+them; Square's page is unlinked). Next steps are in `docs/10-decisions.md` §3.
 
 ## Read before building
 
@@ -172,6 +173,10 @@ FISCUS_DATA_DIR=./data FISCUS_BASE_URL=http://localhost:8000 python -m fiscus
   (autofill) request on the login page, which iOS allows.
 - **iOS has no `beforeinstallprompt`.** Install is a Share-menu instruction
   (README). File uploads use the file picker, which works in standalone mode.
+- **A balance is the last one typed in plus transactions dated after its
+  day** (`ledger.balances`, D42). Anything else that moves money writes a
+  transaction linked to its row (`ledger.follow`), never the opening balance,
+  and one dated on or before a typed balance changes nothing.
 - **A test that patches the clock** uses `env.clock.set(...)`; the default is
   10:00 on Thursday 1 October 2026 in Perth.
 - Templates see `user` as a `UserView` snapshot, not the ORM object, so an

@@ -49,17 +49,6 @@ def horizon_days(today: date, months: int) -> int:
     return (recurrence.add_months(today, months) - today).days
 
 
-def spending_account(db: Session, user: User, accts: list[Account]) -> int | None:
-    pref = settings_for(db, user).spending_account_id
-    if pref and any(a.id == pref for a in accts):
-        return pref
-    for kind in ('transaction', 'offset', 'savings', 'credit_card'):
-        for a in accts:
-            if a.type == kind and not a.is_set_aside:
-                return a.id
-    return accts[0].id if accts else None
-
-
 def loan_spec(db: Session, loan: Loan) -> LoanSpec:
     offsets = (
         db.execute(
@@ -106,8 +95,8 @@ def estimates(db: Session, user: User, today: date) -> list[Estimate]:
     for t in db.execute(
         owned(Transaction, user).where(Transaction.date > start, Transaction.date <= today)
     ).scalars():
-        if t.id in paid_txn_ids:
-            continue  # bills are forecast from their schedule, not their history
+        if t.id in paid_txn_ids or t.bill_payment_id or t.payslip_id:
+            continue  # bills and pay are forecast from their schedules, not their history
         cat = cats.get(t.category_id) if t.category_id else None
         if cat is not None and cat.is_transfer:
             continue
@@ -152,7 +141,7 @@ def build_input(db: Session, user: User, today: date, months: int) -> ForecastIn
     days = horizon_days(today, months)
     end = today + timedelta(days=days)
     first = today + timedelta(days=1)
-    spend_acct = spending_account(db, user, accts)
+    spend_acct = ledger.spending_account(db, user, accts)
     valid = {a.id for a in accts}
 
     def acct_or_default(aid: int | None) -> int | None:

@@ -350,10 +350,12 @@ async def mark_paid(
     bill, _share = visible_bill(db, bill_id, user)
     when = _occ(db, user, bill, due)
     form = await request.form()
+    today = c.clock.today()
+    before = ledger.balances(db, user, today)
     svc.mark_paid(db, c.clock, user, bill, when)
     return redirect(
         local_path(form.get('back'), f'/bills/{bill.id}'),
-        flash=f'{bill.name} marked paid',
+        flash=f'{bill.name} marked paid{ledger.now_at(db, user, before, today)}',
         request=request,
     )
 
@@ -368,11 +370,13 @@ async def mark_unpaid(
 ) -> Response:
     bill, _share = visible_bill(db, bill_id, user)
     when = _occ(db, user, bill, due)
+    today = ctx(request).clock.today()
+    before = ledger.balances(db, user, today)
     svc.unmark(db, user, bill, when)
     form = await request.form()
     return redirect(
         local_path(form.get('back'), f'/bills/{bill.id}'),
-        flash=f'{bill.name} marked unpaid',
+        flash=f'{bill.name} marked unpaid{ledger.now_at(db, user, before, today)}',
         request=request,
     )
 

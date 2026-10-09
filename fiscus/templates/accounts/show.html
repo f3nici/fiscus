@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import money_cell %}
 {% block title %}{{ account.name }}{% endblock %}
 {% block content %}
   <div class="page-head">
@@ -14,7 +15,7 @@
     <div class="card stat">
       <div class="label">Balance</div>
       <div class="value">{{ balance | money }}</div>
-      <span class="text-sm muted">{% if account.balance_updated_on %}Updated {{ account.balance_updated_on | d }}{% else %}Not updated yet{% endif %}</span>
+      <span class="text-sm muted">{% if account.balance_updated_on %}Updated {{ account.balance_updated_on | d }}{% if moves %}, plus what has moved it since{% endif %}{% else %}Not updated yet{% endif %}</span>
     </div>
     <form class="card" method="post" action="/accounts/{{ account.id }}/balance">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -26,6 +27,20 @@
       <p class="muted text-xs mt-sm">Credit cards owing money are negative.</p>
     </form>
   </div>
+  {% if moves %}
+    <div class="card mt">
+      <h2>Since {{ account.balance_updated_on | d }}</h2>
+      <p class="muted text-sm">Bills marked paid and payslips dated after you typed the balance in have moved it. Typing it in again starts afresh from what the bank shows.</p>
+      <ul class="list">
+        {% for t in moves %}
+          <li>
+            <span class="grow"><span class="title">{{ t.description }}</span><span class="text-xs muted">{{ t.date | d }}{{ ' · bill paid' if t.bill_payment_id else ' · pay' if t.payslip_id else '' }}</span></span>
+            {{ money_cell(t.amount_cents) }}
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
   <div class="card mt">
     <div class="row between"><h2 class="mb-0">What is in it</h2><a class="text-sm" href="/goals#new-goal">Add a goal</a></div>
     {% if split %}

@@ -331,7 +331,7 @@ def _fill(
     slip.payday = link[1] if link else None
 
 
-def _saved_flash(slip: Payslip, today: Date, names: dict[int, str]) -> str:
+def _saved_flash(slip: Payslip, today: Date, names: dict[int, str], moved: str = '') -> str:
     what = (
         f'Payslip saved for {names.get(slip.schedule_id, "your pay")} on '
         f'{slip.payday.strftime("%d %b")}'
@@ -339,8 +339,8 @@ def _saved_flash(slip: Payslip, today: Date, names: dict[int, str]) -> str:
         else 'Payslip saved as a one-off'
     )
     if slip.date > today:
-        return what + '. It is in your forecast.'
-    return what
+        return what + moved + '. It is in your forecast.'
+    return what + moved
 
 
 def _names(db: Session, user: User) -> dict[int, str]:
@@ -563,6 +563,9 @@ async def save_bulk(
     taken: set[str] = set()
     saved = 0
     rows: list[ReadRow] = []
+    clock = ctx(request).clock
+    today = clock.today()
+    before = ledger.balances(db, user, today)
     for i in range(n):
         form = SlipForm(
             dates[i], sources[i], grosses[i], taxes[i], nets[i], account_id, paydays[i], names[i]
@@ -580,11 +583,14 @@ async def save_bulk(
             taken.add(f'{slip.schedule_id}:{slip.payday.isoformat()}')
         db.add(slip)
         db.flush()
+        pay.follow(db, clock, user, slip)
         saved += 1
-    msg = f'{saved} payslip{"" if saved == 1 else "s"} saved'
+    msg = (
+        f'{saved} payslip{"" if saved == 1 else "s"} saved{ledger.now_at(db, user, before, today)}'
+    )
     if rows:
         # What was valid is saved; the rest is shown again to fix.
-        return _review(request, user, db, rows, [], ctx(request).clock.today(), msg)
+        return _review(request, user, db, rows, [], today, msg)
     return redirect('/pay', flash=msg, request=request)
 
 
@@ -605,6 +611,9 @@ def save_payslip(
     db: Session = Depends(get_db),
 ) -> Response:
     existing = get_owned(db, Payslip, slip_id, user) if slip_id else None
+    clock = ctx(request).clock
+    today = clock.today()
+    before = ledger.balances(db, user, today)
     slip = existing or Payslip(user_id=user.id)
     form = SlipForm(date, source, gross, tax_withheld, net, account_id, payday)
     try:
@@ -614,8 +623,10 @@ def save_payslip(
         return _page(request, user, db, form, existing)
     if existing is None:
         db.add(slip)
-    today = ctx(request).clock.today()
-    return redirect('/pay', flash=_saved_flash(slip, today, _names(db, user)), request=request)
+    db.flush()
+    pay.follow(db, clock, user, slip)
+    flash = _saved_flash(slip, today, _names(db, user), ledger.now_at(db, user, before, today))
+    return redirect('/pay', flash=flash, request=request)
 
 
 @router.post('/payslips/{slip_id}/delete')
@@ -625,5 +636,8 @@ def delete_payslip(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> Response:
+    today = ctx(request).clock.today()
+    before = ledger.balances(db, user, today)
     db.delete(get_owned(db, Payslip, slip_id, user))
-    return redirect('/pay', flash='Payslip deleted', request=request)
+    flash = f'Payslip deleted{ledger.now_at(db, user, before, today)}'
+    return redirect('/pay', flash=flash, request=request)
