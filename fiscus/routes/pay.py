@@ -561,7 +561,7 @@ async def save_bulk(
             '/pay', flash='The review form was incomplete. Upload again.', request=request
         )
     taken: set[str] = set()
-    saved = 0
+    saved = had = 0
     rows: list[ReadRow] = []
     clock = ctx(request).clock
     today = clock.today()
@@ -585,9 +585,15 @@ async def save_bulk(
         db.flush()
         pay.follow(db, clock, user, slip)
         saved += 1
+        had += ledger.held(db, user, slip, today) is not None
     msg = (
         f'{saved} payslip{"" if saved == 1 else "s"} saved{ledger.now_at(db, user, before, today)}'
     )
+    if had:
+        msg += (
+            f'. {had} {"was" if had == 1 else "were"} already in a balance typed in on'
+            ' or after its date'
+        )
     if rows:
         # What was valid is saved; the rest is shown again to fix.
         return _review(request, user, db, rows, [], today, msg)
@@ -625,7 +631,11 @@ def save_payslip(
         db.add(slip)
     db.flush()
     pay.follow(db, clock, user, slip)
-    flash = _saved_flash(slip, today, _names(db, user), ledger.now_at(db, user, before, today))
+    moved = ledger.now_at(db, user, before, today)
+    has = ledger.held(db, user, slip, today)
+    if has is not None:
+        moved += f'. The balance typed in for {has[0]} on {has[1].strftime("%d %b")} already has it'
+    flash = _saved_flash(slip, today, _names(db, user), moved)
     return redirect('/pay', flash=flash, request=request)
 
 

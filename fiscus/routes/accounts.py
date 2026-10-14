@@ -49,9 +49,12 @@ def list_accounts(
 async def update_balances(
     request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
 ) -> Response:
-    """Type in what every account is at today. Blank fields are left alone."""
+    """Type in what every account is at today. Blank fields, and those left at
+    the balance they showed, are left alone: one not typed in keeps moving
+    with what is put in (D45)."""
     form = await request.form()
-    today = ctx(request).clock.today()
+    clock = ctx(request).clock
+    now = ledger.balances(db, user, clock.today())
     changed = 0
     for acct in ledger.accounts(db, user):
         raw = form.get(f'balance_{acct.id}')
@@ -61,7 +64,9 @@ async def update_balances(
             cents = money(raw, acct.name)
         except FormError as exc:
             return redirect('/accounts', flash=str(exc), request=request)
-        ledger.set_balance(db, user, acct, cents, today)
+        if cents == now.get(acct.id):
+            continue
+        ledger.set_balance(db, clock, user, acct, cents)
         changed += 1
     msg = (
         f'Updated {changed} balance{"" if changed == 1 else "s"}'
@@ -84,7 +89,7 @@ def update_balance(
         cents = money(balance, 'Balance')
     except FormError as exc:
         return redirect(f'/accounts/{acct.id}', flash=str(exc), request=request)
-    ledger.set_balance(db, user, acct, cents, ctx(request).clock.today())
+    ledger.set_balance(db, ctx(request).clock, user, acct, cents)
     return redirect(f'/accounts/{acct.id}', flash=f'{acct.name} balance updated', request=request)
 
 
@@ -162,11 +167,11 @@ def save_account(
     acct.loan_id = loan.id if loan else None
     acct.archived = archived
     db.flush()
-    today = ctx(request).clock.today()
+    clock = ctx(request).clock
     if current is not None and (
-        account_id is None or current != ledger.balances(db, user, today).get(acct.id, 0)
+        account_id is None or current != ledger.balances(db, user, clock.today()).get(acct.id, 0)
     ):
-        ledger.set_balance(db, user, acct, current, today)
+        ledger.set_balance(db, clock, user, acct, current)
     return redirect(f'/accounts/{acct.id}', flash='Account saved', request=request)
 
 

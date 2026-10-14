@@ -270,6 +270,9 @@ class AccountBalance(Base, Owned):
     account_id: Mapped[int] = mapped_column(ForeignKey('accounts.id', ondelete='CASCADE'))
     date: Mapped[date] = mapped_column(Date)
     balance_cents: Mapped[int] = mapped_column(Integer)
+    # When it was typed in (UTC). What is put in later, dated its day, moves
+    # it (D45). None for one typed before that: it holds its whole day.
+    typed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class ImportMapping(Base, Owned):

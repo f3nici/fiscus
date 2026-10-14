@@ -25,7 +25,7 @@ user's `data_version` (the forecast cache key).
 | Table | Notes |
 | --- | --- |
 | accounts (owned) | type, opening balance (used only while no balance has been typed in), set-aside flag, `loan_id` for an offset, archived, `balance_updated_on` |
-| account_balances (owned) | each balance typed in: account, date (one a day, the last wins), cents. Any day's balance, today's too, is the last one on or before it plus the transactions dated after that day; offset savings read it (D39, D42) |
+| account_balances (owned) | each balance typed in: account, date (one a day, the last wins), cents, `typed_at` (when; none before D45). Any day's balance, today's too, is the last one on or before it plus the transactions dated after that day and those dated its day put in after `typed_at`; offset savings read it (D39, D42, D45) |
 | transactions (owned) | date, signed amount, description, category, import, `dedup_hash` unique per account. Written by Square sync, kept from imports before D37, and written for a bill marked paid by hand (`bill_payment_id`) or a payslip (`payslip_id`) so the balance moves with it; deleted with that row (D42). The account page lists those since the balance was typed in |
 | imports (owned) | a Square sync batch, or a statement import from before D37 |
 | import_mappings (owned) | column mappings from statement imports before D37; no longer read |

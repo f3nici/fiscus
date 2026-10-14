@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import select
 
@@ -15,6 +15,7 @@ from tests.test_paydays import bulk_form, put_in, schedule_id, weekly
 
 SEPT_30 = datetime(2026, 9, 30, 2, tzinfo=UTC)
 OCT_2 = datetime(2026, 10, 2, 2, tzinfo=UTC)
+HOUR = timedelta(hours=1)
 
 
 def typed_account(
@@ -175,36 +176,138 @@ def test_a_future_payslip_counts_on_its_date(env: Env) -> None:
     assert chart['combined'][chart['dates'].index('2026-10-15')] == 2020_00
 
 
-def test_a_typed_balance_already_counts_its_own_day_and_before(env: Env) -> None:
+def slip_for(client: CsrfClient, day: str, net: str, sid: int) -> str:
+    """Put a payslip in for the schedule's payday `day`; the flash it shows."""
+    resp = client.post(
+        '/payslips',
+        data={
+            'date': day,
+            'gross': '700',
+            'tax_withheld': '160',
+            'net': net,
+            'payday': f'{sid}:{day}',
+        },
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200, resp.text
+    return str(resp.text)
+
+
+def history(env: Env, user: User, acct: int, start: date, end: date) -> dict[date, int]:
+    with env.db() as db:
+        u = db.get(User, user.id)
+        assert u is not None
+        return ledger.balance_history(db, u, [acct], start, end)[0]
+
+
+def test_a_typed_balance_has_what_was_put_in_before_it(env: Env) -> None:
     alex = env.user('alex')
     a = env.login(alex)
-    acct = typed_account(a)  # typed in today, 1 Oct
+    acct = typed_account(a)  # typed in today, 1 Oct, at 10:00
     weekly(a, acct)
     sid = schedule_id(env)
     bill = create_bill(
         a, name='Electricity', amount='121.40', next_due='2026-09-15', account_id=str(acct)
     )
-    # Last week's pay put in now, and a bill paid today: today's balance has them.
-    put_in(a, '2026-09-24', '500', schedule=str(sid))
-    resp = a.post(f'/bills/{bill}/occurrence/2026-09-15/paid', follow_redirects=True)
-    assert 'Electricity marked paid' in resp.text and 'Everyday is now' not in resp.text
+    # Last week's pay put in later: today's balance has it, and says so.
+    env.clock.set(NOW + HOUR)
+    page = slip_for(a, '2026-09-24', '500', sid)
+    assert 'The balance typed in for Everyday on 01 Oct already has it' in page
+    assert 'Everyday is now' not in page
+    resp = a.post(
+        '/payslips/bulk',
+        data=bulk_form(
+            [('one.pdf', '2026-09-17', 'Acme', '650', '150', '500', f'{sid}:2026-09-17')]
+        ),
+        follow_redirects=True,
+    )
+    assert '1 payslip saved. 1 was already in a balance typed in on or after its date' in resp.text
     assert balance(env, alex, acct) == 1000_00
-    assert len(moves(env)) == 2
-    # Tomorrow, the next one paid comes off.
+    # Tomorrow, a bill paid comes off.
     env.clock.set(OCT_2)
-    a.post(f'/bills/{bill}/occurrence/2026-10-15/paid')
-    assert balance(env, alex, acct) == 878_60
-    with env.db() as db:
-        u = db.get(User, alex.id)
-        assert u is not None
-        days, _known = ledger.balance_history(db, u, [acct], date(2026, 10, 1), date(2026, 10, 2))
-    assert days == {date(2026, 10, 1): 1000_00, date(2026, 10, 2): 878_60}
-    # Typing it in again sets it, and a payment it already counts can be
-    # undone without moving it.
+    resp = a.post(f'/bills/{bill}/occurrence/2026-09-15/paid', follow_redirects=True)
+    assert 'Electricity marked paid. Everyday is now $878.60' in resp.text
+    assert history(env, alex, acct, date(2026, 10, 1), date(2026, 10, 2)) == {
+        date(2026, 10, 1): 1000_00,
+        date(2026, 10, 2): 878_60,
+    }
+    # Typing it in again sets it, and a payment it already has can be undone
+    # without moving it.
+    env.clock.set(OCT_2 + HOUR)
     a.post(f'/accounts/{acct}/balance', data={'balance': '900'})
     assert balance(env, alex, acct) == 900_00
-    a.post(f'/bills/{bill}/occurrence/2026-10-15/unpaid')
+    assert a.get(f'/accounts/{acct}').text.count('Electricity') == 0
+    a.post(f'/bills/{bill}/occurrence/2026-09-15/unpaid')
     assert balance(env, alex, acct) == 900_00
+
+
+def test_pay_put_in_after_the_days_balance_moves_it(env: Env) -> None:
+    alex = env.user('alex')
+    a = env.login(alex)
+    acct = typed_account(a)  # this morning, before the pay landed
+    weekly(a, acct)
+    sid = schedule_id(env)
+    bill = create_bill(
+        a, name='Electricity', amount='121.40', next_due='2026-10-01', account_id=str(acct)
+    )
+    # This afternoon: today's pay, and a bill marked paid.
+    env.clock.set(NOW + 5 * HOUR)
+    page = slip_for(a, '2026-10-01', '500', sid)
+    assert 'Payslip saved for Acme on 01 Oct. Everyday is now $1,500.00' in page
+    assert 'already has it' not in page
+    resp = a.post(f'/bills/{bill}/occurrence/2026-10-01/paid', follow_redirects=True)
+    assert 'Everyday is now $1,378.60' in resp.text
+    assert balance(env, alex, acct) == 1378_60
+    shown = a.get(f'/accounts/{acct}').text
+    assert 'Acme' in shown and 'Electricity' in shown
+    assert history(env, alex, acct, date(2026, 9, 30), date(2026, 10, 2)) == {
+        date(2026, 9, 30): 0,  # not known yet
+        date(2026, 10, 1): 1378_60,
+        date(2026, 10, 2): 1378_60,
+    }
+    chart = chart_data(a.get('/forecast?months=1').text)
+    assert chart['combined'][0] == 1378_60
+    # Typed in again tonight, it has them: undoing one no longer moves it.
+    env.clock.set(NOW + 9 * HOUR)
+    a.post(f'/accounts/{acct}/balance', data={'balance': '1380'})
+    assert balance(env, alex, acct) == 1380_00
+    a.post(f'/bills/{bill}/occurrence/2026-10-01/unpaid')
+    assert balance(env, alex, acct) == 1380_00
+    # Tomorrow, it moves with what is dated after it.
+    env.clock.set(OCT_2)
+    slip_for(a, '2026-10-08', '500', sid)
+    env.clock.set(datetime(2026, 10, 8, 2, tzinfo=UTC))
+    assert balance(env, alex, acct) == 1880_00
+
+
+def test_balances_left_as_they_showed_are_not_typed_in(env: Env) -> None:
+    alex = env.user('alex')
+    a = env.login(alex)
+    env.clock.set(SEPT_30)
+    everyday = typed_account(a)
+    card = typed_account(a, 'Card', '-200', 'credit_card')
+    env.clock.set(NOW)
+    weekly(a, everyday)
+    sid = schedule_id(env)
+    # Only the card changed; the page sends Everyday's figure back as it was.
+    resp = a.post(
+        '/accounts/balances',
+        data={f'balance_{everyday}': '1000.00', f'balance_{card}': '-250'},
+        follow_redirects=True,
+    )
+    assert 'Updated 1 balance' in resp.text
+    assert balance(env, alex, card) == -250_00
+    # So today's pay, put in tomorrow, still goes into Everyday.
+    env.clock.set(OCT_2)
+    page = slip_for(a, '2026-10-01', '500', sid)
+    assert 'Everyday is now $1,500.00' in page
+    assert balance(env, alex, everyday) == 1500_00
+    resp = a.post(
+        '/accounts/balances',
+        data={f'balance_{everyday}': '1500.00', f'balance_{card}': '-250.00'},
+        follow_redirects=True,
+    )
+    assert 'Nothing to update' in resp.text
 
 
 def test_payments_stay_out_of_the_spending_average(env: Env) -> None:
