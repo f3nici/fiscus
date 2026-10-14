@@ -290,6 +290,7 @@ WRITES: list[tuple[str, dict[str, Any]]] = [
     ('/budget/spend/{spend}/delete', {}),
     ('/budget/{category}/remove', {}),
     ('/budget/{category}/move', {'direction': 'up'}),
+    ('/budget/{category}/saved', {'saved': '1'}),
     ('/budget/groups/{group}', {'name': 'pwned'}),
     ('/budget/groups/{group}/move', {'direction': 'up'}),
     ('/budget/groups/{group}/fold', {'collapsed': 'true'}),

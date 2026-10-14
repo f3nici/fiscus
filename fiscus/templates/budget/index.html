@@ -36,7 +36,7 @@
     <div class="card stat">
       <div class="label">Still to spend</div>
       <div class="value">{{ summary.to_spend_cents | money }}</div>
-      <span class="text-sm muted">left in your budgets</span>
+      <span class="text-sm muted">left in your budgets{% if summary.saved_cents %}, {{ summary.saved_cents | money }} of it saved up for bills every few months{% endif %}</span>
     </div>
     <div class="card stat">
       <div class="label">Free in accounts now</div>
@@ -176,6 +176,14 @@
                 {% set dc = due.get(r.category.id) %}
                 {% if dc and dc.due < today %}<div class="text-xs neg">{{ dc.need_cents | money }} overdue since {{ dc.due | d }}: {% if dc.short_cents %}{{ dc.short_cents | money }} short{% else %}the line holds it{% endif %}. <a href="/bills#overdue">Mark it paid</a> once it is.</div>
                 {% elif dc %}<div class="text-xs {{ 'neg' if dc.short_cents else 'pos' }}">{{ dc.need_cents | money }} due {{ dc.due | d }}: {% if dc.short_cents %}{{ dc.short_cents | money }} short by then{% else %}on track{% endif %}</div>{% endif %}
+                {% if dc and dc.short_cents and current %}
+                  <form method="post" action="/budget/{{ r.category.id }}/saved" class="mt-sm">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input type="hidden" name="back" value="{{ back }}">
+                    <input type="hidden" name="saved" value="{{ dc.lined_up_cents | money_plain }}">
+                    <button class="btn btn-sm" type="submit" aria-label="Set {{ r.category.name }} to hold {{ dc.lined_up_cents | money }} now, so it has the bill by {{ dc.due | d }}">Set saved to {{ dc.lined_up_cents | money }}</button>
+                  </form>
+                {% endif %}
                 {% if r.category.id in doubled %}<div class="text-xs neg">Your home loan repayments are already in the budget. Remove this line so they are not counted twice.</div>{% endif %}
                 {% set g = goal_for.get(r.category.id) %}
                 {% if g %}
@@ -232,8 +240,9 @@
                       <select class="input" id="cycle-{{ r.category.id }}" name="cycle_months" aria-label="How often {{ r.category.name }} is spent">
                         {% for months, label in cycles.items() %}<option value="{{ months }}" {{ 'selected' if months == cycle else '' }}>{{ label }}</option>{% endfor %}
                       </select>
-                      <label class="label mt-sm" for="saved-{{ r.category.id }}">Saved so far (optional)</label>
-                      <input class="input" id="saved-{{ r.category.id }}" name="saved" inputmode="decimal" aria-label="Saved so far for {{ r.category.name }}">
+                      <label class="label mt-sm" for="saved-{{ r.category.id }}">Saved now (optional)</label>
+                      <input class="input" id="saved-{{ r.category.id }}" name="saved" inputmode="decimal" value="{{ r.saved_cents | money_plain if r.saving and current else '' }}" aria-label="Saved now for {{ r.category.name }}">
+                      {% if r.saving and current %}<p class="text-xs muted mt-sm">What it holds now, as Left shows. It saves on from what you type.</p>{% endif %}
                       {% if bill_cycles.get(r.category.id, 1) > 1 and r.cycle_months == 1 %}<p class="text-xs muted mt-sm">Some of its bills are not monthly. Choose how often, and their monthly share is saved up so paying one does not put a month over.</p>{% endif %}
                     {% endif %}
                     {% if groups %}
@@ -292,7 +301,7 @@
         <select class="input" id="add_cycle" name="cycle_months">{% for months, label in cycles.items() %}<option value="{{ months }}">{{ label }}</option>{% endfor %}</select>
       </div>
       <div class="field">
-        <label class="label" for="add_saved">Saved so far (optional)</label>
+        <label class="label" for="add_saved">Saved now (optional)</label>
         <input class="input" id="add_saved" name="saved" inputmode="decimal" placeholder="For a yearly or quarterly cost">
       </div>
       {% if groups %}
@@ -309,7 +318,7 @@
     <details class="mt">
       <summary class="text-sm">How budget lines work</summary>
       <p class="muted text-sm mt-sm">A category's budget is the whole amount. Bills in it do not add to it: when you tick one as paid on the <a href="/bills">Bills</a> page, it comes off the budget as spent. The forecast spends what is budgeted beyond the bills, since the bills are forecast from their own dates.</p>
-      <p class="muted text-sm">For something paid every few months or once a year (rego, insurance), choose how often. Its monthly share is saved up and what you spend comes out of that, so the month you pay it is not over budget.</p>
+      <p class="muted text-sm">For something paid every few months or once a year (rego, insurance), choose how often. Its monthly share is saved up and what you spend comes out of that, so the month you pay it is not over budget. What it holds counts as still to spend, so it is never free in your accounts. Set what it holds with Saved now, or, when its next bill would find it short, Set saved to puts in just enough to have the bill on its due date.</p>
       <p class="muted text-sm mb-0">Saving for something, like a holiday? Put it in a <a href="/goals">goal</a>: what a goal holds comes off what is free in your accounts, not out of the budget. A goal can also save from budget lines (utilities, yearly bills): a Put aside button on each line then spends from it and puts the money in the goal at once.</p>
     </details>
   </form>

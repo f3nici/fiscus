@@ -129,7 +129,7 @@ def save_budget(
         cycle_months = 1
     try:
         cents = money(amount, 'Amount', allow_negative=False)
-        saved_cents = money(saved, 'Saved so far') if saved.strip() else None
+        saved_cents = money(saved, 'Saved now') if saved.strip() else None
         new_name = text(name, 'Name', 80) if category_id and name.strip() else cat.name
     except FormError as exc:
         return redirect(target, flash=str(exc), request=request)
@@ -300,6 +300,37 @@ def remove_budget(
     return redirect(
         _back(back, 'lines'), flash=f'{cat.name} removed from the budget', request=request
     )
+
+
+@router.post('/budget/{category_id}/saved')
+def set_saved(
+    category_id: int,
+    request: Request,
+    saved: str = Form(...),
+    back: str = Form('/budget'),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    """What a saved-up line holds this budget month, typed in or lined up
+    with its next bill."""
+    cat = get_owned(db, Category, category_id, user)
+    row = db.execute(owned(Budget, user).where(Budget.category_id == cat.id)).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404)
+    target = _back(back, f'line-{cat.id}')
+    if row.cycle_months == 1 or cat.is_income:
+        return redirect(
+            target,
+            flash=f'{cat.name} is spent every month, so nothing is saved up',
+            request=request,
+        )
+    try:
+        cents = money(saved, 'Saved now')
+    except FormError as exc:
+        return redirect(target, flash=str(exc), request=request)
+    today = ctx(request).clock.today()
+    budgeting.hold(db, user, row, cents, today, today)
+    return redirect(target, flash=f'{cat.name} now holds {fmt(cents)}', request=request)
 
 
 @router.post('/budget/spend')

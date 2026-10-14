@@ -20,10 +20,18 @@ class DueCheck:
     due: date
     need_cents: int  # unpaid bills due from this budget month to the one holding `due`
     by_then_cents: int  # what the line will hold by then
+    saved_cents: int  # what it holds in this budget month
 
     @property
     def short_cents(self) -> int:
         return max(0, self.need_cents - self.by_then_cents)
+
+    @property
+    def lined_up_cents(self) -> int:
+        """What the line would hold in this budget month to have just enough
+        by then: the bills less the months still to come and what was put
+        aside."""
+        return max(0, self.saved_cents + self.need_cents - self.by_then_cents)
 
 
 def check(
@@ -40,4 +48,5 @@ def check(
     starting `period_start`; each later month before the one holding `due`
     adds `monthly_cents`."""
     ahead = max(0, months_left(period_start, due, start_day) - 1)
-    return DueCheck(due, need_cents, saved_cents + ahead * monthly_cents + put_aside_cents)
+    by_then = saved_cents + ahead * monthly_cents + put_aside_cents
+    return DueCheck(due, need_cents, by_then, saved_cents)

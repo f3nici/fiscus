@@ -111,6 +111,7 @@ class Summary:
     spent_cents: int
     to_spend_cents: int  # what is left in budgets not yet overspent
     over: int
+    saved_cents: int = 0  # the part of to_spend held by saved-up lines
 
     @property
     def unbudgeted_cents(self) -> int:
@@ -221,7 +222,7 @@ def set_total(
     The total is for `cycle_months` (the line's own cycle when None): kept as
     typed, and as a monthly amount. With `add`, it goes on top of what is
     allocated already. A line spent every few months keeps what it has saved
-    when it changes, or starts from `saved_cents`.
+    when it changes, or holds `saved_cents` this budget month (`hold`).
     """
     start, end = period(db, user, day)
     from_bills = bills_by_category(db, user, start, end).get(category.id, 0)
@@ -241,9 +242,7 @@ def set_total(
             db.delete(row)
         return 0, from_bills
     if cycle > 1:
-        if saved_cents is not None:
-            opening = saved_cents
-        elif row is not None and row.saved_since is not None and row.saved_since < start:
+        if row is not None and row.saved_since is not None and row.saved_since < start:
             # Carry on from what is saved up to this month, at the old amount.
             before = start - timedelta(days=1)
             opening = saved_to(db, user, row, before, today or day)
@@ -264,7 +263,20 @@ def set_total(
     row.saved_since = since
     row.saved_opening_cents = opening
     db.flush()
+    if cycle > 1 and saved_cents is not None:
+        hold(db, user, row, saved_cents, day, today or day)
     return monthly, from_bills
+
+
+def hold(db: Session, user: User, row: Budget, saved_cents: int, day: date, today: date) -> None:
+    """Make a saved-up line hold `saved_cents` in the budget month holding
+    `day`, as the budget shows it (that month's share in, what came off it
+    out), and save on from there."""
+    start, end = period(db, user, day)
+    row.saved_since = start
+    row.saved_opening_cents = 0
+    row.saved_opening_cents = saved_cents - saved_to(db, user, row, end, today)
+    db.flush()
 
 
 def saved_to(db: Session, user: User, row: Budget, end: date, today: date) -> int:
@@ -333,7 +345,9 @@ def due_checks(
     """For each saved-up spending line with a bill still to pay: its next due
     date, and whether the line will hold enough by then. From the budget month
     starting `start`, and bills still unpaid from before it (as far back as
-    the forecast carries them), which the line has to pay first."""
+    the forecast carries them), which the line has to pay first. What was put
+    aside counts from the last bill, even if the line was changed since: it
+    went into the goal, not into what the line carried forward."""
     lines = {
         r.category.id: r
         for r in rs
@@ -358,8 +372,6 @@ def due_checks(
         _ps, due_end = period(db, user, due)
         before = [o.due for o in mine if o.due < due]
         since = before[-1] + timedelta(days=1) if before else start - DUE_LOOKBACK
-        if r.budget.saved_since is not None:
-            since = max(since, r.budget.saved_since)
         out[cid] = saving.check(
             period_start=start,
             start_day=first,
@@ -437,4 +449,5 @@ def summary(
         to_spend_cents=sum(max(0, r.remaining_cents) for r in spend if r.has_budget)
         + max(0, loan_cents - loan_paid_cents),
         over=sum(1 for r in spend if r.state == 'over'),
+        saved_cents=sum(max(0, r.saved_cents or 0) for r in spend if r.has_budget),
     )

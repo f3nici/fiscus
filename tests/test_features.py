@@ -629,11 +629,12 @@ def test_a_yearly_cost_is_saved_up_not_a_month_over(env: Env) -> None:
         cid = db.execute(select(Category.id).where(Category.name == 'Car rego')).scalar_one()
     a.post('/budget/spend', data={'category_id': str(cid), 'amount': '900', 'on': '2026-12-10'})
     assert _saved(env, alex, date(2026, 12, 1))['Car rego'] == (-675_00, 'over')
-    # Already had some put away: say so, and December is covered.
+    # Already had some put away: say what it holds now, and December is covered.
     a.post(
         '/budget',
-        data={'category_id': str(cid), 'amount': '900', 'cycle_months': '12', 'saved': '700'},
+        data={'category_id': str(cid), 'amount': '900', 'cycle_months': '12', 'saved': '775'},
     )
+    assert _saved(env, alex, date(2026, 10, 1))['Car rego'] == (775_00, 'ok')
     assert _saved(env, alex, date(2026, 12, 1))['Car rego'] == (25_00, 'ok')
     assert _saved(env, alex, date(2027, 1, 1))['Car rego'] == (100_00, 'ok')
     # Changing the amount later keeps what is saved so far.
@@ -704,11 +705,24 @@ def test_a_saved_up_line_says_whether_it_will_hold_its_next_bill(env: Env) -> No
     # Started in October: six months of 27.50 by March is 165, half of it.
     page = a.get('/budget').text
     assert '$330.00 due 15 Mar 2027: $165.00 short by then' in page
+    # Lined up with the bill: October holds what five more months need.
+    assert 'Set saved to $192.50' in page
+    resp = a.post(
+        f'/budget/{car}/saved', data={'saved': '192.50', 'back': '/budget'}, follow_redirects=True
+    )
+    assert 'Transport now holds $192.50' in resp.text
+    assert '$330.00 due 15 Mar 2027: on track' in resp.text
+    assert f'action="/budget/{car}/saved"' not in resp.text
+    assert _saved(env, alex, date(2026, 10, 1))['Transport'] == (192_50, 'ok')
+    # Typed on the line's form, it is what the line shows.
     a.post(
         '/budget',
-        data={'category_id': str(car), 'amount': '330', 'cycle_months': '12', 'saved': '165'},
+        data={'category_id': str(car), 'amount': '330', 'cycle_months': '12', 'saved': '100'},
     )
-    assert '$330.00 due 15 Mar 2027: on track' in a.get('/budget').text
+    page = a.get('/budget').text
+    assert '$330.00 due 15 Mar 2027: $92.50 short by then' in page
+    assert 'value="100.00" aria-label="Saved now for Transport"' in page
+    a.post(f'/budget/{car}/saved', data={'saved': '192.50'})
 
     # Put aside into a goal: out of the line, but still kept for the bill.
     goal = a.post('/goals', data={'name': 'Yearly bills', 'category_id': str(car)})
@@ -716,6 +730,59 @@ def test_a_saved_up_line_says_whether_it_will_hold_its_next_bill(env: Env) -> No
     a.post(f'/goals/{gid}/move', data={'amount': '192.50', 'as_spent': 'true'})
     page = a.get('/budget').text
     assert '$0.00' in page and '$330.00 due 15 Mar 2027: on track' in page
+
+
+def test_what_a_saved_up_line_holds_is_set_by_hand(env: Env) -> None:
+    alex = env.user('alex')
+    a = env.login(alex)
+    car = cat_id(env, alex, 'Transport')
+    create_bill(
+        a,
+        name='Rego',
+        amount='900',
+        frequency='yearly',
+        next_due='2027-02-20',
+        category_id=str(car),
+    )
+    a.post('/budget', data={'category_id': str(car), 'amount': '900', 'cycle_months': '12'})
+    goal = a.post('/goals', data={'name': 'Yearly bills', 'category_id': str(car)})
+    gid = int(goal.headers['location'].rsplit('/', 1)[1])
+    a.post(f'/goals/{gid}/move', data={'amount': '60', 'as_spent': 'true'})
+    # October: 75 in, 60 put aside. Four more months to February, and the 60
+    # in the goal, leave 540 to hold now.
+    assert _saved(env, alex, date(2026, 10, 1))['Transport'] == (15_00, 'ok')
+    page = a.get('/budget').text
+    assert '$900.00 due 20 Feb 2027: $525.00 short by then' in page
+    assert 'Set saved to $540.00' in page
+    a.post(f'/budget/{car}/saved', data={'saved': '540'})
+    assert _saved(env, alex, date(2026, 10, 1))['Transport'] == (540_00, 'ok')
+    page = a.get('/budget').text
+    assert '$900.00 due 20 Feb 2027: on track' in page
+    # It is kept out of what is free in the accounts.
+    assert '$540.00 of it saved up for bills every few months' in page
+    # What comes off later comes off what was set.
+    a.post('/budget/spend', data={'category_id': str(car), 'amount': '40', 'on': '2026-10-05'})
+    assert _saved(env, alex, date(2026, 10, 1))['Transport'] == (500_00, 'ok')
+    # A month on, an edit carries it forward and the put-aside still counts.
+    env.clock.set(datetime(2026, 11, 3, 2, tzinfo=UTC))
+    a = env.login(alex)
+    a.post('/budget', data={'category_id': str(car), 'amount': '900', 'cycle_months': '12'})
+    assert _saved(env, alex, date(2026, 11, 1))['Transport'] == (575_00, 'ok')
+    assert '$900.00 due 20 Feb 2027: $40.00 short by then' in a.get('/budget').text
+    # Another month is not today's: nothing to line up or fill in from there.
+    later = a.get('/budget?month=2026-12').text
+    assert f'action="/budget/{car}/saved"' not in later
+    assert 'aria-label="Saved now for Transport"' in later
+    assert 'value="650.00" aria-label="Saved now for Transport"' not in later
+    resp = a.post(f'/budget/{car}/saved', data={'saved': 'lots'}, follow_redirects=True)
+    assert 'Saved now:' in resp.text
+    assert _saved(env, alex, date(2026, 11, 1))['Transport'] == (575_00, 'ok')
+    # A monthly line holds nothing, and a category with no budget is not found.
+    a.post('/budget', data={'category_id': str(car), 'amount': '75', 'cycle_months': '1'})
+    resp = a.post(f'/budget/{car}/saved', data={'saved': '10'}, follow_redirects=True)
+    assert 'spent every month, so nothing is saved up' in resp.text
+    resp = a.post(f'/budget/{cat_id(env, alex, "Groceries")}/saved', data={'saved': '10'})
+    assert resp.status_code == 404
 
 
 def test_budget_in_forecast_is_only_the_part_beyond_bills(env: Env) -> None:
