@@ -8,8 +8,8 @@ a PWA on phones. No external calls, no telemetry, no CDN.
 accounts with balances typed in and kept by day (D39), moved by bills marked
 paid and payslips until the next is typed in (D42, D45); categories; bills with
 shares and states; pay schedules and payslips; the calendar; home loan and
-offset; forecasting with scenarios, its average and the balance
-without goals (D46); the budget (bills paid out of it); bill
+offset; forecasting with scenarios, its trend and what is free to spend
+after goals (D46, D47); the budget (bills paid out of it); bill
 import; the tax estimate, each job taxed on its own figures (D38); the
 dashboard; ntfy reminders, payslips to put in among them; backups; payslip
 PDFs, single or in bulk, recording schedule paydays; casual pay; Square sync;
