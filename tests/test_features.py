@@ -12,6 +12,7 @@ from typing import Any
 from sqlalchemy import delete, select
 
 from fiscus.domain import loan as L
+from fiscus.domain.forecast import trend
 from fiscus.models import (
     Account,
     Bill,
@@ -25,7 +26,7 @@ from fiscus.models import (
     Transaction,
     User,
 )
-from fiscus.money import round_div
+from fiscus.money import fmt
 from fiscus.services import bills, budgeting, forecasting, ledger, reminders, taxes
 from tests.conftest import CsrfClient, Env
 from tests.test_bills import ANZ_SEPT, add_transactions, create_bill, make_account
@@ -196,9 +197,10 @@ def test_forecast_page_and_cache_invalidation(env: Env) -> None:
     # +2500 on 2 Oct, -2200 on 5 Oct, +2500 on 16 Oct and 30 Oct.
     assert data['combined'][data['dates'].index('2026-10-31')] == 3000_00 + 3 * 2500_00 - 2200_00
     assert 'markers' not in data
-    assert data['average'] == round_div(sum(data['combined']), len(data['combined']))
-    assert 'average of all accounts over these 3 months' in page
-    assert data['without_goals'] is None
+    t = trend(data['combined'])
+    assert data['trend'] == t.line and t.line[0] < t.line[-1]
+    assert f'trend of all accounts: up about {fmt(t.per_month)} a month' in page
+    assert data['free'] is None
     with env.db() as db:
         key1 = db.get(ForecastCache, alex.id).cache_key  # type: ignore[union-attr]
     # Same data, same key: served from cache.
@@ -217,7 +219,7 @@ def test_forecast_page_and_cache_invalidation(env: Env) -> None:
         assert db.get(ForecastCache, alex.id).cache_key != key1  # type: ignore[union-attr]
 
 
-def test_the_forecast_without_goals_and_with_a_new_income(env: Env) -> None:
+def test_the_forecast_free_to_spend_and_a_new_income(env: Env) -> None:
     a, _alex, acct = setup_household(env)
     # A goal kept aside is left out; a bucket counted as free to spend is not.
     for goal in (
@@ -227,9 +229,9 @@ def test_the_forecast_without_goals_and_with_a_new_income(env: Env) -> None:
         assert a.post('/goals', data={'account_id': str(acct), **goal}).status_code == 303
     page = a.get('/forecast?months=1').text
     data = chart_data(page)
-    assert data['without_goals'] == [c - 1000_00 for c in data['combined']]
-    assert 'Without goals leaves out the $1,000.00 your' in page
-    assert '<th class="num">Without goals</th>' in page
+    assert data['free'] == [c - 1000_00 for c in data['combined']]
+    assert 'Free to spend is all accounts less the $1,000.00 your' in page
+    assert '<th class="num">Free to spend</th>' in page
     # A second job, as a scenario.
     resp = a.post('/scenarios', data={'name': 'Second job'})
     sid = int(resp.headers['location'].rsplit('/', 1)[1])

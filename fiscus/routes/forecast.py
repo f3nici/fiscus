@@ -50,10 +50,10 @@ def chart_payload(
     data: dict[str, Any] = {
         'dates': [d.isoformat() for d in base.dates],
         'combined': base.combined,
-        'average': base.average,
+        'trend': base.trend.line,
         # What goals keep aside today stays in its account, so it is the same
         # amount off every day (D46).
-        'without_goals': [c - goals_held for c in base.combined] if goals_held else None,
+        'free': [c - goals_held for c in base.combined] if goals_held else None,
         # The account behind a low-balance warning is drawn even when the rest
         # are hidden, so the warning shows on the chart.
         'accounts': [

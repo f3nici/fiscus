@@ -60,11 +60,12 @@ category's recurring bills, since the bills are already forecast from their own 
 income is projected the same way.
 
 Outputs: per-account and combined daily balances, the combined balance's
-average over every day shown, loan balances, month-end rows, payoff dates and
-the first day a non-credit-card account falls below the threshold. The page
-also draws the combined balance less what goals kept aside hold today (D46).
-Goals never move money between accounts, so that is the same amount off every
-day.
+trend (the least-squares straight line over every day shown, and its rise in
+an average month), loan balances, month-end rows, payoff dates and the first
+day a non-credit-card account falls below the threshold. The page also draws
+Free to spend: the combined balance less what goals kept aside hold today
+(D46, D47). Goals never move money between accounts, so that is the same
+amount off every day.
 
 ## Scenarios
 

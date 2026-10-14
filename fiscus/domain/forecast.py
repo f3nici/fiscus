@@ -17,6 +17,7 @@ import copy
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
+from fractions import Fraction
 from typing import Any
 
 from fiscus.domain import recurrence
@@ -48,6 +49,33 @@ class ForecastInput:
     low_balance_cents: int = 0
 
 
+@dataclass(frozen=True)
+class Trend:
+    """The straight line that best fits a run of daily balances (least
+    squares), one value a day, and how much it rises in an average month."""
+
+    line: list[int]
+    per_month: int
+
+
+def _cents(value: Fraction) -> int:
+    return round_div(value.numerator, value.denominator)
+
+
+def trend(values: list[int]) -> Trend:
+    n = len(values)
+    if n < 2:
+        return Trend(list(values), 0)
+    sx = n * (n - 1) // 2
+    sxx = (n - 1) * n * (2 * n - 1) // 6
+    sy = sum(values)
+    sxy = sum(i * v for i, v in enumerate(values))
+    slope = Fraction(n * sxy - sx * sy, n * sxx - sx * sx)
+    start = (sy - slope * sx) / n
+    # 365.25 / 12 days in a month.
+    return Trend([_cents(start + slope * i) for i in range(n)], _cents(slope * 1461 / 48))
+
+
 @dataclass
 class ForecastResult:
     dates: list[date]
@@ -60,9 +88,9 @@ class ForecastResult:
     loan_interest: dict[int, int]
 
     @property
-    def average(self) -> int:
-        """The combined balance averaged over every day shown, today included."""
-        return round_div(sum(self.combined), len(self.combined))
+    def trend(self) -> Trend:
+        """The combined balance's trend over every day shown, today included."""
+        return trend(self.combined)
 
     def balance_on(self, day: date) -> int | None:
         idx = (day - self.dates[0]).days

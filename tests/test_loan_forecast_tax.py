@@ -10,7 +10,7 @@ import pytest
 
 from fiscus.domain import loan as L
 from fiscus.domain import tax
-from fiscus.domain.forecast import Flow, ForecastInput, apply_scenario, run
+from fiscus.domain.forecast import Flow, ForecastInput, apply_scenario, run, trend
 
 # ---------------------------------------------------------------------- loan
 
@@ -163,12 +163,17 @@ def test_forecast_hand_calculated() -> None:
     assert r.month_end[0]['date'] == date(2026, 10, 31)
 
 
-def test_forecast_average_is_every_day_shown() -> None:
-    inp = base_input(days=2, flows=[Flow(date(2026, 10, 3), 1, 1_00, 'pay', 'Salary')])
-    r = run(inp)
+def test_forecast_trend_is_the_line_of_best_fit() -> None:
+    # Pay every other day: the line rises 200 a day through the middle of it.
+    t = trend([0, 1000, 0, 1000])
+    assert t.line == [200, 400, 600, 800]
+    assert t.per_month == 6088  # 200 x 365.25 / 12 = 6,087.5
+    r = run(base_input(days=2, flows=[Flow(date(2026, 10, 3), 1, 1_00, 'pay', 'Salary')]))
     assert r.combined == [6_000_00, 6_000_00, 6_001_00]
-    # 18,001.00 over 3 days is 6,000.333..., rounded to the cent.
-    assert r.average == 6_000_33
+    # Rising 50 cents a day from 5,999.83 and a third.
+    assert r.trend.line == [5_999_83, 6_000_33, 6_000_83]
+    assert r.trend.per_month == 15_22
+    assert trend([5]).line == [5] and trend([5]).per_month == 0
 
 
 def test_fractional_daily_spending_carries() -> None:
