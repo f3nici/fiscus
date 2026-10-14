@@ -1,7 +1,7 @@
 /*
- * The forecast chart, drawn with the vendored uPlot. Combined balance, its
- * trend, the same less what goals hold, each account, an optional scenario
- * on the same axes, and the low-balance line.
+ * The forecast chart, drawn with the vendored uPlot. Combined balance, the
+ * same less what goals hold, an optional scenario, each with its trend, each
+ * account, and the low-balance line, on the same axes.
  */
 (function () {
   'use strict';
@@ -56,10 +56,14 @@
     if (data.free) {
       series.push({ label: 'Free to spend (after goals)', stroke: '#22c55e', width: 2, value: (u, v) => money(v) });
       values.push(data.free);
+      series.push({ label: 'Free to spend trend', stroke: 'rgba(34,197,94,0.85)', width: 3, value: (u, v) => money(v) });
+      values.push(data.free_trend);
     }
     if (data.scenario) {
       series.push({ label: data.scenario.name, stroke: '#f59e0b', width: 2, dash: [8, 5], value: (u, v) => money(v) });
       values.push(data.scenario.combined);
+      series.push({ label: data.scenario.name + ' trend', stroke: 'rgba(245,158,11,0.85)', width: 3, value: (u, v) => money(v) });
+      values.push(data.scenario.trend);
     }
     data.accounts.forEach((a, i) => {
       series.push({ label: a.name, stroke: COLOURS[i % COLOURS.length], width: a.low ? 2 : 1, show: data.accounts.length <= 4 || a.low, value: (u, v) => money(v) });

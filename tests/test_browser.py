@@ -364,7 +364,7 @@ def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any
     page.goto(f'{base}/forecast')
     page.wait_for_selector('.uplot')
     legend = page.inner_text('.u-legend').lower()
-    assert 'free to spend (after goals)' in legend and 'trend' in legend, legend
+    assert 'free to spend (after goals)' in legend and 'free to spend trend' in legend, legend
     # And after a boosted (htmx) navigation, which drops <script> tags.
     page.goto(f'{base}/')
     page.click('main a[href="/forecast"]')

@@ -30,7 +30,7 @@
   <div class="card">
     <div class="chart" data-forecast-chart data-chart="{{ chart }}" data-threshold="{{ prefs.low_balance_cents }}"></div>
     {% set t = base.trend %}
-    <p class="text-xs muted mt-sm">The straight line is the trend of all accounts: {{ 'up' if t.per_month >= 0 else 'down' }} about {{ t.per_month | abs | money }} a month.{% if goals_held %} Free to spend is all accounts less the {{ goals_held | money }} your <a href="/goals">goals</a> keep aside today.{% endif %} The dashed red line is your low-balance threshold, set in <a href="/settings">Settings</a>.</p>
+    <p class="text-xs muted mt-sm">The straight lines are trends. All accounts: {{ 'up' if t.per_month >= 0 else 'down' }} about {{ t.per_month | abs | money }} a month.{% if sc_result %}{% set st = sc_result.trend %} With "{{ sc.name }}": {{ 'up' if st.per_month >= 0 else 'down' }} about {{ st.per_month | abs | money }} a month.{% endif %}{% if goals_held %} Free to spend is all accounts less the {{ goals_held | money }} your <a href="/goals">goals</a> keep aside today, so its trend moves the same.{% endif %} The dashed red line is your low-balance threshold, set in <a href="/settings">Settings</a>.</p>
   </div>
 
   <div class="grid grid-2 mt">

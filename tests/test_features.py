@@ -199,8 +199,8 @@ def test_forecast_page_and_cache_invalidation(env: Env) -> None:
     assert 'markers' not in data
     t = trend(data['combined'])
     assert data['trend'] == t.line and t.line[0] < t.line[-1]
-    assert f'trend of all accounts: up about {fmt(t.per_month)} a month' in page
-    assert data['free'] is None
+    assert f'All accounts: up about {fmt(t.per_month)} a month' in page
+    assert data['free'] is None and data['free_trend'] is None
     with env.db() as db:
         key1 = db.get(ForecastCache, alex.id).cache_key  # type: ignore[union-attr]
     # Same data, same key: served from cache.
@@ -230,6 +230,8 @@ def test_the_forecast_free_to_spend_and_a_new_income(env: Env) -> None:
     page = a.get('/forecast?months=1').text
     data = chart_data(page)
     assert data['free'] == [c - 1000_00 for c in data['combined']]
+    # Its own trend: the same line, $1,000 lower.
+    assert data['free_trend'] == [v - 1000_00 for v in data['trend']]
     assert 'Free to spend is all accounts less the $1,000.00 your' in page
     assert '<th class="num">Free to spend</th>' in page
     # A second job, as a scenario.
@@ -249,9 +251,15 @@ def test_the_forecast_free_to_spend_and_a_new_income(env: Env) -> None:
     )
     assert 'Change added' in resp.text
     assert 'Tutoring: $150.00 weekly from 2026-10-07 into Everyday' in resp.text
-    compared = chart_data(a.get(f'/forecast?months=1&scenario_id={sid}').text)
+    page = a.get(f'/forecast?months=1&scenario_id={sid}').text
+    compared = chart_data(page)
     # 7, 14, 21 and 28 Oct.
     assert compared['scenario']['combined'][-1] - compared['combined'][-1] == 4 * 150_00
+    # The scenario has its own trend, rising faster than the real one.
+    st = trend(compared['scenario']['combined'])
+    assert compared['scenario']['trend'] == st.line
+    assert st.per_month > trend(compared['combined']).per_month
+    assert f'With "Second job": up about {fmt(st.per_month)} a month' in page
     # The real forecast is as it was.
     assert compared['combined'] == data['combined']
 

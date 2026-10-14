@@ -10,7 +10,7 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from fiscus.clock import utcnow_naive
-from fiscus.domain.forecast import SCENARIO_KINDS, ForecastResult
+from fiscus.domain.forecast import SCENARIO_KINDS, ForecastResult, trend
 from fiscus.forms import (
     FormError,
     choice,
@@ -47,13 +47,15 @@ def chart_payload(
     scenario_name: str,
     goals_held: int = 0,
 ) -> str:
+    # What goals keep aside today stays in its account, so it is the same
+    # amount off every day (D46).
+    free = [c - goals_held for c in base.combined] if goals_held else None
     data: dict[str, Any] = {
         'dates': [d.isoformat() for d in base.dates],
         'combined': base.combined,
         'trend': base.trend.line,
-        # What goals keep aside today stays in its account, so it is the same
-        # amount off every day (D46).
-        'free': [c - goals_held for c in base.combined] if goals_held else None,
+        'free': free,
+        'free_trend': trend(free).line if free else None,
         # The account behind a low-balance warning is drawn even when the rest
         # are hidden, so the warning shows on the chart.
         'accounts': [
@@ -67,7 +69,11 @@ def chart_payload(
         'low': base.low_balance['date'].isoformat() if base.low_balance else None,
     }
     if scenario is not None:
-        data['scenario'] = {'name': scenario_name, 'combined': scenario.combined}
+        data['scenario'] = {
+            'name': scenario_name,
+            'combined': scenario.combined,
+            'trend': scenario.trend.line,
+        }
     # Goes in a data attribute; Jinja's autoescape quotes it.
     return json.dumps(data, separators=(',', ':'))
 
