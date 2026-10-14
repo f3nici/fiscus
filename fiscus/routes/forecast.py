@@ -32,7 +32,7 @@ from fiscus.models import (
     ScenarioAdjustment,
     User,
 )
-from fiscus.services import forecasting, ledger
+from fiscus.services import forecasting, goals, ledger
 from fiscus.services.access import get_owned, maybe_owned, owned
 from fiscus.services.users import settings_for
 from fiscus.web import ctx, current_user, get_db, redirect, render
@@ -41,11 +41,19 @@ router = APIRouter()
 
 
 def chart_payload(
-    base: ForecastResult, names: dict[int, str], scenario: ForecastResult | None, scenario_name: str
+    base: ForecastResult,
+    names: dict[int, str],
+    scenario: ForecastResult | None,
+    scenario_name: str,
+    goals_held: int = 0,
 ) -> str:
     data: dict[str, Any] = {
         'dates': [d.isoformat() for d in base.dates],
         'combined': base.combined,
+        'average': base.average,
+        # What goals keep aside today stays in its account, so it is the same
+        # amount off every day (D46).
+        'without_goals': [c - goals_held for c in base.combined] if goals_held else None,
         # The account behind a low-balance warning is drawn even when the rest
         # are hidden, so the warning shows on the chart.
         'accounts': [
@@ -55,15 +63,6 @@ def chart_payload(
                 'low': bool(base.low_balance and base.low_balance['account_id'] == a),
             }
             for a, v in base.accounts.items()
-        ],
-        'markers': [
-            {
-                'date': m['date'].isoformat(),
-                'kind': m['kind'],
-                'label': m['label'],
-                'amount': m['amount'],
-            }
-            for m in base.markers
         ],
         'low': base.low_balance['date'].isoformat() if base.low_balance else None,
     }
@@ -88,7 +87,9 @@ def forecast_page(
     base = forecasting.base(db, c.clock, user, months)
     sc = maybe_owned(db, Scenario, scenario_id, user)
     sc_result = forecasting.scenario(db, c.clock, user, sc, months) if sc else None
-    names = {a.id: a.name for a in ledger.accounts(db, user)}
+    accts = ledger.accounts(db, user)
+    names = {a.id: a.name for a in accts}
+    goals_held = goals.held_outside(db, user, accts)
     month_end = base.month_end
     sc_month_end = {m['date']: m['combined'] for m in sc_result.month_end} if sc_result else {}
     return render(
@@ -103,10 +104,11 @@ def forecast_page(
             'sc_result': sc_result,
             'sc_month_end': sc_month_end,
             'scenarios': db.execute(owned(Scenario, user).order_by(Scenario.name)).scalars().all(),
-            'chart': chart_payload(base, names, sc_result, sc.name if sc else ''),
+            'goals_held': goals_held,
+            'chart': chart_payload(base, names, sc_result, sc.name if sc else '', goals_held),
             'estimates': forecasting.estimates(db, user, c.clock.today()),
             'transfers': db.execute(owned(RecurringTransfer, user)).scalars().all(),
-            'accounts': ledger.accounts(db, user),
+            'accounts': accts,
             'freqs': FREQUENCIES,
             'prefs': prefs,
         },
@@ -274,12 +276,12 @@ async def add_adjustment(
                 'from_date': req_date(f('from_date'), 'From').isoformat(),
                 'rate': rate(f('rate'), 'Rate'),
             }
-        elif kind == 'new_bill':
+        elif kind in ('new_bill', 'new_income'):
             acct = get_owned(db, Account, int_or(f('account_id')), user)
             start = req_date(f('start_date'), 'Start')
             end = ends_after(start, opt_date(f('end_date'), 'End'))
             params = {
-                'name': f('name')[:80] or 'New bill',
+                'name': f('name')[:80] or ('New bill' if kind == 'new_bill' else 'New income'),
                 'account_id': acct.id,
                 'amount_cents': money(f('amount'), 'Amount', allow_negative=False),
                 'frequency': choice(f('frequency'), FREQUENCIES, 'Frequency'),

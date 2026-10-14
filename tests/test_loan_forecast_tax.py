@@ -160,8 +160,15 @@ def test_forecast_hand_calculated() -> None:
     # 31 Oct: 1000 + 2000 - 1600 - 300 = 1100
     assert r.accounts[1][-1] == 1_100_00
     assert r.combined[-1] == 1_100_00 + 5_100_00
-    assert [m['label'] for m in r.markers] == ['Salary', 'Rent']
     assert r.month_end[0]['date'] == date(2026, 10, 31)
+
+
+def test_forecast_average_is_every_day_shown() -> None:
+    inp = base_input(days=2, flows=[Flow(date(2026, 10, 3), 1, 1_00, 'pay', 'Salary')])
+    r = run(inp)
+    assert r.combined == [6_000_00, 6_000_00, 6_001_00]
+    # 18,001.00 over 3 days is 6,000.333..., rounded to the cent.
+    assert r.average == 6_000_33
 
 
 def test_fractional_daily_spending_carries() -> None:
@@ -240,6 +247,34 @@ def test_scenarios_do_not_touch_the_base_input() -> None:
     assert len(inp.flows) == 1
     # +500 pay, -500 tyres, -20 x 4 gym (5, 12, 19, 26 Oct)
     assert after.combined[-1] - before.combined[-1] == 500_00 - 500_00 - 80_00
+
+
+def test_scenario_new_income_is_not_a_pay_schedule() -> None:
+    inp = base_input(flows=[Flow(date(2026, 10, 2), 1, 2_000_00, 'pay', 'Salary', 1)])
+    before = run(inp)
+    tutoring = {
+        'name': 'Tutoring',
+        'amount_cents': 150_00,
+        'frequency': 'fortnightly',
+        'start_date': '2026-09-30',
+        'end_date': '2026-10-27',
+        'account_id': 2,
+    }
+    after = run(apply_scenario(inp, [('new_income', tutoring)]))
+    # 14 Oct only: 30 Sep is before today and 28 Oct after it ends.
+    assert after.accounts[2][-1] - before.accounts[2][-1] == 150_00
+    assert after.accounts[1] == before.accounts[1]
+    # A raise to every pay schedule leaves the new income as it is.
+    raised = run(
+        apply_scenario(
+            inp,
+            [
+                ('new_income', tutoring),
+                ('income_change', {'from_date': '2026-10-01', 'delta_cents': 100_00}),
+            ],
+        )
+    )
+    assert raised.combined[-1] - before.combined[-1] == 150_00 + 100_00
 
 
 def test_scenario_rate_change_and_extra_repayment() -> None:

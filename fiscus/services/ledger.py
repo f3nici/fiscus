@@ -6,7 +6,7 @@ from bisect import bisect_right
 from collections import defaultdict
 from datetime import date, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import ColumnElement, and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from fiscus.clock import Clock, utcnow_naive
@@ -37,23 +37,66 @@ def accounts(db: Session, user: User, *, include_archived: bool = False) -> list
     return list(db.execute(q).scalars())
 
 
-def _last_typed(db: Session, user: User, as_of: date) -> dict[int, tuple[date, int]]:
+def _put_in_after(db: Session, user: User) -> dict[int, int]:
+    """For each balance typed in, the transactions dated its day that were put
+    in after it was typed: it could not have had them (D45). Keyed by the
+    balance's id."""
+    return {
+        bid: int(total)
+        for bid, total in db.execute(
+            select(AccountBalance.id, func.sum(Transaction.amount_cents))
+            .join(
+                Transaction,
+                and_(
+                    Transaction.account_id == AccountBalance.account_id,
+                    Transaction.date == AccountBalance.date,
+                    Transaction.created_at > AccountBalance.typed_at,
+                ),
+            )
+            .where(AccountBalance.user_id == user.id, Transaction.user_id == user.id)
+            .group_by(AccountBalance.id)
+        )
+    }
+
+
+def _last_rows(db: Session, user: User, as_of: date) -> dict[int, AccountBalance]:
     """Each account's last balance typed in on or before `as_of`."""
-    out: dict[int, tuple[date, int]] = {}
+    out: dict[int, AccountBalance] = {}
     for r in db.execute(
         owned(AccountBalance, user)
         .where(AccountBalance.date <= as_of)
         .order_by(AccountBalance.date)
     ).scalars():
-        out[r.account_id] = (r.date, r.balance_cents)
+        out[r.account_id] = r
     return out
+
+
+def _last_typed(db: Session, user: User, as_of: date) -> dict[int, tuple[date, int]]:
+    """Each account's last balance typed in on or before `as_of`, as at the
+    end of its day: with what was put in that day after it was typed."""
+    late = _put_in_after(db, user)
+    return {
+        aid: (r.date, r.balance_cents + late.get(r.id, 0))
+        for aid, r in _last_rows(db, user, as_of).items()
+    }
+
+
+def _holds(r: AccountBalance) -> ColumnElement[bool]:
+    """Transactions the typed balance `r` already has: dated before its day,
+    or on it and put in before it was typed (all of that day, if no time)."""
+    if r.typed_at is None:
+        return Transaction.date <= r.date
+    return or_(
+        Transaction.date < r.date,
+        and_(Transaction.date == r.date, Transaction.created_at <= r.typed_at),
+    )
 
 
 def balances(db: Session, user: User, as_of: date) -> dict[int, int]:
     """Each account's balance at the end of `as_of`: the last balance typed in
-    on or before it, plus the transactions dated after that day (a typed
-    balance counts everything on its own day). An account never typed in is
-    its opening balance plus every transaction to `as_of`."""
+    on or before it, plus the transactions dated after that day and those put
+    in on its day after it was typed (D45). An account never typed in is its
+    opening balance plus every transaction to `as_of`."""
     accts = accounts(db, user, include_archived=True)
     typed = _last_typed(db, user, as_of)
     out = {a.id: typed[a.id][1] if a.id in typed else a.opening_balance_cents for a in accts}
@@ -68,8 +111,10 @@ def balances(db: Session, user: User, as_of: date) -> dict[int, int]:
     return out
 
 
-def set_balance(db: Session, user: User, acct: Account, cents: int, today: date) -> None:
-    """Keep `cents` as the account's balance today, in its history."""
+def set_balance(db: Session, clock: Clock, user: User, acct: Account, cents: int) -> None:
+    """Keep `cents` as the account's balance now, in its history: it has
+    everything put in so far, dated today or before."""
+    today = clock.today()
     acct.balance_updated_on = today
     row = db.execute(
         owned(AccountBalance, user).where(
@@ -77,9 +122,10 @@ def set_balance(db: Session, user: User, acct: Account, cents: int, today: date)
         )
     ).scalar_one_or_none()
     if row is None:
-        db.add(AccountBalance(user_id=user.id, account_id=acct.id, date=today, balance_cents=cents))
-    else:
-        row.balance_cents = cents
+        row = AccountBalance(user_id=user.id, account_id=acct.id, date=today)
+        db.add(row)
+    row.balance_cents = cents
+    row.typed_at = utcnow_naive(clock)
     db.flush()
 
 
@@ -87,7 +133,7 @@ def moved_since_typed(db: Session, user: User, acct: Account, today: date) -> li
     """What has moved the account since its balance was last typed in, newest
     first: bills marked paid, payslips and anything synced. Nothing for an
     account never typed in."""
-    on = _last_typed(db, user, today).get(acct.id)
+    on = _last_rows(db, user, today).get(acct.id)
     if on is None:
         return []
     return list(
@@ -95,8 +141,8 @@ def moved_since_typed(db: Session, user: User, acct: Account, today: date) -> li
             owned(Transaction, user)
             .where(
                 Transaction.account_id == acct.id,
-                Transaction.date > on[0],
                 Transaction.date <= today,
+                ~_holds(on),
             )
             .order_by(Transaction.date.desc(), Transaction.id.desc())
             .limit(MOVES_SHOWN)
@@ -166,6 +212,26 @@ def follow(
     db.flush()
 
 
+def held(
+    db: Session, user: User, link: Payslip | BillPayment, today: date
+) -> tuple[str, date] | None:
+    """The account and day of the balance typed in that already has the
+    payslip's or bill's transaction, so it moved nothing; None if it counts,
+    is still to come, or wrote nothing."""
+    col = Transaction.payslip_id if isinstance(link, Payslip) else Transaction.bill_payment_id
+    txn = db.execute(owned(Transaction, user).where(col == link.id)).scalar_one_or_none()
+    if txn is None or txn.date > today:
+        return None
+    on = _last_rows(db, user, today).get(txn.account_id)
+    if (
+        on is None
+        or db.execute(select(Transaction.id).where(col == link.id, _holds(on))).first() is None
+    ):
+        return None
+    acct = db.get(Account, txn.account_id)
+    return (acct.name if acct else 'Its account'), on.date
+
+
 def now_at(db: Session, user: User, before: dict[int, int], today: date) -> str:
     """'. Everyday is now $812.40' for each account whose balance today is no
     longer `before`, for a flash message; empty when none moved."""
@@ -186,7 +252,7 @@ def balance_history(
     as known on the day, and the first day all of them are known.
 
     An account's balance is its last typed-in figure on or before the day,
-    with any transactions after it added. Before its first one the account is
+    with any transactions after it added (D45). Before its first one the account is
     unknown and left out. An account never typed in (transactions only) is its
     opening balance and transactions, as before.
     """
@@ -197,12 +263,13 @@ def balance_history(
         return out, known_from
     accts = {a.id: a for a in accounts(db, user, include_archived=True) if a.id in account_ids}
     records: dict[int, list[tuple[date, int]]] = defaultdict(list)
+    late = _put_in_after(db, user)
     for r in db.execute(
         owned(AccountBalance, user)
         .where(AccountBalance.account_id.in_(account_ids), AccountBalance.date <= end)
         .order_by(AccountBalance.date)
     ).scalars():
-        records[r.account_id].append((r.date, r.balance_cents))
+        records[r.account_id].append((r.date, r.balance_cents + late.get(r.id, 0)))
     moves: dict[int, list[tuple[date, int]]] = defaultdict(list)
     for aid, d, amt in db.execute(
         select(Transaction.account_id, Transaction.date, Transaction.amount_cents)

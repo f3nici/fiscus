@@ -6,9 +6,10 @@ a PWA on phones. No external calls, no telemetry, no CDN.
 
 **Status: v1 complete.** Passkeys, setup links and recovery, users and admin;
 accounts with balances typed in and kept by day (D39), moved by bills marked
-paid and payslips until the next is typed in (D42); categories; bills with
+paid and payslips until the next is typed in (D42, D45); categories; bills with
 shares and states; pay schedules and payslips; the calendar; home loan and
-offset; forecasting with scenarios; the budget (bills paid out of it); bill
+offset; forecasting with scenarios, its average and the balance
+without goals (D46); the budget (bills paid out of it); bill
 import; the tax estimate, each job taxed on its own figures (D38); the
 dashboard; ntfy reminders, payslips to put in among them; backups; payslip
 PDFs, single or in bulk, recording schedule paydays; casual pay; Square sync;
@@ -175,9 +176,11 @@ FISCUS_DATA_DIR=./data FISCUS_BASE_URL=http://localhost:8000 python -m fiscus
 - **iOS has no `beforeinstallprompt`.** Install is a Share-menu instruction
   (README). File uploads use the file picker, which works in standalone mode.
 - **A balance is the last one typed in plus transactions dated after its
-  day** (`ledger.balances`, D42). Anything else that moves money writes a
-  transaction linked to its row (`ledger.follow`), never the opening balance,
-  and one dated on or before a typed balance changes nothing.
+  day, and those dated its day put in after it was typed** (`ledger.balances`,
+  D42, D45). Anything else that moves money writes a transaction linked to its
+  row (`ledger.follow`), never the opening balance, and one dated before a
+  typed balance, or on its day and put in before it, changes nothing. Tests
+  that type a balance and put pay in on the same day move the clock between.
 - **A test that patches the clock** uses `env.clock.set(...)`; the default is
   10:00 on Thursday 1 October 2026 in Perth.
 - Templates see `user` as a `UserView` snapshot, not the ORM object, so an

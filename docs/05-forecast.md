@@ -59,15 +59,20 @@ category's recurring bills, since the bills are already forecast from their own 
 (D25: spending is budgeted, not imported). Business
 income is projected the same way.
 
-Outputs: per-account and combined daily balances, loan balances, markers for
-paydays and bills over the large-bill threshold, month-end rows, payoff dates
-and the first day a non-credit-card account falls below the threshold.
+Outputs: per-account and combined daily balances, the combined balance's
+average over every day shown, loan balances, month-end rows, payoff dates and
+the first day a non-credit-card account falls below the threshold. The page
+also draws the combined balance less what goals kept aside hold today (D46).
+Goals never move money between accounts, so that is the same amount off every
+day.
 
 ## Scenarios
 
 `apply_scenario` deep-copies the input and applies adjustments in order:
 `one_off`, `income_change` (new net or a delta, from a date, one schedule or
-all), `rate_change`, `new_bill`, `extra_repayment` (one-off or recurring).
+all), `rate_change`, `new_bill`, `new_income` (net, recurring, its own kind of
+flow so an income change to every schedule leaves it alone), `extra_repayment`
+(one-off or recurring).
 Real rows are never written. The forecast page runs base and scenario and
 draws both.
 

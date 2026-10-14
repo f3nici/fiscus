@@ -29,7 +29,7 @@
 
   <div class="card">
     <div class="chart" data-forecast-chart data-chart="{{ chart }}" data-threshold="{{ prefs.low_balance_cents }}"></div>
-    <p class="text-xs muted mt-sm">Dots along the bottom: green for paydays, red for bills of {{ prefs.large_bill_cents | money }} or more. The dashed red line is your low-balance threshold. Change both in <a href="/settings">Settings</a>.</p>
+    <p class="text-xs muted mt-sm">The grey dashed line is the average of all accounts over these {{ months }} month{{ '' if months == 1 else 's' }}: {{ base.average | money }}.{% if goals_held %} Without goals leaves out the {{ goals_held | money }} your <a href="/goals">goals</a> keep aside today: it stays in your accounts but is not free to spend.{% endif %} The dashed red line is your low-balance threshold, set in <a href="/settings">Settings</a>.</p>
   </div>
 
   <div class="grid grid-2 mt">
@@ -37,13 +37,14 @@
       <h2>Month-end balances</h2>
       <div class="table-wrap">
         <table class="stack-table cols-3">
-          <thead><tr><th>Month end</th>{% for aid, name in names.items() %}<th class="num">{{ name }}</th>{% endfor %}<th class="num">All</th>{% if sc_result %}<th class="num">{{ sc.name }}</th>{% endif %}</tr></thead>
+          <thead><tr><th>Month end</th>{% for aid, name in names.items() %}<th class="num">{{ name }}</th>{% endfor %}<th class="num">All</th>{% if goals_held %}<th class="num">Without goals</th>{% endif %}{% if sc_result %}<th class="num">{{ sc.name }}</th>{% endif %}</tr></thead>
           <tbody>
             {% for m in month_end %}
               <tr>
                 <td>{{ m.date | d }}</td>
                 {% for aid in names %}<td class="num" data-label="{{ names[aid] }}">{{ money_cell(m.accounts.get(aid | string, 0)) }}</td>{% endfor %}
                 <td class="num" data-label="All"><strong>{{ money_cell(m.combined) }}</strong></td>
+                {% if goals_held %}<td class="num" data-label="Without goals">{{ money_cell(m.combined - goals_held) }}</td>{% endif %}
                 {% if sc_result %}<td class="num" data-label="{{ sc.name }}">{{ money_cell(sc_month_end.get(m.date, 0)) }}</td>{% endif %}
               </tr>
             {% endfor %}

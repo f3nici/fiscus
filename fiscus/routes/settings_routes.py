@@ -214,14 +214,12 @@ def forecast_prefs(
     low_balance: str = Form('0'),
     forecast_months: int = Form(12),
     spending_account_id: int = Form(0),
-    large_bill: str = Form('500'),
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> Response:
     prefs = settings_for(db, user)
     try:
         prefs.low_balance_cents = parse_cents(low_balance)
-        prefs.large_bill_cents = parse_cents(large_bill, allow_negative=False)
     except MoneyError as exc:
         return _page(request, db, user, {'error': str(exc)}, 400)
     prefs.forecast_months = min(24, max(1, forecast_months))

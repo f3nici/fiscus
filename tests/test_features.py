@@ -25,6 +25,7 @@ from fiscus.models import (
     Transaction,
     User,
 )
+from fiscus.money import round_div
 from fiscus.services import bills, budgeting, forecasting, ledger, reminders, taxes
 from tests.conftest import CsrfClient, Env
 from tests.test_bills import ANZ_SEPT, add_transactions, create_bill, make_account
@@ -194,7 +195,10 @@ def test_forecast_page_and_cache_invalidation(env: Env) -> None:
     assert data['combined'][0] == 3000_00
     # +2500 on 2 Oct, -2200 on 5 Oct, +2500 on 16 Oct and 30 Oct.
     assert data['combined'][data['dates'].index('2026-10-31')] == 3000_00 + 3 * 2500_00 - 2200_00
-    assert {m['label'] for m in data['markers']} >= {'Acme wages', 'Rent'}
+    assert 'markers' not in data
+    assert data['average'] == round_div(sum(data['combined']), len(data['combined']))
+    assert 'average of all accounts over these 3 months' in page
+    assert data['without_goals'] is None
     with env.db() as db:
         key1 = db.get(ForecastCache, alex.id).cache_key  # type: ignore[union-attr]
     # Same data, same key: served from cache.
@@ -211,6 +215,43 @@ def test_forecast_page_and_cache_invalidation(env: Env) -> None:
     )
     with env.db() as db:
         assert db.get(ForecastCache, alex.id).cache_key != key1  # type: ignore[union-attr]
+
+
+def test_the_forecast_without_goals_and_with_a_new_income(env: Env) -> None:
+    a, _alex, acct = setup_household(env)
+    # A goal kept aside is left out; a bucket counted as free to spend is not.
+    for goal in (
+        {'name': 'Japan trip', 'saved': '1000', 'keep_aside': 'true'},
+        {'name': 'Spare', 'saved': '200'},
+    ):
+        assert a.post('/goals', data={'account_id': str(acct), **goal}).status_code == 303
+    page = a.get('/forecast?months=1').text
+    data = chart_data(page)
+    assert data['without_goals'] == [c - 1000_00 for c in data['combined']]
+    assert 'Without goals leaves out the $1,000.00 your' in page
+    assert '<th class="num">Without goals</th>' in page
+    # A second job, as a scenario.
+    resp = a.post('/scenarios', data={'name': 'Second job'})
+    sid = int(resp.headers['location'].rsplit('/', 1)[1])
+    resp = a.post(
+        f'/scenarios/{sid}/adjustments',
+        data={
+            'kind': 'new_income',
+            'name': 'Tutoring',
+            'amount': '150',
+            'frequency': 'weekly',
+            'start_date': '2026-10-07',
+            'account_id': str(acct),
+        },
+        follow_redirects=True,
+    )
+    assert 'Change added' in resp.text
+    assert 'Tutoring: $150.00 weekly from 2026-10-07 into Everyday' in resp.text
+    compared = chart_data(a.get(f'/forecast?months=1&scenario_id={sid}').text)
+    # 7, 14, 21 and 28 Oct.
+    assert compared['scenario']['combined'][-1] - compared['combined'][-1] == 4 * 150_00
+    # The real forecast is as it was.
+    assert compared['combined'] == data['combined']
 
 
 def test_the_dashboard_and_forecast_horizons_share_the_cache(env: Env) -> None:
@@ -1023,7 +1064,6 @@ def test_future_payslip_is_one_off_income(env: Env) -> None:
     i19, i20 = after['dates'].index('2026-10-19'), after['dates'].index('2026-10-20')
     assert after['combined'][i19] == before['combined'][i19]
     assert after['combined'][i20] == before['combined'][i20] + 3500_00
-    assert any(m['label'] == 'Acme bonus' and m['kind'] == 'pay' for m in after['markers'])
     page = a.get('/pay').text
     assert 'Expected' in page
     cal = a.get('/calendar?view=agenda&date=2026-10-01').text

@@ -171,7 +171,6 @@ class UserSettings(Base, Owned):
     spending_account_id: Mapped[int | None] = mapped_column(
         ForeignKey('accounts.id', ondelete='SET NULL'), nullable=True
     )
-    large_bill_cents: Mapped[int] = mapped_column(Integer, default=50000)
     ntfy_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     ntfy_url: Mapped[str] = mapped_column(String(255), default='')
     ntfy_topic: Mapped[str] = mapped_column(String(120), default='')
@@ -270,6 +269,9 @@ class AccountBalance(Base, Owned):
     account_id: Mapped[int] = mapped_column(ForeignKey('accounts.id', ondelete='CASCADE'))
     date: Mapped[date] = mapped_column(Date)
     balance_cents: Mapped[int] = mapped_column(Integer)
+    # When it was typed in (UTC). What is put in later, dated its day, moves
+    # it (D45). None for one typed before that: it holds its whole day.
+    typed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class ImportMapping(Base, Owned):

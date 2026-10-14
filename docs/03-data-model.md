@@ -18,14 +18,14 @@ user's `data_version` (the forecast cache key).
 | app_state | small key/value for instance state |
 | square_connections (owned) | one per user: enabled, access token, target account, categories for payments, fees and payouts, start date, synced-until, last result and error |
 | square_invoices (owned) | unpaid invoice payment requests as of the last sync: number, customer, due date, amount owing |
-| user_settings (owned) | low-balance threshold, forecast horizon, spending account, large-bill threshold, ntfy settings (`ntfy_payslips`: a payday passed without a payslip), `budget_start_day` (the budget month runs from this day) |
+| user_settings (owned) | low-balance threshold, forecast horizon, spending account, ntfy settings (`ntfy_payslips`: a payday passed without a payslip), `budget_start_day` (the budget month runs from this day) |
 
 ## Money
 
 | Table | Notes |
 | --- | --- |
 | accounts (owned) | type, opening balance (used only while no balance has been typed in), set-aside flag, `loan_id` for an offset, archived, `balance_updated_on` |
-| account_balances (owned) | each balance typed in: account, date (one a day, the last wins), cents. Any day's balance, today's too, is the last one on or before it plus the transactions dated after that day; offset savings read it (D39, D42) |
+| account_balances (owned) | each balance typed in: account, date (one a day, the last wins), cents, `typed_at` (when; none before D45). Any day's balance, today's too, is the last one on or before it plus the transactions dated after that day and those dated its day put in after `typed_at`; offset savings read it (D39, D42, D45) |
 | transactions (owned) | date, signed amount, description, category, import, `dedup_hash` unique per account. Written by Square sync, kept from imports before D37, and written for a bill marked paid by hand (`bill_payment_id`) or a payslip (`payslip_id`) so the balance moves with it; deleted with that row (D42). The account page lists those since the balance was typed in |
 | imports (owned) | a Square sync batch, or a statement import from before D37 |
 | import_mappings (owned) | column mappings from statement imports before D37; no longer read |
@@ -55,6 +55,6 @@ user's `data_version` (the forecast cache key).
 | goals (owned) | name, the account it sits in (optional), target amount and date (both optional; with both it shows a monthly amount to put in), `keep_aside` (its money is not free to spend), `is_tax` (holds the tax money; one per person), archived (done). The budget lines it is saved from are the categories pointing at it |
 | goal_moves (owned) | money put into (positive) or taken out of (negative) a goal by hand: date, amount, note, and the budget spend recorded with it when put aside from a budget line (removed together). What a goal holds is the sum |
 | tax_deductions (owned) | one total of deductions per person per financial year (`year` like "2026-27"), typed in on the tax page (D31) |
-| scenarios, scenario_adjustments (owned) | named what-ifs; adjustments are a kind plus JSON parameters |
+| scenarios, scenario_adjustments (owned) | named what-ifs; adjustments are a kind plus JSON parameters (`one_off`, `income_change`, `rate_change`, `new_bill`, `new_income`, `extra_repayment`) |
 | forecast_cache | one row per user: key (data version and date) and a serialised result per horizon asked for |
 | notification_log | one row per reminder sent, so each is sent once |

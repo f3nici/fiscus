@@ -359,9 +359,12 @@ def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any
     # Narrow screen: the calendar opens on the agenda.
     page.goto(f'{base}/calendar')
     page.wait_for_selector('#cal[data-view="agenda"]')
-    # The forecast chart drew.
+    # The forecast chart drew, with the average and the balance less the
+    # $150 the Japan trip goal keeps aside.
     page.goto(f'{base}/forecast')
     page.wait_for_selector('.uplot')
+    legend = page.inner_text('.u-legend').lower()
+    assert 'without goals' in legend and 'average' in legend, legend
     # And after a boosted (htmx) navigation, which drops <script> tags.
     page.goto(f'{base}/')
     page.click('main a[href="/forecast"]')
