@@ -171,7 +171,6 @@ class UserSettings(Base, Owned):
     spending_account_id: Mapped[int | None] = mapped_column(
         ForeignKey('accounts.id', ondelete='SET NULL'), nullable=True
     )
-    large_bill_cents: Mapped[int] = mapped_column(Integer, default=50000)
     ntfy_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     ntfy_url: Mapped[str] = mapped_column(String(255), default='')
     ntfy_topic: Mapped[str] = mapped_column(String(120), default='')

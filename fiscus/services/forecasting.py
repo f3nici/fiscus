@@ -194,7 +194,6 @@ def build_input(db: Session, user: User, today: date, months: int) -> ForecastIn
         daily=daily,
         loans=loans,
         low_balance_cents=prefs.low_balance_cents,
-        large_bill_cents=prefs.large_bill_cents,
     )
 
 

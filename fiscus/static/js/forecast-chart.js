@@ -1,7 +1,7 @@
 /*
- * The forecast chart, drawn with the vendored uPlot. Combined balance, each
- * account, an optional scenario on the same axes, the low-balance line, and
- * markers for paydays and large bills.
+ * The forecast chart, drawn with the vendored uPlot. Combined balance, the
+ * same less what goals hold, its average, each account, an optional scenario
+ * on the same axes, and the low-balance line.
  */
 (function () {
   'use strict';
@@ -15,30 +15,21 @@
     return (neg ? '-$' : '$') + s;
   }
 
-  function markersPlugin(markers, xs) {
+  function thresholdPlugin(threshold) {
     return {
       hooks: {
         draw: [
           (u) => {
+            if (threshold == null) return;
             const ctx = u.ctx;
             ctx.save();
-            markers.forEach((m) => {
-              const x = u.valToPos(Date.parse(m.date) / 1000, 'x', true);
-              if (x < u.bbox.left || x > u.bbox.left + u.bbox.width) return;
-              ctx.fillStyle = m.kind === 'pay' ? '#22c55e' : '#ef4444';
-              ctx.beginPath();
-              ctx.arc(x, u.bbox.top + u.bbox.height - 6 * devicePixelRatio, 3.5 * devicePixelRatio, 0, 2 * Math.PI);
-              ctx.fill();
-            });
-            if (xs.threshold != null) {
-              const y = u.valToPos(xs.threshold, 'y', true);
-              ctx.strokeStyle = 'rgba(239,68,68,0.6)';
-              ctx.setLineDash([6, 6]);
-              ctx.beginPath();
-              ctx.moveTo(u.bbox.left, y);
-              ctx.lineTo(u.bbox.left + u.bbox.width, y);
-              ctx.stroke();
-            }
+            const y = u.valToPos(threshold, 'y', true);
+            ctx.strokeStyle = 'rgba(239,68,68,0.6)';
+            ctx.setLineDash([6, 6]);
+            ctx.beginPath();
+            ctx.moveTo(u.bbox.left, y);
+            ctx.lineTo(u.bbox.left + u.bbox.width, y);
+            ctx.stroke();
             ctx.restore();
           },
         ],
@@ -58,6 +49,14 @@
     const values = [xs];
     series.push({ label: 'All accounts', stroke: '#ffffff', width: 2, value: (u, v) => money(v) });
     values.push(data.combined);
+    if (data.without_goals) {
+      series.push({ label: 'Without goals', stroke: '#22c55e', width: 2, value: (u, v) => money(v) });
+      values.push(data.without_goals);
+    }
+    if (data.average != null) {
+      series.push({ label: 'Average', stroke: '#a3a3a3', width: 1, dash: [4, 4], value: (u, v) => money(v) });
+      values.push(xs.map(() => data.average));
+    }
     if (data.scenario) {
       series.push({ label: data.scenario.name, stroke: '#f59e0b', width: 2, dash: [8, 5], value: (u, v) => money(v) });
       values.push(data.scenario.combined);
@@ -78,7 +77,7 @@
       ],
       cursor: { drag: { x: true, y: false } },
       legend: { live: true },
-      plugins: [markersPlugin(data.markers || [], { threshold })],
+      plugins: [thresholdPlugin(threshold)],
     };
     const plot = new window.uPlot(opts, values, el);
     const resize = () => plot.setSize({ width: el.clientWidth, height: opts.height });

@@ -52,7 +52,6 @@
         <div class="form-grid">
           <div class="field"><label class="label" for="low_balance">Warn below</label><input class="input" id="low_balance" name="low_balance" inputmode="decimal" value="{{ prefs.low_balance_cents | money_plain }}"></div>
           <div class="field"><label class="label" for="forecast_months">Default horizon (months)</label><input class="input" type="number" id="forecast_months" name="forecast_months" min="1" max="24" value="{{ prefs.forecast_months }}"></div>
-          <div class="field"><label class="label" for="large_bill">Mark bills from</label><input class="input" id="large_bill" name="large_bill" inputmode="decimal" value="{{ prefs.large_bill_cents | money_plain }}"></div>
           <div class="field"><label class="label" for="spending_account_id">Everyday spending account</label>
             <select class="input" id="spending_account_id" name="spending_account_id"><option value="0">First transaction account</option>{% for a in accounts %}<option value="{{ a.id }}" {{ 'selected' if prefs.spending_account_id == a.id else '' }}>{{ a.name }}</option>{% endfor %}</select>
           </div>

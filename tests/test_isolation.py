@@ -466,6 +466,17 @@ def test_scenarios_never_change_real_data(
             'account_id': str(ids.account),
         },
     )
+    a.post(
+        f'/scenarios/{ids.scenario}/adjustments',
+        data={
+            'kind': 'new_income',
+            'name': 'Second job',
+            'amount': '900',
+            'frequency': 'fortnightly',
+            'start_date': '2026-10-09',
+            'account_id': str(ids.account),
+        },
+    )
     before = snapshot(env)
     base = a.get('/forecast').text
     compared = a.get(f'/forecast?scenario_id={ids.scenario}').text

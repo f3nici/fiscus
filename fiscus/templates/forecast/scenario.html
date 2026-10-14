@@ -23,7 +23,7 @@
               {% if a.kind == 'one_off' %}{{ p.label }}: {{ p.amount_cents | money }} on {{ p.date }} in {{ names.get(p.account_id, '?') }}
               {% elif a.kind == 'income_change' %}from {{ p.from_date }}{% if p.new_net_cents is not none %} net pay becomes {{ p.new_net_cents | money }}{% endif %}{% if p.delta_cents %} change {{ p.delta_cents | money_signed }}{% endif %}
               {% elif a.kind == 'rate_change' %}{{ p.rate }}% from {{ p.from_date }}
-              {% elif a.kind == 'new_bill' %}{{ p.name }}: {{ p.amount_cents | money }} {{ p.frequency }} from {{ p.start_date }}
+              {% elif a.kind in ('new_bill', 'new_income') %}{{ p.name }}: {{ p.amount_cents | money }} {{ p.frequency | replace('_', '-') }} from {{ p.start_date }}{% if p.end_date %} to {{ p.end_date }}{% endif %} into {{ names.get(p.account_id, '?') }}
               {% elif a.kind == 'extra_repayment' %}{{ p.amount_cents | money }} {{ p.frequency | replace('_', '-') }} from {{ p.date }}
               {% endif %}
             </span>
@@ -52,8 +52,8 @@
       <div class="field" data-kind="one_off"><label class="label" for="s-label">Label</label><input class="input" id="s-label" name="label" maxlength="80" placeholder="New car tyres"></div>
       <div class="field" data-kind="one_off"><label class="label" for="s-dir">Money</label><select class="input" id="s-dir" name="direction"><option value="out">Out (expense)</option><option value="in">In (income)</option></select></div>
       <div class="field" data-kind="one_off extra_repayment"><label class="label" for="s-date">Date</label><input class="input" type="date" id="s-date" name="date" value="{{ today.isoformat() }}"></div>
-      <div class="field" data-kind="one_off new_bill extra_repayment"><label class="label" for="s-amount">Amount</label><input class="input" id="s-amount" name="amount" inputmode="decimal"></div>
-      <div class="field" data-kind="one_off new_bill extra_repayment"><label class="label" for="s-account">Account</label>
+      <div class="field" data-kind="one_off new_bill new_income extra_repayment"><label class="label" for="s-amount">Amount</label><input class="input" id="s-amount" name="amount" inputmode="decimal"></div>
+      <div class="field" data-kind="one_off new_bill new_income extra_repayment"><label class="label" for="s-account">Account</label>
         <select class="input" id="s-account" name="account_id">{% for a in accounts %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}</select>
       </div>
       <div class="field" data-kind="income_change"><label class="label" for="s-pay">Pay schedule</label>
@@ -66,12 +66,12 @@
         <select class="input" id="s-loan" name="loan_id">{% for l in loans %}<option value="{{ l.id }}">{{ l.name }}</option>{% endfor %}</select>
       </div>
       <div class="field" data-kind="rate_change"><label class="label" for="s-rate">New rate %</label><input class="input" id="s-rate" name="rate" inputmode="decimal"></div>
-      <div class="field" data-kind="new_bill"><label class="label" for="s-name">Bill name</label><input class="input" id="s-name" name="name" maxlength="80"></div>
-      <div class="field" data-kind="new_bill extra_repayment"><label class="label" for="s-freq">How often</label>
+      <div class="field" data-kind="new_bill new_income"><label class="label" for="s-name">Name</label><input class="input" id="s-name" name="name" maxlength="80"></div>
+      <div class="field" data-kind="new_bill new_income extra_repayment"><label class="label" for="s-freq">How often</label>
         <select class="input" id="s-freq" name="frequency">{% for f in freqs %}<option value="{{ f }}">{{ f | replace('_', '-') | capitalize }}</option>{% endfor %}</select>
       </div>
-      <div class="field" data-kind="new_bill"><label class="label" for="s-start">Starts</label><input class="input" type="date" id="s-start" name="start_date" value="{{ today.isoformat() }}"></div>
-      <div class="field" data-kind="new_bill"><label class="label" for="s-end">Ends (optional)</label><input class="input" type="date" id="s-end" name="end_date"></div>
+      <div class="field" data-kind="new_bill new_income"><label class="label" for="s-start">Starts</label><input class="input" type="date" id="s-start" name="start_date" value="{{ today.isoformat() }}"></div>
+      <div class="field" data-kind="new_bill new_income"><label class="label" for="s-end">Ends (optional)</label><input class="input" type="date" id="s-end" name="end_date"></div>
     </div>
     <button class="btn btn-primary" type="submit">Add change</button>
   </form>

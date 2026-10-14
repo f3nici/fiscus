@@ -21,6 +21,7 @@ from typing import Any
 
 from fiscus.domain import recurrence
 from fiscus.domain.loan import LoanSim, LoanSpec
+from fiscus.money import round_div
 
 
 @dataclass(frozen=True)
@@ -45,7 +46,6 @@ class ForecastInput:
     daily: dict[int, Decimal] = field(default_factory=dict)
     loans: list[LoanSpec] = field(default_factory=list)
     low_balance_cents: int = 0
-    large_bill_cents: int = 50000
 
 
 @dataclass
@@ -54,11 +54,15 @@ class ForecastResult:
     accounts: dict[int, list[int]]
     combined: list[int]
     loans: dict[int, list[int]]
-    markers: list[dict[str, Any]]
     low_balance: dict[str, Any] | None
     month_end: list[dict[str, Any]]
     loan_payoff: dict[int, date | None]
     loan_interest: dict[int, int]
+
+    @property
+    def average(self) -> int:
+        """The combined balance averaged over every day shown, today included."""
+        return round_div(sum(self.combined), len(self.combined))
 
     def balance_on(self, day: date) -> int | None:
         idx = (day - self.dates[0]).days
@@ -72,7 +76,6 @@ class ForecastResult:
             'accounts': {str(k): v for k, v in self.accounts.items()},
             'combined': self.combined,
             'loans': {str(k): v for k, v in self.loans.items()},
-            'markers': [{**m, 'date': m['date'].isoformat()} for m in self.markers],
             'low_balance': (
                 {**self.low_balance, 'date': self.low_balance['date'].isoformat()}
                 if self.low_balance
@@ -96,7 +99,6 @@ class ForecastResult:
             accounts={int(k): v for k, v in raw['accounts'].items()},
             combined=raw['combined'],
             loans={int(k): v for k, v in raw['loans'].items()},
-            markers=[{**m, 'date': d(m['date'])} for m in raw['markers']],
             low_balance={**low, 'date': d(low['date'])} if low else None,
             month_end=[{**m, 'date': d(m['date'])} for m in raw['month_end']],
             loan_payoff={int(k): d(v) if v else None for k, v in raw['loan_payoff'].items()},
@@ -135,25 +137,12 @@ def run(inp: ForecastInput) -> ForecastResult:
     loan_series: dict[int, list[int]] = {s.spec.id: [s.balance] for s in sims}
     interest_before = {s.spec.id: s.interest_charged for s in sims}
     carry: dict[int, Decimal] = dict.fromkeys(inp.daily, Decimal(0))
-    markers: list[dict[str, Any]] = []
     low: dict[str, Any] | None = None
     watched = {a for a, t in inp.account_types.items() if t != 'credit_card'}
 
     for day in dates[1:]:
         for f in by_day.get(day, []):
             balances[f.account_id] = balances.get(f.account_id, 0) + f.amount_cents
-            if f.kind == 'pay' or (
-                f.kind in {'bill', 'one_off'} and -f.amount_cents >= inp.large_bill_cents
-            ):
-                markers.append(
-                    {
-                        'date': day,
-                        'kind': f.kind,
-                        'label': f.label,
-                        'amount': f.amount_cents,
-                        'account_id': f.account_id,
-                    }
-                )
         for sim in sims:
             for amount, acct in sim.repayments_due(day):
                 if acct is not None:
@@ -199,7 +188,6 @@ def run(inp: ForecastInput) -> ForecastResult:
         accounts=series,
         combined=combined,
         loans=loan_series,
-        markers=markers,
         low_balance=low,
         month_end=month_end,
         loan_payoff={s.spec.id: s.paid_off for s in sims},
@@ -214,6 +202,7 @@ SCENARIO_KINDS = {
     'income_change': 'Income change',
     'rate_change': 'Interest rate change',
     'new_bill': 'New recurring bill',
+    'new_income': 'New recurring income (after tax)',
     'extra_repayment': 'Extra loan repayment',
 }
 
@@ -281,18 +270,19 @@ def apply_scenario(
                 if spec.id == loan_id:
                     kept = [(d, r) for d, r in spec.rates if d < start]
                     spec.rates = [*kept, (start, rate)]
-        elif kind == 'new_bill':
+        elif kind in ('new_bill', 'new_income'):
+            # Income is its own kind of flow, so an income change to every
+            # pay schedule leaves it alone.
+            bill = kind == 'new_bill'
             anchor = _d(p, 'start_date')
             until = date.fromisoformat(p['end_date']) if p.get('end_date') else None
-            amount = -abs(_i(p, 'amount_cents'))
+            amount = abs(_i(p, 'amount_cents')) * (-1 if bill else 1)
+            label = str(p.get('name') or ('New bill' if bill else 'New income'))
             for when in recurrence.occurrences(
                 anchor, str(p['frequency']), out.today + timedelta(days=1), end, until=until
             ):
-                out.flows.append(
-                    Flow(
-                        when, _i(p, 'account_id'), amount, 'bill', str(p.get('name') or 'New bill')
-                    )
-                )
+                flow_kind = 'bill' if bill else 'income'
+                out.flows.append(Flow(when, _i(p, 'account_id'), amount, flow_kind, label))
         elif kind == 'extra_repayment':
             loan_id = _i(p, 'loan_id')
             anchor = _d(p, 'date')
