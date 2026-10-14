@@ -286,6 +286,8 @@ def test_a_saved_up_line_counts_the_months_before_its_bill() -> None:
         monthly_cents=27_50,
     )
     assert (dc.by_then_cents, dc.short_cents) == (165_00, 165_00)
+    # Lined up, October holds the bill less five more months.
+    assert dc.lined_up_cents == 192_50
     # Due this month: nothing more comes in; what was put aside still counts.
     dc = saving.check(
         period_start=oct1,
@@ -297,6 +299,7 @@ def test_a_saved_up_line_counts_the_months_before_its_bill() -> None:
         put_aside_cents=330_00,
     )
     assert (dc.by_then_cents, dc.short_cents) == (330_00, 0)
+    assert dc.lined_up_cents == 0
 
 
 def test_fmt_short_rounds_before_choosing_the_unit() -> None:
