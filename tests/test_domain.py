@@ -302,6 +302,43 @@ def test_a_saved_up_line_counts_the_months_before_its_bill() -> None:
     assert dc.lined_up_cents == 0
 
 
+def test_two_bills_in_one_saved_up_line_are_checked_together() -> None:
+    oct1 = date(2026, 10, 1)
+    rego = [saving.Due(date(2027, 3, 20), 900_00), saving.Due(date(2026, 12, 10), 900_00)]
+    # 150 a month, holding 750: December's rego is covered, March's is not
+    # once December's is paid.
+    ol = saving.outlook(
+        period_start=oct1,
+        start_day=1,
+        bills=rego,
+        saved_cents=750_00,
+        monthly_cents=150_00,
+    )
+    assert ol is not None
+    assert [(c.due, c.bill_cents, c.need_cents, c.short_cents) for c in ol.checks] == [
+        (date(2026, 12, 10), 900_00, 900_00, 0),
+        (date(2027, 3, 20), 900_00, 1800_00, 300_00),
+    ]
+    assert ol.next.due == date(2026, 12, 10)
+    assert ol.worst is not None and ol.worst.due == date(2027, 3, 20)
+    assert ol.lined_up_cents == 1050_00
+    # December's paid early: it has not come off the line yet, so March still
+    # needs both.
+    paid = [saving.Due(date(2026, 12, 10), 900_00, paid=True), rego[0]]
+    ol = saving.outlook(
+        period_start=oct1, start_day=1, bills=paid, saved_cents=750_00, monthly_cents=150_00
+    )
+    assert ol is not None and len(ol.checks) == 1
+    assert (ol.next.bill_cents, ol.next.short_cents, ol.lined_up_cents) == (900_00, 300_00, 1050_00)
+    # Nothing left to pay.
+    assert (
+        saving.outlook(
+            period_start=oct1, start_day=1, bills=paid[:1], saved_cents=0, monthly_cents=150_00
+        )
+        is None
+    )
+
+
 def test_fmt_short_rounds_before_choosing_the_unit() -> None:
     assert fmt_short(99_995_000) == '$1.0m'
     assert fmt_short(99_940_000) == '$999.4k'

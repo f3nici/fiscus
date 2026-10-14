@@ -14,8 +14,9 @@ dashboard; ntfy reminders, payslips to put in among them; backups; payslip
 PDFs, single or in bulk, recording schedule paydays; casual pay; Square sync;
 savings goals inside accounts, out of the budget, one of them the tax money,
 any of them saved from budget lines, one goal from several (D32 to D34, D36);
-saved-up lines say if they will cover their next bill, overdue ones first,
-and what they hold is typed in or lined up with that bill (D36, D40, D43); budget lines in groups and in an order set by hand (D35). Since
+saved-up lines say if they will cover their bills in the year ahead, overdue
+ones first, and what they hold is typed in or lined up with them (D36, D40,
+D43, D44); budget lines in groups and in an order set by hand (D35). Since
 D25 the budget is kept by hand (spending taken off, balances typed in); the
 transactions, statement import, rules and matching screens were removed in
 D37 (their tables stay; Square, bills marked paid and payslips write to

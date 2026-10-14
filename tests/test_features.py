@@ -732,6 +732,51 @@ def test_a_saved_up_line_says_whether_it_will_hold_its_next_bill(env: Env) -> No
     assert '$0.00' in page and '$330.00 due 15 Mar 2027: on track' in page
 
 
+def test_two_regos_in_one_line_are_both_lined_up(env: Env) -> None:
+    alex = env.user('alex')
+    a = env.login(alex)
+    car = cat_id(env, alex, 'Transport')
+    first = create_bill(
+        a,
+        name='Rego, ute',
+        amount='900',
+        frequency='yearly',
+        next_due='2026-12-10',
+        category_id=str(car),
+    )
+    create_bill(
+        a,
+        name='Rego, hatch',
+        amount='900',
+        frequency='yearly',
+        next_due='2027-03-20',
+        category_id=str(car),
+    )
+    a.post('/budget', data={'category_id': str(car), 'amount': '1800', 'cycle_months': '12'})
+    a.post(f'/budget/{car}/saved', data={'saved': '750'})
+    # Enough for December's, but not for March's once December's is paid.
+    page = a.get('/budget').text
+    assert '$900.00 due 10 Dec 2026: on track' in page
+    assert '$900.00 due 20 Mar 2027: $300.00 short by then, after the bills before it' in page
+    assert 'Set saved to $1,050.00' in page
+    a.post(f'/budget/{car}/saved', data={'saved': '1050'})
+    page = a.get('/budget').text
+    assert '$900.00 due 10 Dec 2026: on track' in page
+    assert 'Then $900.00' not in page and f'action="/budget/{car}/saved"' not in page
+    # Holding 750 again, with December's paid early: March still needs both.
+    a.post(f'/budget/{car}/saved', data={'saved': '750'})
+    a.post(f'/bills/{first}/occurrence/2026-12-10/paid')
+    page = a.get('/budget').text
+    assert '10 Dec 2026' not in page.split('id="lines"')[1].split('id="add-line"')[0]
+    assert '$900.00 due 20 Mar 2027: $300.00 short by then' in page
+    assert 'Set saved to $1,050.00' in page
+    # December takes the ute's rego out; March is covered from there.
+    a.post(f'/budget/{car}/saved', data={'saved': '1050'})
+    assert _saved(env, alex, date(2026, 12, 1))['Transport'] == (450_00, 'ok')
+    assert _saved(env, alex, date(2027, 3, 1))['Transport'] == (900_00, 'ok')
+    assert '$900.00 due 20 Mar 2027: on track' in a.get('/budget').text
+
+
 def test_what_a_saved_up_line_holds_is_set_by_hand(env: Env) -> None:
     alex = env.user('alex')
     a = env.login(alex)
