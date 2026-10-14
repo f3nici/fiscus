@@ -334,20 +334,23 @@ def rows(db: Session, user: User, start: date, end: date, today: date) -> list[B
     return out
 
 
-# How far back to look for a line's last bill, and ahead for its next.
+# How far back to look for a line's last bill, and how many budget months
+# ahead to check its bills.
 DUE_LOOKBACK = timedelta(days=400)
-DUE_LOOKAHEAD = timedelta(days=400)
+DUE_AHEAD_MONTHS = 12
 
 
 def due_checks(
     db: Session, user: User, rs: list[BudgetRow], start: date, today: date
-) -> dict[int, saving.DueCheck]:
-    """For each saved-up spending line with a bill still to pay: its next due
-    date, and whether the line will hold enough by then. From the budget month
-    starting `start`, and bills still unpaid from before it (as far back as
-    the forecast carries them), which the line has to pay first. What was put
-    aside counts from the last bill, even if the line was changed since: it
-    went into the goal, not into what the line carried forward."""
+) -> dict[int, saving.Outlook]:
+    """For each saved-up spending line with a bill still to pay: every budget
+    month in the year from the one starting `start` that holds one of its
+    bills, and whether the line will hold all that is due by then. Bills still
+    unpaid from before it (as far back as the forecast carries them) come
+    first, and bills marked paid before their budget month still count, since
+    they have not come off the line yet. What was put aside counts from the
+    last bill, even if the line was changed since: it went into the goal, not
+    into what the line carried forward."""
     lines = {
         r.category.id: r
         for r in rs
@@ -356,31 +359,34 @@ def due_checks(
     if not lines:
         return {}
     first = start_day(db, user)
+    _s, end = period(db, user, start)
+    horizon = recurrence.add_months(start, DUE_AHEAD_MONTHS, first) - timedelta(days=1)
     owed_from = min(start, today - timedelta(days=bills.OVERDUE_CARRY_DAYS))
     occs = [
         o
-        for o in bills.occurrences(db, user, start - DUE_LOOKBACK, start + DUE_LOOKAHEAD, today)
+        for o in bills.occurrences(db, user, start - DUE_LOOKBACK, horizon, today)
         if o.share.category_id in lines
     ]
-    out: dict[int, saving.DueCheck] = {}
+    out: dict[int, saving.Outlook] = {}
     for cid, r in lines.items():
         mine = [o for o in occs if o.share.category_id == cid]
         unpaid = [o for o in mine if o.payment is None and o.due >= owed_from]
         if not unpaid or r.budget is None or r.saved_cents is None:
             continue
-        due = unpaid[0].due
-        _ps, due_end = period(db, user, due)
-        before = [o.due for o in mine if o.due < due]
+        before = [o.due for o in mine if o.due < unpaid[0].due]
         since = before[-1] + timedelta(days=1) if before else start - DUE_LOOKBACK
-        out[cid] = saving.check(
+        ahead = [o for o in mine if o.payment is not None and o.due > end]
+        found = saving.outlook(
             period_start=start,
             start_day=first,
-            due=due,
-            need_cents=sum(o.share_cents for o in unpaid if o.due <= due_end),
+            bills=[saving.Due(o.due, o.share_cents) for o in unpaid]
+            + [saving.Due(o.due, o.share_cents, paid=True) for o in ahead],
             saved_cents=r.saved_cents,
             monthly_cents=r.budget.monthly_cents,
             put_aside_cents=put_aside(db, user, cid, since, today),
         )
+        if found is not None:
+            out[cid] = found
     return out
 
 

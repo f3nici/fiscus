@@ -173,15 +173,18 @@
                 {% if r.has_budget and not r.saving %}<meter min="0" max="{{ r.budget_cents }}" low="{{ r.budget_cents * 9 // 10 }}" high="{{ r.budget_cents - 1 if r.state == 'over' else r.budget_cents }}" optimum="0" value="{{ [r.actual_cents, r.budget_cents] | min }}">{{ r.pct }}%</meter>{% endif %}
                 {% if r.saving %}<div class="text-xs muted">Saving up {{ r.cycle_total_cents | money }} {{ cycles[r.cycle_months] | lower }}</div>{% endif %}
                 {% if r.bills_cents %}<div class="text-xs muted"><a href="/bills?category={{ r.category.id }}">{{ r.bills_cents | money }} a month of bills</a></div>{% endif %}
-                {% set dc = due.get(r.category.id) %}
-                {% if dc and dc.due < today %}<div class="text-xs neg">{{ dc.need_cents | money }} overdue since {{ dc.due | d }}: {% if dc.short_cents %}{{ dc.short_cents | money }} short{% else %}the line holds it{% endif %}. <a href="/bills#overdue">Mark it paid</a> once it is.</div>
-                {% elif dc %}<div class="text-xs {{ 'neg' if dc.short_cents else 'pos' }}">{{ dc.need_cents | money }} due {{ dc.due | d }}: {% if dc.short_cents %}{{ dc.short_cents | money }} short by then{% else %}on track{% endif %}</div>{% endif %}
-                {% if dc and dc.short_cents and current %}
+                {% set ol = due.get(r.category.id) %}
+                {% set dc = ol.next if ol else none %}
+                {% set later = ol.worst if ol and ol.worst and ol.worst.due != dc.due else none %}
+                {% if dc and dc.due < today %}<div class="text-xs neg">{{ dc.bill_cents | money }} overdue since {{ dc.due | d }}: {% if dc.short_cents %}{{ dc.short_cents | money }} short{% else %}the line holds it{% endif %}. <a href="/bills#overdue">Mark it paid</a> once it is.</div>
+                {% elif dc %}<div class="text-xs {{ 'neg' if dc.short_cents else 'pos' }}">{{ dc.bill_cents | money }} due {{ dc.due | d }}: {% if dc.short_cents %}{{ dc.short_cents | money }} short by then{% else %}on track{% endif %}</div>{% endif %}
+                {% if later %}<div class="text-xs neg">Then {{ later.bill_cents | money }} {{ 'overdue since' if later.due < today else 'due' }} {{ later.due | d }}: {{ later.short_cents | money }} short{{ '' if later.due < today else ' by then' }}, after the bills before it</div>{% endif %}
+                {% if ol and ol.worst and current %}
                   <form method="post" action="/budget/{{ r.category.id }}/saved" class="mt-sm">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <input type="hidden" name="back" value="{{ back }}">
-                    <input type="hidden" name="saved" value="{{ dc.lined_up_cents | money_plain }}">
-                    <button class="btn btn-sm" type="submit" aria-label="Set {{ r.category.name }} to hold {{ dc.lined_up_cents | money }} now, so it has the bill by {{ dc.due | d }}">Set saved to {{ dc.lined_up_cents | money }}</button>
+                    <input type="hidden" name="saved" value="{{ ol.lined_up_cents | money_plain }}">
+                    <button class="btn btn-sm" type="submit" aria-label="Set {{ r.category.name }} to hold {{ ol.lined_up_cents | money }} now, so it has its bills on their due dates">Set saved to {{ ol.lined_up_cents | money }}</button>
                   </form>
                 {% endif %}
                 {% if r.category.id in doubled %}<div class="text-xs neg">Your home loan repayments are already in the budget. Remove this line so they are not counted twice.</div>{% endif %}
@@ -318,7 +321,7 @@
     <details class="mt">
       <summary class="text-sm">How budget lines work</summary>
       <p class="muted text-sm mt-sm">A category's budget is the whole amount. Bills in it do not add to it: when you tick one as paid on the <a href="/bills">Bills</a> page, it comes off the budget as spent. The forecast spends what is budgeted beyond the bills, since the bills are forecast from their own dates.</p>
-      <p class="muted text-sm">For something paid every few months or once a year (rego, insurance), choose how often. Its monthly share is saved up and what you spend comes out of that, so the month you pay it is not over budget. What it holds counts as still to spend, so it is never free in your accounts. Set what it holds with Saved now, or, when its next bill would find it short, Set saved to puts in just enough to have the bill on its due date.</p>
+      <p class="muted text-sm">For something paid every few months or once a year (rego, insurance), choose how often. Its monthly share is saved up and what you spend comes out of that, so the month you pay it is not over budget. What it holds counts as still to spend, so it is never free in your accounts. Set what it holds with Saved now, or, when a bill in the year ahead would find it short, Set saved to puts in just enough to have every bill on its due date.</p>
       <p class="muted text-sm mb-0">Saving for something, like a holiday? Put it in a <a href="/goals">goal</a>: what a goal holds comes off what is free in your accounts, not out of the budget. A goal can also save from budget lines (utilities, yearly bills): a Put aside button on each line then spends from it and puts the money in the goal at once.</p>
     </details>
   </form>
