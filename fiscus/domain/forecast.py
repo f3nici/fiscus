@@ -76,6 +76,56 @@ def trend(values: list[int]) -> Trend:
     return Trend([_cents(start + slope * i) for i in range(n)], _cents(slope * 1461 / 48))
 
 
+@dataclass(frozen=True)
+class BudgetLine:
+    """A spending line of the budget, as the forecast spends it (D51)."""
+
+    left_cents: int  # what it has left today, as the budget page shows it
+    monthly_cents: int  # what each later budget month gives it
+    per_day: Fraction  # the forecast's daily spending from it, beyond its bills
+    # Its unpaid bills: the day the forecast pays each, the day it is due, cents.
+    bills: tuple[tuple[date, date, int], ...] = ()
+    saved: bool = False  # saved up: what it holds carries into the next month
+
+
+def still_to_spend(
+    today: date,
+    days: int,
+    start_day: int,
+    lines: list[BudgetLine],
+    repayments: list[tuple[date, int]],
+) -> list[int]:
+    """What is still budgeted for the rest of each day's budget month, today
+    and every day of the forecast (D51): each line's left (nothing for one
+    overspent) and the loan repayments still to come in it. Today's is the
+    budget page's Still to spend. Each later day takes off what the forecast
+    spends from a line that day, its share of the budget and its bills due in
+    that budget month. A new budget month gives every line its budget again,
+    on top of what a saved-up line holds."""
+    period = recurrence.month_period(today, start_day)
+    held = [Fraction(line.left_cents) for line in lines]
+    bills_on: dict[date, list[tuple[int, date, int]]] = {}
+    for i, line in enumerate(lines):
+        for paid, due, cents in line.bills:
+            bills_on.setdefault(paid, []).append((i, due, cents))
+    out: list[int] = []
+    for k in range(days + 1):
+        day = today + timedelta(days=k)
+        if k:
+            if day > period[1]:
+                period = recurrence.month_period(day, start_day)
+                for i, line in enumerate(lines):
+                    held[i] = (held[i] if line.saved else Fraction(0)) + line.monthly_cents
+            for i, line in enumerate(lines):
+                held[i] -= line.per_day
+            for i, due, cents in bills_on.get(day, []):
+                if period[0] <= due <= period[1]:
+                    held[i] -= cents
+        loans = sum(c for d, c in repayments if day < d <= period[1])
+        out.append(sum(max(0, _cents(h)) for h in held) + loans)
+    return out
+
+
 @dataclass
 class ForecastResult:
     dates: list[date]

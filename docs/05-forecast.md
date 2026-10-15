@@ -63,9 +63,15 @@ Outputs: per-account and combined daily balances, the combined balance's
 trend (the least-squares straight line over every day shown, and its rise in
 an average month), loan balances, month-end rows, payoff dates and the first
 day a non-credit-card account falls below the threshold. The page also draws
-Free to spend: the combined balance less what goals kept aside hold today
-(D46, D47). Goals never move money between accounts, so that is the same
-amount off every day. Free to spend and a scenario compared each get their
+Free to spend, the budget page's Free in accounts now day by day (D51): the
+accounts the budget counts (not the tax set-aside), less what goals kept
+aside hold today (the same amount off every day, as goals never move money
+between accounts, D46) and what is still budgeted for the rest of each day's
+budget month (`domain/forecast.still_to_spend`). Today's is the budget's
+Still to spend; later days spend each line as the forecast does (its share
+beyond its bills each day, its bills on their dates, loan repayments on
+theirs), and a new budget month gives each line its budget again, on top of
+what a saved-up line holds. Free to spend and a scenario compared each get their
 own trend (D48). A line turned off or on in the chart's legend is kept for
 the person (`user_settings.chart_lines`, D50); the rest show as drawn.
 

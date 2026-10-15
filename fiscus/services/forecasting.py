@@ -7,6 +7,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
+from fractions import Fraction
 from typing import Any
 
 from sqlalchemy import select
@@ -14,8 +15,16 @@ from sqlalchemy.orm import Session
 
 from fiscus.clock import Clock, utcnow_naive
 from fiscus.domain import recurrence
-from fiscus.domain.forecast import Flow, ForecastInput, ForecastResult, apply_scenario, run
-from fiscus.domain.loan import LoanSpec
+from fiscus.domain.forecast import (
+    BudgetLine,
+    Flow,
+    ForecastInput,
+    ForecastResult,
+    apply_scenario,
+    run,
+)
+from fiscus.domain.forecast import still_to_spend as _still_to_spend
+from fiscus.domain.loan import LoanSpec, repayments
 from fiscus.models import (
     Account,
     BillPayment,
@@ -247,6 +256,53 @@ def scenario(
     inp = build_input(db, user, today, min(24, max(1, months)))
     adjusted = apply_scenario(inp, [(a.kind, dict(a.params)) for a in sc.adjustments])
     return run(adjusted)
+
+
+def still_to_spend(db: Session, user: User, today: date, days: int) -> list[int]:
+    """What is still budgeted for the rest of the budget month, today and each
+    day of a forecast `days` long (D51). Today's is the budget page's Still to
+    spend; later days spend each line as the forecast does."""
+    start, end = budgeting.period(db, user, today)
+    rows = [
+        r
+        for r in budgeting.rows(db, user, start, end, today)
+        if r.has_budget and not r.category.is_income
+    ]
+    # The forecast spends the part of a budget beyond its bills a day at a
+    # time, and the bills on their dates (`build_input`).
+    per_day = {
+        e.category_id: Fraction(-e.monthly_cents * 12, 365)
+        for e in estimates(db, user, today)
+        if e.source == 'budget' and e.monthly_cents < 0
+    }
+    horizon = today + timedelta(days=days)
+    first = today + timedelta(days=1)
+    unpaid: dict[int, list[tuple[date, date, int]]] = defaultdict(list)
+    for occ in bills.occurrences(
+        db, user, today - timedelta(days=bills.OVERDUE_CARRY_DAYS), horizon, today
+    ):
+        if occ.payment is None and occ.share.category_id is not None:
+            when = occ.due if occ.due > today else first
+            unpaid[occ.share.category_id].append((when, occ.due, occ.share_cents))
+    lines = [
+        BudgetLine(
+            left_cents=r.remaining_cents,
+            monthly_cents=r.budget_cents,
+            per_day=per_day.get(r.category.id, Fraction(0)),
+            bills=tuple(unpaid.get(r.category.id, ())),
+            saved=r.saving,
+        )
+        for r in rows
+    ]
+    # Loan repayments as the budget has them: today's offset held steady.
+    last = budgeting.period(db, user, horizon)[1]
+    balances = ledger.balances(db, user, today)
+    due: list[tuple[date, int]] = []
+    for loan in db.execute(owned(Loan, user)).scalars():
+        spec = loan_spec(db, loan)
+        offset = sum(max(0, balances.get(a, 0)) for a in spec.offset_account_ids)
+        due.extend(repayments(spec, first, last, offset))
+    return _still_to_spend(today, days, budgeting.start_day(db, user), lines, due)
 
 
 # The chart's own lines a person can turn off or on in its legend; each

@@ -1,7 +1,7 @@
 /*
- * The forecast chart, drawn with the vendored uPlot. Combined balance, the
- * same less what goals hold, an optional scenario, each with its trend, each
- * account, and the low-balance line, on the same axes.
+ * The forecast chart, drawn with the vendored uPlot. Combined balance, what
+ * is free to spend after goals and the budget, an optional scenario, each with
+ * its trend, each account, and the low-balance line, on the same axes.
  */
 (function () {
   'use strict';
@@ -74,7 +74,7 @@
       add('trend', { label: 'Trend', stroke: 'rgba(255,255,255,0.85)', width: 3 }, data.trend, true);
     }
     if (data.free) {
-      add('free', { label: 'Free to spend (after goals)', stroke: '#22c55e', width: 2 }, data.free, true);
+      add('free', { label: 'Free to spend', stroke: '#22c55e', width: 2 }, data.free, true);
       add('free_trend', { label: 'Free to spend trend', stroke: 'rgba(34,197,94,0.85)', width: 3 }, data.free_trend, true);
     }
     if (data.scenario) {

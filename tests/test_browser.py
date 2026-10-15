@@ -365,12 +365,12 @@ def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any
     # Narrow screen: the calendar opens on the agenda.
     page.goto(f'{base}/calendar')
     page.wait_for_selector('#cal[data-view="agenda"]')
-    # The forecast chart drew, with the trend and the balance less the $150
-    # the Japan trip goal keeps aside.
+    # The forecast chart drew, with the trend and Free to spend (less the $150
+    # the Japan trip goal keeps aside and what is still budgeted).
     page.goto(f'{base}/forecast')
     page.wait_for_selector('.uplot')
     legend = page.inner_text('.u-legend').lower()
-    assert 'free to spend (after goals)' in legend and 'free to spend trend' in legend, legend
+    assert 'free to spend' in legend and 'free to spend trend' in legend, legend
     # A line turned off in the legend stays off after a reload (D50).
     trend_row = '.u-legend tr.u-series:has(.u-label:text-is("Trend"))'
     assert 'u-off' not in (page.get_attribute(trend_row, 'class') or '')

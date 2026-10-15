@@ -10,7 +10,7 @@ paid, payslips and spending taken off the budget until the next is typed in
 (D42, D45, D49); categories; bills with
 shares and states; pay schedules and payslips; the calendar; home loan and
 offset; forecasting with scenarios, its trend and what is free to spend
-after goals, lines turned off staying off (D46, D47, D50); the budget (bills paid out of it); bill
+as the budget has it, lines turned off staying off (D46, D47, D50, D51); the budget (bills paid out of it); bill
 import; the tax estimate, each job taxed on its own figures (D38); the
 dashboard; ntfy reminders, payslips to put in among them; backups; payslip
 PDFs, single or in bulk, recording schedule paydays; casual pay; Square sync;

@@ -232,7 +232,8 @@ def test_the_forecast_free_to_spend_and_a_new_income(env: Env) -> None:
     assert data['free'] == [c - 1000_00 for c in data['combined']]
     # Its own trend: the same line, $1,000 lower.
     assert data['free_trend'] == [v - 1000_00 for v in data['trend']]
-    assert 'Free to spend is all accounts less the $1,000.00 your' in page
+    assert 'Free to spend is <a href="/budget">Free in accounts now</a> from the budget' in page
+    assert 'less the $1,000.00 your <a href="/goals">goals</a> keep aside' in page
     assert '<th class="num">Free to spend</th>' in page
     # A second job, as a scenario.
     resp = a.post('/scenarios', data={'name': 'Second job'})
@@ -262,6 +263,56 @@ def test_the_forecast_free_to_spend_and_a_new_income(env: Env) -> None:
     assert f'With "Second job": up about {fmt(st.per_month)} a month' in page
     # The real forecast is as it was.
     assert compared['combined'] == data['combined']
+
+
+def test_free_to_spend_starts_where_the_budget_has_it(env: Env) -> None:
+    a, alex, acct = setup_household(env)
+    a.post(
+        '/accounts',
+        data={'name': 'Tax', 'type': 'savings', 'opening_balance': '800', 'is_set_aside': 'true'},
+    )
+    a.post(
+        '/goals',
+        data={'name': 'Japan trip', 'account_id': str(acct), 'saved': '1000', 'keep_aside': 'true'},
+    )
+    groceries = _groceries(env, alex)
+    a.post('/budget', data={'category_id': str(groceries), 'amount': '600'})
+    a.post('/budget/spend', data={'category_id': str(groceries), 'amount': '100'})
+    a.post('/budget', data={'category_id': '0', 'new_category': 'Utilities', 'amount': '300'})
+    a.post(
+        '/budget',
+        data={
+            'category_id': '0',
+            'new_category': 'Car rego',
+            'amount': '900',
+            'cycle_months': '12',
+            'saved': '450',
+        },
+    )
+    with env.db() as db:
+        utilities = db.execute(
+            select(Category.id).where(Category.user_id == alex.id, Category.name == 'Utilities')
+        ).scalar_one()
+    create_bill(a, next_due='2026-10-20', account_id=str(acct), category_id=str(utilities))
+    found = re.search(
+        r'Free in accounts now</div>\s*<div class="value \w*">([^<]+)</div>', a.get('/budget').text
+    )
+    assert found is not None
+    page = a.get('/forecast?months=2').text
+    data = chart_data(page)
+    free = dict(zip(data['dates'], data['free'], strict=True))
+    # Today it is the budget's figure to the cent: the tax account and the
+    # goal are left out, and so is what is still budgeted.
+    assert fmt(free['2026-10-01']) == found.group(1)
+    # The month's budget is spent as the forecast spends it, so it stays put,
+    # the electricity bill paid out of Utilities on the 20th too.
+    steady = [free[f'2026-10-{d}'] for d in range(17, 25)]
+    assert max(steady) - min(steady) <= 2, steady
+    # A new budget month sets its budgets aside again.
+    assert free['2026-11-01'] < free['2026-10-31'] - 800_00
+    assert '<th class="num">Free to spend</th>' in page
+    # Groceries' 500 left, Utilities' 300 and the 450 rego holds.
+    assert 'what is still budgeted for the rest of each budget month ($1,250.00 today)' in page
 
 
 def test_chart_lines_turned_off_stay_off(env: Env) -> None:

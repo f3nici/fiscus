@@ -45,12 +45,12 @@ def chart_payload(
     names: dict[int, str],
     scenario: ForecastResult | None,
     scenario_name: str,
-    goals_held: int = 0,
+    free: list[int] | None = None,
     lines: dict[str, bool] | None = None,
 ) -> str:
-    # What goals keep aside today stays in its account, so it is the same
-    # amount off every day (D46).
-    free = [c - goals_held for c in base.combined] if goals_held else None
+    # Drawn only when it differs from all accounts.
+    if free == base.combined:
+        free = None
     data: dict[str, Any] = {
         'dates': [d.isoformat() for d in base.dates],
         'combined': base.combined,
@@ -99,7 +99,17 @@ def forecast_page(
     sc_result = forecasting.scenario(db, c.clock, user, sc, months) if sc else None
     accts = ledger.accounts(db, user)
     names = {a.id: a.name for a in accts}
-    goals_held = goals.held_outside(db, user, accts)
+    # Free to spend, day by day, as the budget page has it today (D51): the
+    # accounts it counts, less what goals keep aside today (the same amount
+    # off every day, D46) and what is still budgeted for the rest of each
+    # budget month.
+    counted = [a.id for a in accts if not a.is_set_aside and a.id in base.accounts]
+    goals_held = goals.held_outside(db, user, [a for a in accts if not a.is_set_aside])
+    to_spend = forecasting.still_to_spend(db, user, c.clock.today(), len(base.dates) - 1)
+    free = [
+        sum(base.accounts[a][i] for a in counted) - goals_held - to_spend[i]
+        for i in range(len(base.dates))
+    ]
     month_end = base.month_end
     sc_month_end = {m['date']: m['combined'] for m in sc_result.month_end} if sc_result else {}
     return render(
@@ -115,12 +125,14 @@ def forecast_page(
             'sc_month_end': sc_month_end,
             'scenarios': db.execute(owned(Scenario, user).order_by(Scenario.name)).scalars().all(),
             'goals_held': goals_held,
+            'to_spend': to_spend[0],
+            'free_on': dict(zip(base.dates, free, strict=True)) if free != base.combined else {},
             'chart': chart_payload(
                 base,
                 names,
                 sc_result,
                 sc.name if sc else '',
-                goals_held,
+                free,
                 forecasting.chart_lines(db, user),
             ),
             'estimates': forecasting.estimates(db, user, c.clock.today()),
