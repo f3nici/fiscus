@@ -7,7 +7,7 @@ from collections import defaultdict
 from datetime import date, timedelta
 
 from sqlalchemy import ColumnElement, and_, func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from fiscus.clock import Clock, utcnow_naive
 from fiscus.domain.rules import Matcher, RuleSpec
@@ -16,6 +16,7 @@ from fiscus.models import (
     AccountBalance,
     BillPayment,
     Budget,
+    BudgetSpend,
     Category,
     Payslip,
     Rule,
@@ -170,11 +171,29 @@ def paid_into(db: Session, user: User, account_id: int | None) -> int | None:
     return spending_account(db, user, accts)
 
 
+type Link = Payslip | BillPayment | BudgetSpend
+
+
+def _link(link: Link) -> tuple[InstrumentedAttribute[int | None], str]:
+    """The transaction column that points at `link`, and its dedup prefix."""
+    if isinstance(link, Payslip):
+        return Transaction.payslip_id, 'payslip'
+    if isinstance(link, BillPayment):
+        return Transaction.bill_payment_id, 'bill-payment'
+    return Transaction.budget_spend_id, 'budget-spend'
+
+
+def linked(db: Session, user: User, link: Link) -> Transaction | None:
+    """The transaction `follow` wrote for `link`, if any."""
+    col, _prefix = _link(link)
+    return db.execute(owned(Transaction, user).where(col == link.id)).scalar_one_or_none()
+
+
 def follow(
     db: Session,
     clock: Clock,
     user: User,
-    link: Payslip | BillPayment,
+    link: Link,
     *,
     account_id: int | None,
     day: date,
@@ -182,15 +201,13 @@ def follow(
     description: str,
     category_id: int | None = None,
 ) -> None:
-    """Move an account's balance with a payslip or a bill marked paid by hand
-    (D42): one transaction linked to it, changed when it is and deleted with it
-    (the foreign key cascades). It goes into `paid_into(account_id)`. Nothing
-    is written for a zero amount or a person with no accounts."""
-    if isinstance(link, Payslip):
-        col, key = Transaction.payslip_id, f'payslip:{link.id}'
-    else:
-        col, key = Transaction.bill_payment_id, f'bill-payment:{link.id}'
-    txn = db.execute(owned(Transaction, user).where(col == link.id)).scalar_one_or_none()
+    """Move an account's balance with a payslip, a bill marked paid by hand
+    (D42) or spending taken off a budget (D49): one transaction linked to it,
+    changed when it is and deleted with it (the foreign key cascades). It goes
+    into `paid_into(account_id)`. Nothing is written for a zero amount or a
+    person with no accounts."""
+    col, prefix = _link(link)
+    txn = linked(db, user, link)
     target = paid_into(db, user, account_id)
     if target is None or cents == 0:
         if txn is not None:
@@ -198,11 +215,10 @@ def follow(
             db.flush()
         return
     if txn is None:
-        txn = Transaction(user_id=user.id, dedup_hash=key, created_at=utcnow_naive(clock))
-        if isinstance(link, Payslip):
-            txn.payslip_id = link.id
-        else:
-            txn.bill_payment_id = link.id
+        txn = Transaction(
+            user_id=user.id, dedup_hash=f'{prefix}:{link.id}', created_at=utcnow_naive(clock)
+        )
+        setattr(txn, col.key, link.id)
         db.add(txn)
     txn.account_id = target
     txn.date = day
@@ -212,14 +228,12 @@ def follow(
     db.flush()
 
 
-def held(
-    db: Session, user: User, link: Payslip | BillPayment, today: date
-) -> tuple[str, date] | None:
+def held(db: Session, user: User, link: Link, today: date) -> tuple[str, date] | None:
     """The account and day of the balance typed in that already has the
-    payslip's or bill's transaction, so it moved nothing; None if it counts,
-    is still to come, or wrote nothing."""
-    col = Transaction.payslip_id if isinstance(link, Payslip) else Transaction.bill_payment_id
-    txn = db.execute(owned(Transaction, user).where(col == link.id)).scalar_one_or_none()
+    payslip's, bill's or spend's transaction, so it moved nothing; None if it
+    counts, is still to come, or wrote nothing."""
+    col, _prefix = _link(link)
+    txn = linked(db, user, link)
     if txn is None or txn.date > today:
         return None
     on = _last_rows(db, user, today).get(txn.account_id)

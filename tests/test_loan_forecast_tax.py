@@ -4,13 +4,22 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal
+from fractions import Fraction
 from pathlib import Path
 
 import pytest
 
 from fiscus.domain import loan as L
 from fiscus.domain import tax
-from fiscus.domain.forecast import Flow, ForecastInput, apply_scenario, run, trend
+from fiscus.domain.forecast import (
+    BudgetLine,
+    Flow,
+    ForecastInput,
+    apply_scenario,
+    run,
+    still_to_spend,
+    trend,
+)
 
 # ---------------------------------------------------------------------- loan
 
@@ -174,6 +183,45 @@ def test_forecast_trend_is_the_line_of_best_fit() -> None:
     assert r.trend.line == [5_999_83, 6_000_33, 6_000_83]
     assert r.trend.per_month == 15_22
     assert trend([5]).line == [5] and trend([5]).per_month == 0
+
+
+def test_still_to_spend_follows_the_forecast_through_budget_months() -> None:
+    oct_1 = date(2026, 10, 1)
+    groceries = BudgetLine(
+        left_cents=300_00,
+        monthly_cents=400_00,
+        per_day=Fraction(10_00),
+        # Due this month and next; one overdue from September is paid tomorrow
+        # but was never this month's.
+        bills=(
+            (date(2026, 10, 2), date(2026, 9, 20), 50_00),
+            (date(2026, 10, 10), date(2026, 10, 10), 40_00),
+            (date(2026, 11, 10), date(2026, 11, 10), 40_00),
+        ),
+    )
+    rego = BudgetLine(
+        left_cents=500_00,
+        monthly_cents=75_00,
+        per_day=Fraction(0),
+        bills=((date(2026, 11, 20), date(2026, 11, 20), 900_00),),
+        saved=True,
+    )
+    over = BudgetLine(left_cents=-20_00, monthly_cents=100_00, per_day=Fraction(0))
+    loan = [(date(2026, 10, 15), 2_000_00), (date(2026, 11, 15), 2_000_00)]
+    r = still_to_spend(oct_1, 60, 1, [groceries, rego, over], loan)
+    day = {oct_1 + timedelta(days=i): v for i, v in enumerate(r)}
+    # Today: what each line has left (nothing for one overspent) and the loan.
+    assert day[oct_1] == 300_00 + 500_00 + 2_000_00
+    assert day[date(2026, 10, 2)] == 290_00 + 500_00 + 2_000_00
+    assert day[date(2026, 10, 10)] == 300_00 - 90_00 - 40_00 + 500_00 + 2_000_00
+    assert day[date(2026, 10, 15)] == 300_00 - 140_00 - 40_00 + 500_00
+    # Groceries ran out on 27 October at the forecast's pace.
+    assert day[date(2026, 10, 31)] == 500_00
+    # A new budget month: each line's budget again, on top of what rego holds.
+    assert day[date(2026, 11, 1)] == 390_00 + 575_00 + 100_00 + 2_000_00
+    # Rego's bill takes more than it holds: it has nothing left, not less.
+    assert day[date(2026, 11, 20)] == 400_00 - 200_00 - 40_00 + 100_00
+    assert len(r) == 61
 
 
 def test_fractional_daily_spending_carries() -> None:

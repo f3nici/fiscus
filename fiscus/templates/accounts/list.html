@@ -5,7 +5,7 @@
     <form class="card mt" method="post" action="/accounts/balances">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <h2>Update balances</h2>
-      <p class="muted text-sm">Type in what each account is at today, from your banking app. Credit cards owing money are negative. Until you next do, bills you mark paid and payslips you add move them.</p>
+      <p class="muted text-sm">Type in what each account is at today, from your banking app. Credit cards owing money are negative. Until you next do, bills you mark paid, payslips you add and spending you take off the budget move them.</p>
       <div class="form-grid">
         {% for a in active %}
           <div class="field">
@@ -65,7 +65,7 @@
     <form class="card mt" method="post" action="/accounts/balances">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <h2>Update balances</h2>
-      <p class="muted text-sm">Type in what each account is at today, from your banking app. Credit cards owing money are negative. Until you next do, bills you mark paid and payslips you add move them.</p>
+      <p class="muted text-sm">Type in what each account is at today, from your banking app. Credit cards owing money are negative. Until you next do, bills you mark paid, payslips you add and spending you take off the budget move them.</p>
       <div class="form-grid">
         {% for a in active %}
           <div class="field">

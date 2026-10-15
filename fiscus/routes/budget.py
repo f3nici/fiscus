@@ -15,7 +15,7 @@ from fiscus.domain import recurrence
 from fiscus.domain.budget_import import MORTGAGE
 from fiscus.domain.uploads import MAX_BYTES, ImportError_
 from fiscus.forms import FormError, money, text
-from fiscus.models import Budget, BudgetGroup, BudgetSpend, Category, Loan, User
+from fiscus.models import Account, Budget, BudgetGroup, BudgetSpend, Category, Loan, User
 from fiscus.money import fmt
 from fiscus.services import budget_groups, budgeting, goals, ledger, loans
 from fiscus.services import budget_import as importer
@@ -84,6 +84,9 @@ def budget_page(
             'spends': budgeting.spends(db, user, start, end),
             'cat_names': {cat.id: cat.name for cat in cats},
             'spend_cats': [r.category for r in rows if r.has_budget and not r.category.is_income],
+            'spend_accts': accts,
+            'spend_from': ledger.spending_account(db, user, accts),
+            'spent_from': budgeting.spent_from(db, user, start, end),
             'spendable': spendable,
             'has_accounts': bool(accts),
             'unbudgeted': [cat for cat in cats if cat.id not in budgeted and not cat.is_transfer],
@@ -340,35 +343,56 @@ def add_spend(
     amount: str = Form(...),
     note: str = Form(''),
     on: str = Form(''),
+    # The account it was paid from (D49): 0 for none, left out for the
+    # spending account.
+    account_id: int | None = Form(None),
     back: str = Form('/budget'),
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> Response:
     cat = get_owned(db, Category, category_id, user)
+    acct = maybe_owned(db, Account, account_id, user)
     target = _back(back, 'spend')
     c = ctx(request)
+    today = c.clock.today()
     try:
         cents = money(amount, 'Amount')
         if cents == 0:
             raise FormError('Enter an amount')
-        when = date.fromisoformat(on) if on else c.clock.today()
+        when = date.fromisoformat(on) if on else today
     except FormError as exc:
         return redirect(target, flash=str(exc), request=request)
     except ValueError:
         return redirect(target, flash='That date is not valid', request=request)
-    db.add(
-        BudgetSpend(
-            user_id=user.id,
-            category_id=cat.id,
-            date=when,
-            amount_cents=cents,
-            note=note.strip()[:120],
-            created_at=utcnow_naive(c.clock),
-        )
+    before = ledger.balances(db, user, today)
+    spend = BudgetSpend(
+        user_id=user.id,
+        category_id=cat.id,
+        date=when,
+        amount_cents=cents,
+        note=note.strip()[:120],
+        created_at=utcnow_naive(c.clock),
     )
+    db.add(spend)
     db.flush()
+    if account_id != 0:
+        ledger.follow(
+            db,
+            c.clock,
+            user,
+            spend,
+            account_id=acct.id if acct else None,
+            day=when,
+            cents=cents if cat.is_income else -cents,
+            description=f'{cat.name} · {spend.note}' if spend.note else cat.name,
+            category_id=cat.id,
+        )
     verb = 'earned in' if cat.is_income else 'off'
-    return redirect(target, flash=f'{fmt(abs(cents))} {verb} {cat.name}', request=request)
+    flash = f'{fmt(abs(cents))} {verb} {cat.name}{ledger.now_at(db, user, before, today)}'
+    has = ledger.held(db, user, spend, today)
+    if has is not None:
+        flash += f'. The balance typed in for {has[0]} on {has[1].strftime("%d %b")} already has it'
+    return redirect(target, flash=flash, request=request)
 
 
 @router.post('/budget/spend/{spend_id}/delete')
@@ -380,8 +404,11 @@ def delete_spend(
     db: Session = Depends(get_db),
 ) -> Response:
     row = get_owned(db, BudgetSpend, spend_id, user)
+    today = ctx(request).clock.today()
+    before = ledger.balances(db, user, today)
     goals.remove_spend(db, user, row)
-    return redirect(_back(back, 'spent'), flash='Entry removed', request=request)
+    flash = f'Entry removed{ledger.now_at(db, user, before, today)}'
+    return redirect(_back(back, 'spent'), flash=flash, request=request)
 
 
 @router.post('/budget/start-day')

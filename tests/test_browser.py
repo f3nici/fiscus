@@ -190,9 +190,15 @@ def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any
     page.wait_for_selector('#spend_amount')
     page.fill('#spend_amount', '65.50')
     page.fill('#spend_note', 'Ampol')
+    assert page.input_value('#spend_account') != '0'
     page.click('form[action="/budget/spend"] button[type=submit]')
     page.wait_for_selector('text=Ampol')
     assert '$134.50' in page.content()
+    # It came off the account it was paid from (D49).
+    page.wait_for_selector(
+        '[data-flash]:has-text("$65.50 off Fuel. Everyday is now")', state='attached'
+    )
+    assert '· Everyday' in page.inner_text('#spent')
     # Something paid once a year is saved up a month at a time.
     page.fill('#new_category', 'Car rego')
     page.fill('#add_amount', '900')
@@ -359,12 +365,20 @@ def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any
     # Narrow screen: the calendar opens on the agenda.
     page.goto(f'{base}/calendar')
     page.wait_for_selector('#cal[data-view="agenda"]')
-    # The forecast chart drew, with the trend and the balance less the $150
-    # the Japan trip goal keeps aside.
+    # The forecast chart drew, with the trend and Free to spend (less the $150
+    # the Japan trip goal keeps aside and what is still budgeted).
     page.goto(f'{base}/forecast')
     page.wait_for_selector('.uplot')
     legend = page.inner_text('.u-legend').lower()
-    assert 'free to spend (after goals)' in legend and 'free to spend trend' in legend, legend
+    assert 'free to spend' in legend and 'free to spend trend' in legend, legend
+    # A line turned off in the legend stays off after a reload (D50).
+    trend_row = '.u-legend tr.u-series:has(.u-label:text-is("Trend"))'
+    assert 'u-off' not in (page.get_attribute(trend_row, 'class') or '')
+    with page.expect_response(lambda r: r.url.endswith('/forecast/lines') and r.status == 204):
+        page.click(f'{trend_row} th')
+    page.reload()
+    page.wait_for_selector('.uplot')
+    assert 'u-off' in (page.get_attribute(trend_row, 'class') or '')
     # And after a boosted (htmx) navigation, which drops <script> tags.
     page.goto(f'{base}/')
     page.click('main a[href="/forecast"]')

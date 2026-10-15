@@ -6,10 +6,11 @@ a PWA on phones. No external calls, no telemetry, no CDN.
 
 **Status: v1 complete.** Passkeys, setup links and recovery, users and admin;
 accounts with balances typed in and kept by day (D39), moved by bills marked
-paid and payslips until the next is typed in (D42, D45); categories; bills with
+paid, payslips and spending taken off the budget until the next is typed in
+(D42, D45, D49); categories; bills with
 shares and states; pay schedules and payslips; the calendar; home loan and
 offset; forecasting with scenarios, its trend and what is free to spend
-after goals (D46, D47); the budget (bills paid out of it); bill
+as the budget has it, lines turned off staying off (D46, D47, D50, D51); the budget (bills paid out of it); bill
 import; the tax estimate, each job taxed on its own figures (D38); the
 dashboard; ntfy reminders, payslips to put in among them; backups; payslip
 PDFs, single or in bulk, recording schedule paydays; casual pay; Square sync;
@@ -20,8 +21,8 @@ ones first, and what they hold is typed in or lined up with them (D36, D40,
 D43, D44); budget lines in groups and in an order set by hand (D35). Since
 D25 the budget is kept by hand (spending taken off, balances typed in); the
 transactions, statement import, rules and matching screens were removed in
-D37 (their tables stay; Square, bills marked paid and payslips write to
-them; Square's page is unlinked). Next steps are in `docs/10-decisions.md` §3.
+D37 (their tables stay; Square, bills marked paid, payslips and budget
+spends write to them; Square's page is unlinked). Next steps are in `docs/10-decisions.md` §3.
 
 ## Read before building
 
