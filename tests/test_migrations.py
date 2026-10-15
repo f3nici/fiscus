@@ -216,3 +216,79 @@ def test_transactions_rebuilt_keep_the_bill_payments_matched_to_them(tmp_path: P
     with engine.connect() as c:
         assert c.execute(text('SELECT transaction_id FROM bill_payments')).scalar_one() == 1
     engine.dispose()
+
+
+def test_transactions_rebuilt_for_spends_keep_their_links(tmp_path: Path) -> None:
+    url = f'sqlite:///{tmp_path / "fiscus.db"}'
+    cfg = alembic_config(url)
+    command.upgrade(cfg, '0022')
+    engine = create_engine(url)
+    with engine.begin() as c:
+        c.execute(
+            text(
+                'INSERT INTO users (id, username, display_name, is_admin, is_active,'
+                ' user_handle, password_enabled, data_version, created_at)'
+                " VALUES (1, 'alex', 'alex', 0, 1, :h, 0, 0, '2026-01-01')"
+            ),
+            {'h': bytes([1]) * 64},
+        )
+        c.execute(
+            text(
+                'INSERT INTO accounts (id, user_id, name, type, opening_balance_cents,'
+                " is_set_aside, archived, created_at) VALUES (1, 1, 'Everyday', 'transaction',"
+                " 0, 0, 0, '2026-01-01')"
+            )
+        )
+        c.execute(
+            text(
+                'INSERT INTO bills (id, owner_id, name, amount_cents, frequency, next_due,'
+                ' split_mode, match_tolerance_pct, match_window_days, description_hint,'
+                " active, created_at) VALUES (1, 1, 'Power', 12140, 'monthly', '2026-09-15',"
+                " 'equal', 5, 3, '', 1, '2026-01-01')"
+            )
+        )
+        c.execute(
+            text(
+                'INSERT INTO bill_payments (id, bill_id, user_id, due_date, paid_on,'
+                " created_at) VALUES (1, 1, 1, '2026-09-15', '2026-09-15', '2026-09-15')"
+            )
+        )
+        c.execute(
+            text(
+                'INSERT INTO transactions (id, user_id, account_id, date, amount_cents,'
+                ' description, dedup_hash, created_at, bill_payment_id) VALUES'
+                " (1, 1, 1, '2026-09-15', -12140, 'Power', 'bill-payment:1', '2026-09-15', 1)"
+            )
+        )
+    command.upgrade(cfg, '0023')
+    cols = {col['name'] for col in inspect(engine).get_columns('transactions')}
+    assert 'budget_spend_id' in cols
+    fks = {fk['referred_table']: fk for fk in inspect(engine).get_foreign_keys('transactions')}
+    assert fks['budget_spends']['options'] == {'ondelete': 'CASCADE'}
+    with engine.begin() as c:
+        assert c.execute(text('SELECT bill_payment_id FROM transactions')).scalar_one() == 1
+        c.execute(
+            text(
+                'INSERT INTO categories (id, user_id, name, is_business, is_deductible,'
+                " is_income, is_transfer, budget_position) VALUES (1, 1, 'Groceries', 0, 0, 0,"
+                ' 0, 0)'
+            )
+        )
+        c.execute(
+            text(
+                'INSERT INTO budget_spends (id, user_id, category_id, date, amount_cents, note,'
+                " created_at) VALUES (1, 1, 1, '2026-10-01', 2500, '', '2026-10-01')"
+            )
+        )
+        c.execute(
+            text(
+                'INSERT INTO transactions (id, user_id, account_id, date, amount_cents,'
+                ' description, dedup_hash, created_at, budget_spend_id) VALUES'
+                " (2, 1, 1, '2026-10-01', -2500, 'Groceries', 'budget-spend:1', '2026-10-01', 1)"
+            )
+        )
+    command.downgrade(cfg, '0022')
+    with engine.connect() as c:
+        assert c.execute(text('SELECT id FROM transactions')).scalars().all() == [1]
+        assert c.execute(text('SELECT bill_payment_id FROM transactions')).scalar_one() == 1
+    engine.dispose()

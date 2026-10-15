@@ -418,7 +418,21 @@ def test_b_cannot_add_a_to_their_rows(
         == 404
     )
     with env.db() as db:
+        b_cat = (
+            db.execute(select(Category.id).where(Category.user_id == blake.id)).scalars().first()
+        )
+    assert (
+        b.post(
+            '/budget/spend',
+            data={'category_id': str(b_cat), 'amount': '1', 'account_id': str(ids.account)},
+        ).status_code
+        == 404
+    )
+    with env.db() as db:
         assert db.execute(select(Bill).where(Bill.owner_id == blake.id)).first() is None
+        assert (
+            db.execute(select(BudgetSpend).where(BudgetSpend.user_id == blake.id)).first() is None
+        )
 
 
 def test_forecast_and_tax_use_only_own_data(

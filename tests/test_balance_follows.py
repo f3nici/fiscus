@@ -1,16 +1,18 @@
-"""A bill marked paid or a payslip moves its account's balance (D42)."""
+"""A bill marked paid, a payslip or a budget spend moves its account's balance
+(D42, D49)."""
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import select
 
-from fiscus.models import Category, Transaction, User
+from fiscus.models import Category, Goal, Transaction, User
 from fiscus.services import forecasting, ledger
 from tests.conftest import NOW, CsrfClient, Env
 from tests.test_bills import create_bill
-from tests.test_features import chart_data
+from tests.test_features import _groceries, chart_data
 from tests.test_paydays import bulk_form, put_in, schedule_id, weekly
 
 SEPT_30 = datetime(2026, 9, 30, 2, tzinfo=UTC)
@@ -334,3 +336,97 @@ def test_payments_stay_out_of_the_spending_average(env: Env) -> None:
         u = db.get(User, alex.id)
         assert u is not None
         assert forecasting.estimates(db, u, env.clock.today()) == []
+
+
+def free_now(client: CsrfClient) -> str:
+    """The budget page's Free in accounts now figure."""
+    found = re.search(
+        r'Free in accounts now</div>\s*<div class="value \w*">([^<]+)</div>',
+        client.get('/budget').text,
+    )
+    assert found is not None
+    return found.group(1)
+
+
+def test_spending_taken_off_a_budget_comes_off_its_account(env: Env) -> None:
+    alex = env.user('alex')
+    a = env.login(alex)
+    env.clock.set(SEPT_30)
+    everyday = typed_account(a)
+    card = typed_account(a, 'Visa', '-200', 'credit_card')
+    env.clock.set(NOW)
+    groceries = _groceries(env, alex)
+    a.post('/budget', data={'category_id': str(groceries), 'amount': '400'})
+    # 1000 less 200 owing on the card, less 400 still to spend.
+    assert free_now(a) == '$400.00'
+    page = a.get('/budget').text
+    assert 'Paid from' in page and f'<option value="{everyday}" selected>Everyday' in page
+    resp = a.post(
+        '/budget/spend',
+        data={
+            'category_id': str(groceries),
+            'amount': '120',
+            'note': 'Coles',
+            'account_id': str(everyday),
+        },
+        follow_redirects=True,
+    )
+    assert '$120.00 off Groceries. Everyday is now $880.00' in resp.text
+    assert balance(env, alex, everyday) == 880_00
+    # Spent within the budget: what is free is as it was.
+    assert free_now(a) == '$400.00'
+    page = a.get(f'/accounts/{everyday}').text
+    assert 'Groceries · Coles' in page and ' · spent' in page and '-$120.00' in page
+    # Off the card when paid with it, off nothing when paid in cash.
+    a.post(
+        '/budget/spend',
+        data={'category_id': str(groceries), 'amount': '50', 'account_id': str(card)},
+    )
+    assert balance(env, alex, card) == -250_00
+    a.post('/budget/spend', data={'category_id': str(groceries), 'amount': '10', 'account_id': '0'})
+    assert balance(env, alex, everyday) == 880_00 and balance(env, alex, card) == -250_00
+    # Left out, it comes off the spending account; a refund puts money back.
+    a.post('/budget/spend', data={'category_id': str(groceries), 'amount': '-20'})
+    assert balance(env, alex, everyday) == 900_00
+    page = a.get('/budget').text
+    assert '· Everyday' in page and '· Visa' in page
+    # Removing an entry puts back what it took off.
+    coles = next(t.budget_spend_id for t in moves(env) if t.amount_cents == -120_00)
+    resp = a.post(f'/budget/spend/{coles}/delete', follow_redirects=True)
+    assert 'Entry removed. Everyday is now $1,020.00' in resp.text
+    assert len(moves(env)) == 2
+    # The forecast starts from the moved balances. The spends are not an
+    # average to forecast, even once the line is out of the budget.
+    chart = chart_data(a.get('/forecast?months=1').text)
+    assert chart['combined'][0] == 1020_00 - 250_00
+    a.post(f'/budget/{groceries}/remove')
+    with env.db() as db:
+        u = db.get(User, alex.id)
+        assert u is not None
+        assert forecasting.estimates(db, u, env.clock.today()) == []
+
+
+def test_spending_a_typed_balance_already_has_moves_nothing(env: Env) -> None:
+    alex = env.user('alex')
+    a = env.login(alex)
+    env.clock.set(SEPT_30)
+    acct = typed_account(a)
+    env.clock.set(NOW)
+    groceries = _groceries(env, alex)
+    a.post('/budget', data={'category_id': str(groceries), 'amount': '400'})
+    resp = a.post(
+        '/budget/spend',
+        data={'category_id': str(groceries), 'amount': '30', 'on': '2026-09-29'},
+        follow_redirects=True,
+    )
+    assert 'The balance typed in for Everyday on 30 Sep already has it' in resp.text
+    assert balance(env, alex, acct) == 1000_00
+    # A spend put in a goal from its line stays in the account.
+    a.post('/goals', data={'name': 'Christmas', 'account_id': str(acct)})
+    with env.db() as db:
+        goal = db.execute(select(Goal.id)).scalar_one()
+    a.post(
+        f'/goals/{goal}/move',
+        data={'amount': '50', 'as_spent': 'true', 'category_id': str(groceries)},
+    )
+    assert balance(env, alex, acct) == 1000_00

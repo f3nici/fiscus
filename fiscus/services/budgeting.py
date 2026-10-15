@@ -8,6 +8,7 @@ out of the allocation.
 Spending is not read from bank transactions. It is what the person takes off a
 budget by hand (`BudgetSpend`) plus their share of every bill they mark paid
 that falls due in the period. The budget month starts on the day they choose.
+What is taken off by hand also comes off the account it was paid from (D49).
 
 A line spent every few months (rego, insurance, a yearly subscription) is
 saved up: its monthly share builds up from when it was set, and what is spent
@@ -23,7 +24,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from fiscus.domain import recurrence, saving
-from fiscus.models import Budget, BudgetSpend, Category, GoalMove, User
+from fiscus.models import Account, Budget, BudgetSpend, Category, GoalMove, Transaction, User
 from fiscus.money import round_div
 from fiscus.services import bills, ledger, pay
 from fiscus.services.access import owned
@@ -201,6 +202,25 @@ def spends(db: Session, user: User, start: date, end: date) -> list[BudgetSpend]
             .order_by(BudgetSpend.date.desc(), BudgetSpend.id.desc())
         ).scalars()
     )
+
+
+def spent_from(db: Session, user: User, start: date, end: date) -> dict[int, str]:
+    """The account each spend in [start, end] came off (D49), by its id. A spend
+    from before that, or from no account, is not in it."""
+    return {
+        sid: name
+        for sid, name in db.execute(
+            select(Transaction.budget_spend_id, Account.name)
+            .join(Account, Account.id == Transaction.account_id)
+            .join(BudgetSpend, BudgetSpend.id == Transaction.budget_spend_id)
+            .where(
+                Transaction.user_id == user.id,
+                BudgetSpend.date >= start,
+                BudgetSpend.date <= end,
+            )
+        )
+        if sid is not None
+    }
 
 
 def set_total(

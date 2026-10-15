@@ -73,9 +73,18 @@
           <label class="label" for="spend_on">Date</label>
           <input class="input" type="date" id="spend_on" name="on" value="{{ (today if current else end).isoformat() }}" min="{{ start.isoformat() }}" max="{{ end.isoformat() }}">
         </div>
+        {% if spend_accts %}
+          <div class="field">
+            <label class="label" for="spend_account">Paid from</label>
+            <select class="input" id="spend_account" name="account_id">
+              {% for a in spend_accts %}<option value="{{ a.id }}" {{ 'selected' if a.id == spend_from else '' }}>{{ a.name }}</option>{% endfor %}
+              <option value="0">No account (cash)</option>
+            </select>
+          </div>
+        {% endif %}
       </div>
       <button class="btn btn-primary" type="submit">Take off</button>
-      <p class="muted text-xs mt">A negative amount puts money back, for a refund. Bills you tick as paid come off their category by themselves.</p>
+      <p class="muted text-xs mt">It comes off the account it was paid from too, until you next type that balance in, so spending within a budget leaves what is free in your accounts as it was. A negative amount puts money back, for a refund. Bills you tick as paid come off their category by themselves.</p>
     </form>
   {% endif %}
 
@@ -342,7 +351,7 @@
         <li>
           <span class="grow">
             <span class="title">{{ cat_names.get(s.category_id, '') }}{% if s.note %} · {{ s.note }}{% endif %}</span>
-            <span class="text-xs muted">{{ s.date | d('dm') }}</span>
+            <span class="text-xs muted">{{ s.date | d('dm') }}{% if s.id in spent_from %} · {{ spent_from[s.id] }}{% endif %}</span>
           </span>
           <span class="num">{{ s.amount_cents | money }}</span>
           <form class="inline" method="post" action="/budget/spend/{{ s.id }}/delete" data-confirm="Remove this entry?">

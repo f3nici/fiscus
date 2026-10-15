@@ -44,6 +44,7 @@ def deposits(db: Session, user: User, ps: PaySchedule, today: date) -> list[tupl
             Transaction.date <= today,
             Transaction.amount_cents > 0,
             Transaction.payslip_id.is_(None),
+            Transaction.budget_spend_id.is_(None),
             func.instr(func.lower(Transaction.description), needle) > 0,
         )
     ).scalars()

@@ -493,9 +493,9 @@ def test_budget_shows_expected_earnings_against_budgeted(env: Env) -> None:
     assert s.spent_cents == 100_00 and s.to_spend_cents == 500_00
     page = a.get('/budget').text
     assert 'Expected to earn' in page and '$7,500.00' in page and '$6,900.00' in page
-    # 1000 in the account, 500 still budgeted.
+    # 1000 in the account less the 100 spent from it (D49), 500 still budgeted.
     assert 'Free in accounts now' in page and '$500.00 in accounts' not in page
-    assert '$1,000.00 in accounts, less what is still to spend' in page
+    assert '$900.00 in accounts, less what is still to spend' in page
     dash = a.get('/').text
     assert 'Unbudgeted (extra)' in dash and '$6,900.00' in dash and 'Budget left' in dash
 

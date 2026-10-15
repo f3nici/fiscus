@@ -95,8 +95,10 @@ def estimates(db: Session, user: User, today: date) -> list[Estimate]:
     for t in db.execute(
         owned(Transaction, user).where(Transaction.date > start, Transaction.date <= today)
     ).scalars():
-        if t.id in paid_txn_ids or t.bill_payment_id or t.payslip_id:
-            continue  # bills and pay are forecast from their schedules, not their history
+        if t.id in paid_txn_ids or t.bill_payment_id or t.payslip_id or t.budget_spend_id:
+            # Bills and pay are forecast from their schedules, and spending
+            # taken off a budget from the budget, not from their history.
+            continue
         cat = cats.get(t.category_id) if t.category_id else None
         if cat is not None and cat.is_transfer:
             continue
