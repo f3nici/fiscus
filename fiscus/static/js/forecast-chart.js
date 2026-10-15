@@ -37,6 +37,18 @@
     };
   }
 
+  // A line turned off or on in the legend is kept for the person, so it stays
+  // that way after a reload and on their other devices (D50).
+  function save(key, shown) {
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    fetch('/forecast/lines', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'X-CSRF-Token': meta ? meta.content : '' },
+      body: new URLSearchParams({ key: key, shown: shown ? 'true' : 'false' }),
+    }).catch(() => {});
+  }
+
   function draw(el) {
     if (el.dataset.drawn || !window.uPlot) return;
     // In an attribute, not a <script>: htmx drops script tags when it swaps a
@@ -45,29 +57,32 @@
     const data = JSON.parse(el.dataset.chart);
     el.dataset.drawn = '1';
     const xs = data.dates.map((d) => Date.parse(d) / 1000);
+    const lines = data.lines || {};
     const series = [{}];
     const values = [xs];
-    series.push({ label: 'All accounts', stroke: '#ffffff', width: 2, value: (u, v) => money(v) });
-    values.push(data.combined);
+    const keys = [null];
+    // Each line shows as saved, else as drawn by default.
+    const add = (key, opts, vals, show) => {
+      opts.show = Object.prototype.hasOwnProperty.call(lines, key) ? lines[key] : show;
+      opts.value = (u, v) => money(v);
+      series.push(opts);
+      values.push(vals);
+      keys.push(key);
+    };
+    add('combined', { label: 'All accounts', stroke: '#ffffff', width: 2 }, data.combined, true);
     if (data.trend) {
-      series.push({ label: 'Trend', stroke: 'rgba(255,255,255,0.85)', width: 3, value: (u, v) => money(v) });
-      values.push(data.trend);
+      add('trend', { label: 'Trend', stroke: 'rgba(255,255,255,0.85)', width: 3 }, data.trend, true);
     }
     if (data.free) {
-      series.push({ label: 'Free to spend (after goals)', stroke: '#22c55e', width: 2, value: (u, v) => money(v) });
-      values.push(data.free);
-      series.push({ label: 'Free to spend trend', stroke: 'rgba(34,197,94,0.85)', width: 3, value: (u, v) => money(v) });
-      values.push(data.free_trend);
+      add('free', { label: 'Free to spend (after goals)', stroke: '#22c55e', width: 2 }, data.free, true);
+      add('free_trend', { label: 'Free to spend trend', stroke: 'rgba(34,197,94,0.85)', width: 3 }, data.free_trend, true);
     }
     if (data.scenario) {
-      series.push({ label: data.scenario.name, stroke: '#f59e0b', width: 2, dash: [8, 5], value: (u, v) => money(v) });
-      values.push(data.scenario.combined);
-      series.push({ label: data.scenario.name + ' trend', stroke: 'rgba(245,158,11,0.85)', width: 3, value: (u, v) => money(v) });
-      values.push(data.scenario.trend);
+      add('scenario', { label: data.scenario.name, stroke: '#f59e0b', width: 2, dash: [8, 5] }, data.scenario.combined, true);
+      add('scenario_trend', { label: data.scenario.name + ' trend', stroke: 'rgba(245,158,11,0.85)', width: 3 }, data.scenario.trend, true);
     }
     data.accounts.forEach((a, i) => {
-      series.push({ label: a.name, stroke: COLOURS[i % COLOURS.length], width: a.low ? 2 : 1, show: data.accounts.length <= 4 || a.low, value: (u, v) => money(v) });
-      values.push(a.values);
+      add(a.key, { label: a.name, stroke: COLOURS[i % COLOURS.length], width: a.low ? 2 : 1 }, a.values, data.accounts.length <= 4 || a.low);
     });
     const threshold = el.hasAttribute('data-threshold') ? Number(el.getAttribute('data-threshold')) : null;
     const opts = {
@@ -82,6 +97,15 @@
       cursor: { drag: { x: true, y: false } },
       legend: { live: true },
       plugins: [thresholdPlugin(threshold)],
+      hooks: {
+        setSeries: [
+          (u, i, o) => {
+            if (!keys[i] || !o || o.show == null) return;
+            lines[keys[i]] = o.show;
+            save(keys[i], o.show);
+          },
+        ],
+      },
     };
     const plot = new window.uPlot(opts, values, el);
     const resize = () => plot.setSize({ width: el.clientWidth, height: opts.height });

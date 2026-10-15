@@ -66,7 +66,8 @@ day a non-credit-card account falls below the threshold. The page also draws
 Free to spend: the combined balance less what goals kept aside hold today
 (D46, D47). Goals never move money between accounts, so that is the same
 amount off every day. Free to spend and a scenario compared each get their
-own trend (D48).
+own trend (D48). A line turned off or on in the chart's legend is kept for
+the person (`user_settings.chart_lines`, D50); the rest show as drawn.
 
 ## Scenarios
 

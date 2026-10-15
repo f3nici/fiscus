@@ -184,6 +184,9 @@ class UserSettings(Base, Owned):
     ntfy_hour: Mapped[int] = mapped_column(Integer, default=8)
     # The budget month runs from this day to the day before it next month.
     budget_start_day: Mapped[int] = mapped_column(Integer, default=1)
+    # Forecast chart lines turned off or on in its legend, as JSON
+    # {"trend": false, "account:3": true}; the rest show as drawn (D50).
+    chart_lines: Mapped[str] = mapped_column(Text, default='{}')
 
 
 class SquareConnection(Base, Owned):

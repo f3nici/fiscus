@@ -287,6 +287,7 @@ WRITES: list[tuple[str, dict[str, Any]]] = [
     ('/transfers/{transfer}/delete', {}),
     ('/budget', {'category_id': '{category}', 'amount': '1'}),
     ('/budget/spend', {'category_id': '{category}', 'amount': '1'}),
+    ('/forecast/lines', {'key': 'account:{account}', 'shown': 'false'}),
     ('/budget/spend/{spend}/delete', {}),
     ('/budget/{category}/remove', {}),
     ('/budget/{category}/move', {'direction': 'up'}),

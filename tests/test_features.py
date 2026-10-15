@@ -264,6 +264,22 @@ def test_the_forecast_free_to_spend_and_a_new_income(env: Env) -> None:
     assert compared['combined'] == data['combined']
 
 
+def test_chart_lines_turned_off_stay_off(env: Env) -> None:
+    a, _alex, acct = setup_household(env)
+    data = chart_data(a.get('/forecast?months=1').text)
+    assert data['lines'] == {} and data['accounts'][0]['key'] == f'account:{acct}'
+    # The chart sends each click in its legend; the page draws them from then on.
+    for key, shown in (('trend', 'false'), (f'account:{acct}', 'false'), ('trend', 'true')):
+        assert a.post('/forecast/lines', data={'key': key, 'shown': shown}).status_code == 204
+    a.post('/forecast/lines', data={'key': 'scenario_trend', 'shown': 'false'})
+    data = chart_data(a.get('/forecast?months=3').text)
+    assert data['lines'] == {'trend': True, f'account:{acct}': False, 'scenario_trend': False}
+    # Only the chart's own lines and the person's own accounts.
+    assert a.post('/forecast/lines', data={'key': 'nonsense', 'shown': 'false'}).status_code == 400
+    assert a.post('/forecast/lines', data={'key': 'account:x', 'shown': 'false'}).status_code == 404
+    assert chart_data(a.get('/forecast').text)['lines'] == data['lines']
+
+
 def test_the_dashboard_and_forecast_horizons_share_the_cache(env: Env) -> None:
     a, alex, _acct = setup_household(env)
     a.get('/forecast?months=12')

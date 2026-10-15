@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
@@ -46,6 +46,7 @@ def chart_payload(
     scenario: ForecastResult | None,
     scenario_name: str,
     goals_held: int = 0,
+    lines: dict[str, bool] | None = None,
 ) -> str:
     # What goals keep aside today stays in its account, so it is the same
     # amount off every day (D46).
@@ -60,6 +61,7 @@ def chart_payload(
         # are hidden, so the warning shows on the chart.
         'accounts': [
             {
+                'key': f'account:{a}',
                 'name': names.get(a, str(a)),
                 'values': v,
                 'low': bool(base.low_balance and base.low_balance['account_id'] == a),
@@ -67,6 +69,8 @@ def chart_payload(
             for a, v in base.accounts.items()
         ],
         'low': base.low_balance['date'].isoformat() if base.low_balance else None,
+        # Lines turned off or on in the legend, kept until turned back (D50).
+        'lines': lines or {},
     }
     if scenario is not None:
         data['scenario'] = {
@@ -111,7 +115,14 @@ def forecast_page(
             'sc_month_end': sc_month_end,
             'scenarios': db.execute(owned(Scenario, user).order_by(Scenario.name)).scalars().all(),
             'goals_held': goals_held,
-            'chart': chart_payload(base, names, sc_result, sc.name if sc else '', goals_held),
+            'chart': chart_payload(
+                base,
+                names,
+                sc_result,
+                sc.name if sc else '',
+                goals_held,
+                forecasting.chart_lines(db, user),
+            ),
             'estimates': forecasting.estimates(db, user, c.clock.today()),
             'transfers': db.execute(owned(RecurringTransfer, user)).scalars().all(),
             'accounts': accts,
@@ -119,6 +130,24 @@ def forecast_page(
             'prefs': prefs,
         },
     )
+
+
+@router.post('/forecast/lines')
+def save_chart_line(
+    key: str = Form(...),
+    shown: bool = Form(...),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    """A line turned off or on in the chart's legend (D50). The chart's script
+    sends it as the person clicks, so it answers with nothing."""
+    if key.startswith('account:'):
+        acct = get_owned(db, Account, int_or(key.removeprefix('account:')), user)
+        key = f'account:{acct.id}'
+    elif key not in forecasting.CHART_LINES:
+        raise HTTPException(status_code=400)
+    forecasting.set_chart_line(db, user, key, shown)
+    return Response(status_code=204)
 
 
 @router.post('/transfers')

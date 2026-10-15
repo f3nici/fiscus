@@ -18,7 +18,7 @@ user's `data_version` (the forecast cache key).
 | app_state | small key/value for instance state |
 | square_connections (owned) | one per user: enabled, access token, target account, categories for payments, fees and payouts, start date, synced-until, last result and error |
 | square_invoices (owned) | unpaid invoice payment requests as of the last sync: number, customer, due date, amount owing |
-| user_settings (owned) | low-balance threshold, forecast horizon, spending account, ntfy settings (`ntfy_payslips`: a payday passed without a payslip), `budget_start_day` (the budget month runs from this day) |
+| user_settings (owned) | low-balance threshold, forecast horizon, spending account, ntfy settings (`ntfy_payslips`: a payday passed without a payslip), `budget_start_day` (the budget month runs from this day), `chart_lines` (forecast chart lines turned off or on in its legend, JSON, D50) |
 
 ## Money
 

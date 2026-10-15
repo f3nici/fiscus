@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -246,3 +247,27 @@ def scenario(
     inp = build_input(db, user, today, min(24, max(1, months)))
     adjusted = apply_scenario(inp, [(a.kind, dict(a.params)) for a in sc.adjustments])
     return run(adjusted)
+
+
+# The chart's own lines a person can turn off or on in its legend; each
+# account is `account:<id>` (D50).
+CHART_LINES = frozenset({'combined', 'trend', 'free', 'free_trend', 'scenario', 'scenario_trend'})
+
+
+def chart_lines(db: Session, user: User) -> dict[str, bool]:
+    """The chart lines turned off (False) or on (True) by hand, kept until
+    turned back; a line not in it shows as the chart draws it."""
+    try:
+        saved = json.loads(settings_for(db, user).chart_lines or '{}')
+    except ValueError:
+        return {}
+    if not isinstance(saved, dict):
+        return {}
+    return {k: v for k, v in saved.items() if isinstance(k, str) and isinstance(v, bool)}
+
+
+def set_chart_line(db: Session, user: User, key: str, shown: bool) -> None:
+    lines = chart_lines(db, user)
+    lines[key] = shown
+    settings_for(db, user).chart_lines = json.dumps(lines, sort_keys=True)
+    db.flush()

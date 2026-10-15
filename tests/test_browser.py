@@ -371,6 +371,14 @@ def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any
     page.wait_for_selector('.uplot')
     legend = page.inner_text('.u-legend').lower()
     assert 'free to spend (after goals)' in legend and 'free to spend trend' in legend, legend
+    # A line turned off in the legend stays off after a reload (D50).
+    trend_row = '.u-legend tr.u-series:has(.u-label:text-is("Trend"))'
+    assert 'u-off' not in (page.get_attribute(trend_row, 'class') or '')
+    with page.expect_response(lambda r: r.url.endswith('/forecast/lines') and r.status == 204):
+        page.click(f'{trend_row} th')
+    page.reload()
+    page.wait_for_selector('.uplot')
+    assert 'u-off' in (page.get_attribute(trend_row, 'class') or '')
     # And after a boosted (htmx) navigation, which drops <script> tags.
     page.goto(f'{base}/')
     page.click('main a[href="/forecast"]')
