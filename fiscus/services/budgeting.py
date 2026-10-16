@@ -24,7 +24,17 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from fiscus.domain import recurrence, saving
-from fiscus.models import Account, Budget, BudgetSpend, Category, GoalMove, Transaction, User
+from fiscus.models import (
+    Account,
+    Bill,
+    BillPayment,
+    Budget,
+    BudgetSpend,
+    Category,
+    GoalMove,
+    Transaction,
+    User,
+)
 from fiscus.money import round_div
 from fiscus.services import bills, ledger, pay
 from fiscus.services.access import owned
@@ -170,17 +180,22 @@ def bill_cycles(db: Session, user: User) -> dict[int, int]:
     return out
 
 
-def bills_paid_by_category(
-    db: Session, user: User, start: date, end: date, today: date
-) -> dict[int, int]:
-    """This person's bills due in the period and marked paid."""
-    out: dict[int, int] = {}
-    for occ in bills.occurrences(db, user, start, end, today):
-        cid = occ.bill.category_id
-        if occ.payment is None or cid is None:
-            continue
-        out[cid] = out.get(cid, 0) + occ.bill.amount_cents
-    return out
+def bills_paid_by_category(db: Session, user: User, start: date, end: date) -> dict[int, int]:
+    """What was paid for this person's bills due in the period, by the bill's
+    category: each payment as it was marked paid, whatever the bill says now,
+    stopped or not (D57)."""
+    rows = db.execute(
+        select(Bill.category_id, func.sum(BillPayment.amount_cents))
+        .join(Bill, Bill.id == BillPayment.bill_id)
+        .where(
+            BillPayment.user_id == user.id,
+            BillPayment.due_date >= start,
+            BillPayment.due_date <= end,
+            Bill.category_id.is_not(None),
+        )
+        .group_by(Bill.category_id)
+    )
+    return {cid: int(total) for cid, total in rows if cid is not None}
 
 
 def spent_by_category(db: Session, user: User, start: date, end: date) -> dict[int, int]:
@@ -232,7 +247,6 @@ def set_total(
     add: bool = False,
     cycle_months: int | None = None,
     saved_cents: int | None = None,
-    today: date | None = None,
 ) -> tuple[int, int]:
     """Set a category's budget, the bills in it paid out of it. Returns the
     monthly (total, bills).
@@ -263,7 +277,7 @@ def set_total(
         if row is not None and row.saved_since is not None and row.saved_since < start:
             # Carry on from what is saved up to this month, at the old amount.
             before = start - timedelta(days=1)
-            opening = saved_to(db, user, row, before, today or day)
+            opening = saved_to(db, user, row, before)
         elif row is not None and row.saved_since is not None:
             opening = row.saved_opening_cents
         else:
@@ -282,22 +296,22 @@ def set_total(
     row.saved_opening_cents = opening
     db.flush()
     if cycle > 1 and saved_cents is not None:
-        hold(db, user, row, saved_cents, day, today or day)
+        hold(db, user, row, saved_cents, day)
     return monthly, from_bills
 
 
-def hold(db: Session, user: User, row: Budget, saved_cents: int, day: date, today: date) -> None:
+def hold(db: Session, user: User, row: Budget, saved_cents: int, day: date) -> None:
     """Make a saved-up line hold `saved_cents` in the budget month holding
     `day`, as the budget shows it (that month's share in, what came off it
     out), and save on from there."""
     start, end = period(db, user, day)
     row.saved_since = start
     row.saved_opening_cents = 0
-    row.saved_opening_cents = saved_cents - saved_to(db, user, row, end, today)
+    row.saved_opening_cents = saved_cents - saved_to(db, user, row, end)
     db.flush()
 
 
-def saved_to(db: Session, user: User, row: Budget, end: date, today: date) -> int:
+def saved_to(db: Session, user: User, row: Budget, end: date) -> int:
     """What a saved-up line holds at the end of `end`'s day: its opening amount,
     plus a month's budget for every budget month since it started, less what
     was spent (by hand and bills paid) in that time. A full cycle saves exactly
@@ -312,14 +326,14 @@ def saved_to(db: Session, user: User, row: Budget, end: date, today: date) -> in
         p = recurrence.add_months(p, 1, first)
     cid = row.category_id
     spent = spent_by_category(db, user, since, end).get(cid, 0)
-    paid = bills_paid_by_category(db, user, since, end, today).get(cid, 0)
+    paid = bills_paid_by_category(db, user, since, end).get(cid, 0)
     saved = round_div(cycle_total(row) * months, row.cycle_months)
     return row.saved_opening_cents + saved - spent - paid
 
 
-def rows(db: Session, user: User, start: date, end: date, today: date) -> list[BudgetRow]:
+def rows(db: Session, user: User, start: date, end: date) -> list[BudgetRow]:
     spent = spent_by_category(db, user, start, end)
-    paid = bills_paid_by_category(db, user, start, end, today)
+    paid = bills_paid_by_category(db, user, start, end)
     budgets = {b.category_id: b for b in db.execute(owned(Budget, user)).scalars()}
     from_bills = bills_by_category(db, user, start, end)
     out = []
@@ -339,7 +353,7 @@ def rows(db: Session, user: User, start: date, end: date, today: date) -> list[B
                 and b.saved_since is not None
                 and b.saved_since <= end
             ):
-                saved = saved_to(db, user, b, end, today)
+                saved = saved_to(db, user, b, end)
             out.append(
                 BudgetRow(
                     cat,

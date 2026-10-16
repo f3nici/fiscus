@@ -562,7 +562,7 @@ def test_budget_shows_expected_earnings_against_budgeted(env: Env) -> None:
         user = db.get(User, alex.id)
         assert user is not None
         start, end = budgeting.period(db, user, date(2026, 10, 1))
-        rows = budgeting.rows(db, user, start, end, date(2026, 10, 1))
+        rows = budgeting.rows(db, user, start, end)
         s = budgeting.summary(rows, budgeting.expected_pay(db, user, start, end, date(2026, 10, 1)))
     # Paid on 2, 16 and 30 October.
     assert s.expected_cents == 7500_00
@@ -722,7 +722,7 @@ def test_a_bill_without_a_budget_adds_nothing_to_the_budget(env: Env) -> None:
         user = db.get(User, alex.id)
         assert user is not None
         start, end = budgeting.period(db, user, date(2026, 10, 1))
-        rows = budgeting.rows(db, user, start, end, date(2026, 10, 1))
+        rows = budgeting.rows(db, user, start, end)
         s = budgeting.summary(rows, 0)
     assert s.budget_cents == 0 and s.spent_cents == 200_00
 
@@ -732,7 +732,7 @@ def _saved(env: Env, user: User, month: date) -> dict[str, tuple[int | None, str
         u = db.get(User, user.id)
         assert u is not None
         start, end = budgeting.period_starting_in(db, u, month)
-        rows = budgeting.rows(db, u, start, end, date(2026, 10, 1))
+        rows = budgeting.rows(db, u, start, end)
         return {r.category.name: (r.saved_cents, r.state) for r in rows}
 
 

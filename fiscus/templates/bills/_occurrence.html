@@ -2,7 +2,7 @@
 <h2>{{ o.bill.name }}</h2>
 <p class="muted">{{ o.due | d('long') }} · {{ status_pill(o.status) }}</p>
 <ul class="list">
-  <li><span>Amount</span><span class="num">{{ o.bill.amount_cents | money }}</span></li>
+  <li><span>Amount</span><span class="num">{{ o.amount_cents | money }}</span></li>
 </ul>
 {% set back = request.headers.get('hx-current-url', '/calendar') %}
 {% if o.payment %}

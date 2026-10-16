@@ -56,7 +56,7 @@ def dashboard(request: Request, user: User = Depends(current_user), db: Session 
         if d.date <= today + timedelta(days=14)
     ]
     start, end = budgeting.period(db, user, today)
-    rows = budgeting.rows(db, user, start, end, today)
+    rows = budgeting.rows(db, user, start, end)
     loan_lines = loans.budget_lines(db, user, start, end, today)
     summary = budgeting.summary(
         rows,

@@ -68,7 +68,7 @@ def events(db: Session, user: User, start: date, end: date, today: date) -> list
                 occ.due,
                 'bill',
                 occ.bill.name,
-                -occ.bill.amount_cents,
+                -occ.amount_cents,
                 occ.status,
                 occ.bill.id,
             )

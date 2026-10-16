@@ -31,6 +31,11 @@ class Occurrence:
     status: str  # paid | overdue | due_soon | upcoming
     payment: BillPayment | None
 
+    @property
+    def amount_cents(self) -> int:
+        """What was paid, once it is (D57); what the bill says until then."""
+        return self.payment.amount_cents if self.payment else self.bill.amount_cents
+
 
 def user_bills(db: Session, user: User, *, active_only: bool = True) -> list[Bill]:
     q = owned(Bill, user)
@@ -103,6 +108,7 @@ def mark_paid(db: Session, clock: Clock, user: User, bill: Bill, due: date) -> B
         user_id=user.id,
         due_date=due,
         paid_on=clock.today(),
+        amount_cents=bill.amount_cents,
         created_at=utcnow_naive(clock),
     )
     db.add(pay)
@@ -114,7 +120,7 @@ def mark_paid(db: Session, clock: Clock, user: User, bill: Bill, due: date) -> B
         pay,
         account_id=bill.account_id,
         day=pay.paid_on,
-        cents=-bill.amount_cents,
+        cents=-pay.amount_cents,
         description=bill.name,
         category_id=bill.category_id,
     )

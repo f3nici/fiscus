@@ -44,6 +44,12 @@ def save_category(
         clean = text(name, 'Name', 80)
     except FormError as exc:
         return redirect('/categories', flash=str(exc), request=request)
+    # Names are matched ignoring case everywhere else (imports, a budget line
+    # named by hand), so two that differ only in case cannot both exist.
+    if ledger.category_exists(db, user, clean, besides=cat):
+        return redirect(
+            '/categories', flash='You already have a category with that name', request=request
+        )
     if cat is None:
         cat = Category(user_id=user.id, name=clean)
         db.add(cat)
@@ -70,6 +76,10 @@ def delete_category(
     db: Session = DB,
 ) -> Response:
     cat = get_owned(db, Category, category_id, user)
+    kept = ledger.keep_spent(db, user, cat)
     db.delete(cat)
     db.flush()
-    return redirect('/categories', flash=f'{cat.name} deleted', request=request)
+    flash = f'{cat.name} deleted'
+    if kept:
+        flash += '. What its entries took off your accounts stays off'
+    return redirect('/categories', flash=flash, request=request)

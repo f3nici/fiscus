@@ -55,7 +55,8 @@ async def update_balances(
     form = await request.form()
     clock = ctx(request).clock
     now = ledger.balances(db, user, clock.today())
-    changed = 0
+    # Every field is read before any is saved: one mistyped saves none.
+    typed: list[tuple[Account, int]] = []
     for acct in ledger.accounts(db, user):
         raw = form.get(f'balance_{acct.id}')
         if not isinstance(raw, str) or not raw.strip():
@@ -63,11 +64,12 @@ async def update_balances(
         try:
             cents = money(raw, acct.name)
         except FormError as exc:
-            return redirect('/accounts', flash=str(exc), request=request)
-        if cents == now.get(acct.id):
-            continue
+            return redirect('/accounts', flash=f'{exc}. Nothing was saved', request=request)
+        if cents != now.get(acct.id):
+            typed.append((acct, cents))
+    for acct, cents in typed:
         ledger.set_balance(db, clock, user, acct, cents)
-        changed += 1
+    changed = len(typed)
     msg = (
         f'Updated {changed} balance{"" if changed == 1 else "s"}'
         if changed

@@ -105,7 +105,13 @@ def estimates(db: Session, user: User, today: date) -> list[Estimate]:
     for t in db.execute(
         owned(Transaction, user).where(Transaction.date > start, Transaction.date <= today)
     ).scalars():
-        if t.id in paid_txn_ids or t.bill_payment_id or t.payslip_id or t.budget_spend_id:
+        if (
+            t.id in paid_txn_ids
+            or t.bill_payment_id
+            or t.payslip_id
+            or t.budget_spend_id
+            or t.dedup_hash.startswith(ledger.KEPT)
+        ):
             # Bills and pay are forecast from their schedules, and spending
             # taken off a budget from the budget, not from their history.
             continue
@@ -264,9 +270,7 @@ def still_to_spend(db: Session, user: User, today: date, days: int) -> list[int]
     spend; later days spend each line as the forecast does."""
     start, end = budgeting.period(db, user, today)
     rows = [
-        r
-        for r in budgeting.rows(db, user, start, end, today)
-        if r.has_budget and not r.category.is_income
+        r for r in budgeting.rows(db, user, start, end) if r.has_budget and not r.category.is_income
     ]
     # The forecast spends the part of a budget beyond its bills a day at a
     # time, and the bills on their dates (`build_input`).

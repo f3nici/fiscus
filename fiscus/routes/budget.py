@@ -39,7 +39,7 @@ def budget_page(
         start, end = budgeting.period_starting_in(db, user, date.fromisoformat(month + '-01'))
     except ValueError:
         start, end = budgeting.period(db, user, today)
-    rows = budgeting.rows(db, user, start, end, today)
+    rows = budgeting.rows(db, user, start, end)
     budgeted = {r.category.id for r in rows if r.has_budget}
     accts = ledger.accounts(db, user)
     bal = ledger.balances(db, user, today)
@@ -125,20 +125,20 @@ def save_budget(
     group = maybe_owned(db, BudgetGroup, group_id, user) if group_id > 0 else None
     if cycle_months not in budgeting.CYCLES:
         return redirect(target, flash='Choose how often it is spent', request=request)
-    if category_id:
-        cat = get_owned(db, Category, category_id, user)
-    elif new_category.strip():
-        cat = ledger.category_named(db, user, new_category)
-    else:
+    found = get_owned(db, Category, category_id, user) if category_id else None
+    if found is None and not new_category.strip():
         return redirect(target, flash='Choose or name a category', request=request)
-    if cat.is_income:
-        cycle_months = 1
     try:
         cents = money(amount, 'Amount', allow_negative=False)
         saved_cents = money(saved, 'Saved now') if saved.strip() else None
-        new_name = text(name, 'Name', 80) if category_id and name.strip() else cat.name
+        typed_name = text(name, 'Name', 80) if category_id and name.strip() else None
     except FormError as exc:
         return redirect(target, flash=str(exc), request=request)
+    # Made only once the line is valid, so a mistyped amount leaves no category.
+    cat = found or ledger.category_named(db, user, new_category)
+    new_name = typed_name or cat.name
+    if cat.is_income:
+        cycle_months = 1
     renamed = ''
     if new_name != cat.name:
         clash = ledger.move_aside(db, user, new_name, cat)
@@ -159,7 +159,6 @@ def save_budget(
         use_in_forecast=False,
         cycle_months=cycle_months,
         saved_cents=saved_cents if cycle_months > 1 else None,
-        today=today,
     )
     every = 'a month' if cycle_months == 1 else budgeting.CYCLES[cycle_months].lower()
     if total == 0 and cycle_months == 1:
@@ -335,7 +334,7 @@ def set_saved(
     except FormError as exc:
         return redirect(target, flash=str(exc), request=request)
     today = ctx(request).clock.today()
-    budgeting.hold(db, user, row, cents, today, today)
+    budgeting.hold(db, user, row, cents, today)
     return redirect(target, flash=f'{cat.name} now holds {fmt(cents)}', request=request)
 
 
@@ -493,7 +492,7 @@ def budget_preview(
     by_name = {c.name.casefold(): c for c in cats}
     today = ctx(request).clock.today()
     start, end = budgeting.period(db, user, today)
-    budgets = {r.category.id: r.budget_cents for r in budgeting.rows(db, user, start, end, today)}
+    budgets = {r.category.id: r.budget_cents for r in budgeting.rows(db, user, start, end)}
     current = {
         line.index: budgets.get(by_name[line.name.casefold()].id)
         for line in parsed.lines
