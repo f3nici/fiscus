@@ -25,6 +25,8 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "djlint==1.46.4",
+  # Starlette's TestClient: httpx there is deprecated.
+  "httpx2==2.13.1",
   "mypy==2.4.0",
   "playwright==1.63.0",
   "pytest==9.1.1",
@@ -81,7 +83,6 @@ markers = ["browser: drives a real Chromium through Playwright"]
 filterwarnings = [
   "error::sqlalchemy.exc.SAWarning",
   "error::sqlalchemy.exc.SADeprecationWarning",
-  "ignore:Using `httpx` with `starlette.testclient`",
 ]
 
 [tool.djlint]
