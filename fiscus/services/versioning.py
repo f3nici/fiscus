@@ -20,7 +20,7 @@ _KEY = 'fiscus_touched_users'
 _IGNORED = (ForecastCache,)
 
 
-def _users_for(db: Session, obj: Any) -> set[int]:
+def _users_for(obj: Any) -> set[int]:
     if isinstance(obj, _IGNORED):
         return set()
     if isinstance(obj, Owned | UserSettings):
@@ -41,7 +41,7 @@ def install(session_cls: type[Session] = Session) -> None:
             for obj in list(db.new) + list(db.dirty) + list(db.deleted):
                 if obj in db.dirty and not db.is_modified(obj, include_collections=False):
                     continue
-                touched.update(_users_for(db, obj))
+                touched.update(_users_for(obj))
 
     @event.listens_for(session_cls, 'after_flush')
     def _bump(db: Session, _ctx: Any) -> None:

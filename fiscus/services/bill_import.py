@@ -10,14 +10,8 @@ from fiscus.clock import Clock, utcnow_naive
 from fiscus.domain import recurrence
 from fiscus.domain.bill_import import BillSpec, Diff
 from fiscus.models import Bill, Category, User
-from fiscus.services.access import owned
+from fiscus.services.bills import user_bills
 from fiscus.services.ledger import category_named
-
-
-def owned_bills(db: Session, user: User) -> list[Bill]:
-    return list(
-        db.execute(owned(Bill, user).where(Bill.active.is_(True)).order_by(Bill.name)).scalars()
-    )
 
 
 def as_spec(db: Session, bill: Bill) -> BillSpec:
@@ -69,7 +63,7 @@ class ApplyResult:
 def apply_diff(
     db: Session, clock: Clock, user: User, diff: Diff, *, remove_missing: bool
 ) -> ApplyResult:
-    by_name = {b.name.casefold(): b for b in owned_bills(db, user)}
+    by_name = {b.name.casefold(): b for b in user_bills(db, user)}
     for spec in diff.added:
         upsert(db, clock, user, spec)
     for _old, spec in diff.changed:

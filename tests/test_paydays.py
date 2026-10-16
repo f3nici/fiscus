@@ -558,3 +558,17 @@ def test_payslips_list_ten_a_page(env: Env) -> None:
     assert 'Page 3 of 3' in a.get('/pay?page=99').text
     assert 'Page 1 of 3' in a.get('/pay?page=-4').text
     assert 'Page 1 of 3' in a.get('/pay?page=x').text
+    # One dated in the next financial year is not in this one's total.
+    with env.db() as db:
+        db.add(
+            Payslip(
+                user_id=alex.id,
+                date=date(2027, 7, 2),
+                gross_cents=500_00,
+                tax_withheld_cents=0,
+                net_cents=500_00,
+                source='Next year',
+            )
+        )
+        db.commit()
+    assert 'gross $1,400.00' in a.get('/pay').text

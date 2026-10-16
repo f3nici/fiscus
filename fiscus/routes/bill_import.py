@@ -17,6 +17,7 @@ from fiscus.domain.uploads import MAX_BYTES, ImportError_
 from fiscus.forms import int_or
 from fiscus.models import User
 from fiscus.services import bill_import as svc
+from fiscus.services.bills import user_bills
 from fiscus.web import ctx, current_user, get_db, redirect, render
 
 router = APIRouter()
@@ -99,7 +100,7 @@ def _parse(data: bytes, kind: str, mapping: dict[str, int | None] | None) -> dom
 
 
 def _diff(db: Session, user: User, parsed: dom.ParsedBills) -> dom.Diff:
-    existing = [svc.as_spec(db, b) for b in svc.owned_bills(db, user)]
+    existing = [svc.as_spec(db, b) for b in user_bills(db, user)]
     return dom.diff(existing, parsed.items)
 
 

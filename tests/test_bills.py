@@ -158,6 +158,21 @@ def test_a_bill_is_its_owners_alone(env: Env) -> None:
     edit = a.get(f'/bills/{bill}/edit').text
     assert f'<option value="{acct}" selected>' in edit
     assert f'<option value="{utilities}" selected>' in edit
+    # So does a new bill's form sent back with a mistake in it.
+    wrong = a.post(
+        '/bills',
+        data={
+            'name': 'Water',
+            'amount': '',
+            'frequency': 'monthly',
+            'next_due': '2026-10-10',
+            'account_id': str(acct),
+            'category_id': str(utilities),
+        },
+    )
+    assert wrong.status_code == 400
+    assert f'<option value="{acct}" selected>' in wrong.text
+    assert f'<option value="{utilities}" selected>' in wrong.text
 
 
 def test_deleting_an_account_removes_its_transactions(env: Env) -> None:

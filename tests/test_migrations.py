@@ -400,9 +400,16 @@ def test_a_shared_bill_becomes_one_bill_each(tmp_path: Path) -> None:
         ]
         payments = c.execute(text('SELECT id, bill_id, user_id FROM bill_payments ORDER BY id'))
         assert [tuple(r) for r in payments] == [(1, 1, 1), (2, 3, 2)]
-        # Kim's payment is gone; the money it moved is not.
-        txns = c.execute(text('SELECT id, amount_cents, bill_payment_id FROM transactions'))
-        assert sorted(tuple(r) for r in txns) == [(1, -5400, 1), (2, -3600, 2), (3, -3000, None)]
+        # Kim's payment is gone; the money it moved is not. Its transaction lets
+        # go of the payment's key, which the next payment may be given.
+        txns = c.execute(
+            text('SELECT id, amount_cents, bill_payment_id, dedup_hash FROM transactions')
+        )
+        assert sorted(tuple(r) for r in txns) == [
+            (1, -5400, 1, 'bill-payment:1'),
+            (2, -3600, 2, 'bill-payment:2'),
+            (3, -3000, None, 'bill-left:3'),
+        ]
         keys = c.execute(text('SELECT user_id, key FROM notification_log ORDER BY user_id'))
         assert [tuple(r) for r in keys] == [(1, '1:2026-09-10'), (2, '3:2026-09-10')]
 
@@ -415,6 +422,41 @@ def test_a_shared_bill_becomes_one_bill_each(tmp_path: Path) -> None:
         owners = c.execute(text('SELECT id, owner_id, split_mode FROM bills ORDER BY id'))
         assert [tuple(r) for r in owners] == [(1, 1, 'equal'), (2, 1, 'equal'), (3, 2, 'equal')]
     command.upgrade(cfg, 'head')
+    engine.dispose()
+
+
+def test_a_bill_whose_owner_holds_no_share_still_moves(tmp_path: Path) -> None:
+    """0025 with a bill only someone else held a share of: no crash, and the
+    whole amount is still covered between them."""
+    url = f'sqlite:///{tmp_path / "fiscus.db"}'
+    cfg = alembic_config(url)
+    command.upgrade(cfg, '0024')
+    engine = create_engine(url)
+    with engine.begin() as c:
+        for uid, name in ((1, 'alex'), (2, 'sam')):
+            c.execute(
+                text(
+                    'INSERT INTO users (id, username, display_name, is_admin, is_active,'
+                    ' user_handle, password_enabled, data_version, created_at)'
+                    " VALUES (:id, :n, :n, 0, 1, :h, 0, 0, '2026-01-01')"
+                ),
+                {'id': uid, 'n': name, 'h': bytes([uid]) * 64},
+            )
+        c.execute(
+            text(
+                'INSERT INTO bills (id, owner_id, name, amount_cents, frequency, next_due,'
+                ' split_mode, match_tolerance_pct, match_window_days, description_hint,'
+                " active, created_at) VALUES (1, 1, 'Water', 10001, 'monthly', '2026-09-10',"
+                " 'equal', 5, 3, '', 1, '2026-01-01')"
+            )
+        )
+        c.execute(text('INSERT INTO bill_shares (bill_id, user_id, split_value) VALUES (1, 2, 0)'))
+
+    command.upgrade(cfg, '0025')
+    with engine.connect() as c:
+        rows = c.execute(text('SELECT user_id, amount_cents FROM bills ORDER BY id')).all()
+        assert [r.user_id for r in rows] == [1, 2]
+        assert sum(r.amount_cents for r in rows) == 10001
     engine.dispose()
 
 

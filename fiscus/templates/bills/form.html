@@ -19,12 +19,12 @@
       <div class="field"><label class="label" for="end_date">Ends (optional)</label><input class="input" type="date" id="end_date" name="end_date" value="{{ val('end_date', bill.end_date.isoformat() if bill and bill.end_date else '') }}"></div>
       <div class="field"><label class="label" for="account_id">Paid from</label>
         <select class="input" id="account_id" name="account_id"><option value="0">My spending account</option>
-          {% for a in accounts %}<option value="{{ a.id }}" {{ 'selected' if bill and bill.account_id == a.id else '' }}>{{ a.name }}</option>{% endfor %}
+          {% for a in accounts %}<option value="{{ a.id }}" {{ 'selected' if val('account_id', bill.account_id if bill else '') == a.id | string else '' }}>{{ a.name }}</option>{% endfor %}
         </select>
       </div>
       <div class="field"><label class="label" for="category_id">Category</label>
         <select class="input" id="category_id" name="category_id"><option value="0">None</option>
-          {% for c in cats %}<option value="{{ c.id }}" {{ 'selected' if bill and bill.category_id == c.id else '' }}>{{ c.name }}</option>{% endfor %}
+          {% for c in cats %}<option value="{{ c.id }}" {{ 'selected' if val('category_id', bill.category_id if bill else '') == c.id | string else '' }}>{{ c.name }}</option>{% endfor %}
         </select>
       </div>
     </div>

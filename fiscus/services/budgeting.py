@@ -47,7 +47,7 @@ class BudgetRow:
     budget: Budget | None
     spent_cents: int  # taken off by hand (earned, for income)
     bills_cents: int  # this person's bills in the category, per month (shown, not added)
-    bills_paid_cents: int  # their share of bills marked paid this period
+    bills_paid_cents: int  # bills marked paid this period
     # Saved up and not yet spent, to the end of the period, for a line spent
     # every few months. None for a monthly line.
     saved_cents: int | None = None
@@ -327,7 +327,9 @@ def rows(db: Session, user: User, start: date, end: date, today: date) -> list[B
         if cat.is_transfer:
             continue
         cid = cat.id
-        if cid in budgets or spent.get(cid) or paid.get(cid) or from_bills.get(cid):
+        # Any entry taken off, even if they net to nothing: the line's Edit
+        # panel is the only place to remove one.
+        if cid in budgets or cid in spent or paid.get(cid) or from_bills.get(cid):
             b = budgets.get(cid)
             saved = None
             if (

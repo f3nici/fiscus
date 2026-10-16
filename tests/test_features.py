@@ -485,6 +485,9 @@ def test_a_budget_line_can_be_removed(env: Env) -> None:
         assert len(db.execute(select(BudgetSpend)).scalars().all()) == 1
     # Nothing left to remove.
     assert a.post(f'/budget/{groceries}/remove').status_code == 404
+    # Entries that net to nothing are still listed, so they can be removed.
+    a.post('/budget/spend', data={'category_id': str(groceries), 'amount': '-25'})
+    assert f'id="spent-{groceries}"' in a.get('/budget').text
 
 
 def test_home_loan_repayments_stay_in_the_budget(env: Env) -> None:

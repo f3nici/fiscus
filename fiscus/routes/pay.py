@@ -157,7 +157,7 @@ def _page(
         d = nxt[s.id]
         if d is not None and s.end_date and d > s.end_date:
             nxt[s.id] = None
-    fy_start, _ = fy_bounds(today)
+    fy_start, fy_end = fy_bounds(today)
     total = db.scalar(select(func.count()).select_from(owned(Payslip, user).subquery())) or 0
     pages = max(1, -(-total // SLIPS_PER_PAGE))
     page = min(max(int_or(request.query_params.get('page'), 1), 1), pages)
@@ -172,11 +172,13 @@ def _page(
         .all()
     )
     ytd = db.execute(
-        select(
+        owned(Payslip, user)
+        .where(Payslip.date >= fy_start, Payslip.date <= fy_end)
+        .with_only_columns(
             func.coalesce(func.sum(Payslip.gross_cents), 0),
             func.coalesce(func.sum(Payslip.tax_withheld_cents), 0),
             func.coalesce(func.sum(Payslip.net_cents), 0),
-        ).where(Payslip.user_id == user.id, Payslip.date >= fy_start)
+        )
     ).one()
     options = _options(db, user, today, slip.id if slip else None)
     if form is not None and form.payday not in ('', 'auto'):

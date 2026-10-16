@@ -81,7 +81,9 @@ def upgrade() -> None:
     for bill in bills:
         rows = shares.get(bill.id, [])
         own = next((s for s in rows if s.user_id == bill.owner_id), None)
-        amounts = _amounts(bill, rows) if len(rows) > 1 else {}
+        # Anyone but the owner on it, even alone: work out each share.
+        others = any(s.user_id != bill.owner_id for s in rows)
+        amounts = _amounts(bill, rows) if others else {}
         conn.execute(
             sa.text(
                 'UPDATE bills SET account_id = :a, category_id = :c, amount_cents = :cents'
@@ -129,12 +131,18 @@ def upgrade() -> None:
             )
 
     # Someone who left a bill: their payment goes, the money it moved stays.
+    # The kept transaction gives up the payment's dedup key too: SQLite can
+    # hand the deleted payment's id to the next one, whose transaction would
+    # then clash with it on the same account.
     orphans = (
         'SELECT p.id FROM bill_payments p JOIN bills b ON b.id = p.bill_id'
         ' WHERE p.user_id != b.owner_id'
     )
     conn.execute(
-        sa.text(f'UPDATE transactions SET bill_payment_id = NULL WHERE bill_payment_id IN ({orphans})')  # noqa: S608
+        sa.text(
+            "UPDATE transactions SET bill_payment_id = NULL, dedup_hash = 'bill-left:' || id"  # noqa: S608
+            f' WHERE bill_payment_id IN ({orphans})'
+        )
     )
     conn.execute(sa.text(f'DELETE FROM bill_payments WHERE id IN ({orphans})'))  # noqa: S608
 
