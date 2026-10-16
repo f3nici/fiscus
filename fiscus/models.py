@@ -274,19 +274,6 @@ class AccountBalance(Base, Owned):
     typed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
-class ImportMapping(Base, Owned):
-    """Column mapping for a non-ANZ CSV, saved per account."""
-
-    __tablename__ = 'import_mappings'
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'), index=True)
-    account_id: Mapped[int] = mapped_column(
-        ForeignKey('accounts.id', ondelete='CASCADE'), unique=True
-    )
-    mapping: Mapped[dict[str, Any]] = mapped_column(JSON)
-
-
 class Import(Base, Owned):
     __tablename__ = 'imports'
 

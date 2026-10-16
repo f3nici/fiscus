@@ -54,7 +54,3 @@ class RateLimiter:
         longest = max(lim.seconds for lim in self.limits.values())
         for k in [k for k, q in self._hits.items() if not q or q[-1] <= now - longest]:
             del self._hits[k]
-
-    def reset(self) -> None:
-        with self._lock:
-            self._hits.clear()

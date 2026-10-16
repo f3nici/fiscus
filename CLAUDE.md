@@ -25,8 +25,9 @@ year ahead, overdue ones first, and what they hold is typed in or lined up
 with them (D36, D40, D43, D44); budget lines in groups and in an order set by
 hand (D35). Since D25 the budget is kept by hand (spending taken off,
 balances typed in); the transactions, statement import, rules and matching
-screens were removed in D37 (their tables stay; Square, bills marked paid,
-payslips and budget spends write to them; Square's page is unlinked). Next
+screens were removed in D37 (their tables stay, but for `import_mappings`,
+dropped in migration 0027; Square, bills marked paid, payslips and budget
+spends write to them; Square's page is unlinked). Next
 steps are in `docs/10-decisions.md` §3.
 
 ## Read before building
@@ -134,7 +135,9 @@ fiscus/
   migrations/ Alembic
 config/tax/   one YAML per financial year
 tests/        pytest; authenticator.py is a software passkey
-scripts/      smoke.sh, generate_icons.py, icon.svg
+docs/         design notes (01 to 10), guide.md for running it, screenshots/
+scripts/      smoke.sh, generate_icons.py, icon.svg, screenshots.py (README
+              screenshots from a made-up household)
 ```
 
 ## Stack
@@ -181,7 +184,8 @@ FISCUS_DATA_DIR=./data FISCUS_BASE_URL=http://localhost:8000 python -m fiscus
   `navigator.credentials` call starts from a click, except the conditional
   (autofill) request on the login page, which iOS allows.
 - **iOS has no `beforeinstallprompt`.** Install is a Share-menu instruction
-  (README). File uploads use the file picker, which works in standalone mode.
+  (`docs/guide.md`). File uploads use the file picker, which works in
+  standalone mode.
 - **A balance is the last one typed in plus transactions dated after its
   day, and those dated its day put in after it was typed** (`ledger.balances`,
   D42, D45). Anything else that moves money writes a transaction linked to its

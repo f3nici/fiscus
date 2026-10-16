@@ -76,10 +76,6 @@ def start_session(
     return token
 
 
-def end_sessions(db: Session, user_id: int) -> None:
-    db.execute(delete(AuthSession).where(AuthSession.user_id == user_id))
-
-
 # --------------------------------------------------------------- setup links
 
 

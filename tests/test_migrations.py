@@ -544,3 +544,19 @@ def test_the_users_rebuild_refuses_with_foreign_keys_on(tmp_path: Path) -> None:
     cols = {col['name'] for col in inspect(engine).get_columns('users')}
     assert 'password_hash' in cols
     engine.dispose()
+
+
+def test_import_mappings_go(tmp_path: Path) -> None:
+    """0027 drops import_mappings, unread since D37, and only that."""
+    url = f'sqlite:///{tmp_path / "fiscus.db"}'
+    cfg = alembic_config(url)
+    command.upgrade(cfg, '0026')
+    engine = create_engine(url)
+    before = set(inspect(engine).get_table_names())
+    assert 'import_mappings' in before
+    command.upgrade(cfg, '0027')
+    assert set(inspect(engine).get_table_names()) == before - {'import_mappings'}
+    command.downgrade(cfg, '0026')
+    assert set(inspect(engine).get_table_names()) == before
+    command.upgrade(cfg, 'head')
+    engine.dispose()
