@@ -1,7 +1,7 @@
 """The forecast engine. Pure: inputs in, daily balances out.
 
 Day 0 is today with today's real balances. Each later day applies, in order:
-scheduled flows (pay, bills at this person's share, transfers, one-offs),
+scheduled flows (pay, bills, transfers, one-offs),
 loan repayments, the day's slice of discretionary spending, then end-of-day
 loan interest on (loan - offset) using the offset accounts' balances as they
 stand that evening.

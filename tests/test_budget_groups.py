@@ -213,7 +213,7 @@ def test_each_save_comes_back_to_what_it_changed(env: Env) -> None:
     assert goes('/budget/spend', {'category_id': str(fun), 'amount': '5'}) == f'{back}#spend'
     with env.db() as db:
         spend = db.execute(select(BudgetSpend.id)).scalar_one()
-    assert goes(f'/budget/spend/{spend}/delete', {}) == f'{back}#spent'
+    assert goes(f'/budget/spend/{spend}/delete', {}) == f'{back}#line-{fun}'
     assert goes('/budget/groups', {'name': 'Bills'}).startswith(f'{back}#group-')
     assert goes(f'/budget/{fun}/remove', {}) == f'{back}#lines'
     # A back address that already carries an anchor gets this one instead.

@@ -32,7 +32,6 @@ from fiscus.db import Base
 ACCOUNT_TYPES = ('transaction', 'offset', 'savings', 'credit_card')
 FREQUENCIES = ('weekly', 'fortnightly', 'monthly', 'bimonthly', 'quarterly', 'yearly', 'one_off')
 PAY_FREQUENCIES = ('weekly', 'fortnightly', 'monthly', 'quarterly')
-SPLIT_MODES = ('equal', 'percent', 'fixed')
 
 
 class Owned:
@@ -54,8 +53,6 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     # WebAuthn user handle. Random, never the database id.
     user_handle: Mapped[bytes] = mapped_column(LargeBinary(64), unique=True)
-    password_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
-    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     data_version: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime)
 
@@ -399,51 +396,33 @@ class Rule(Base, Owned):
 # ------------------------------------------------------------------------ bills
 
 
-class Bill(Base):
-    """A bill has an owner and shares. The owner always holds a share row."""
+class Bill(Base, Owned):
+    """A bill, paid from one of its owner's accounts and filed under a category."""
 
     __tablename__ = 'bills'
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    owner_id: Mapped[int] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'), index=True)
     name: Mapped[str] = mapped_column(String(120))
     amount_cents: Mapped[int] = mapped_column(Integer)
     frequency: Mapped[str] = mapped_column(String(20))
     next_due: Mapped[date] = mapped_column(Date)
     end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    split_mode: Mapped[str] = mapped_column(String(10), default='equal')
-    match_tolerance_pct: Mapped[int] = mapped_column(Integer, default=5)
-    match_window_days: Mapped[int] = mapped_column(Integer, default=3)
-    description_hint: Mapped[str] = mapped_column(String(120), default='')
-    active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime)
-
-    shares: Mapped[list[BillShare]] = relationship(
-        back_populates='bill', cascade='all, delete-orphan', order_by='BillShare.id'
-    )
-
-
-class BillShare(Base, Owned):
-    __tablename__ = 'bill_shares'
-    __table_args__ = (UniqueConstraint('bill_id', 'user_id'),)
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    bill_id: Mapped[int] = mapped_column(ForeignKey('bills.id', ondelete='CASCADE'), index=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'), index=True)
-    # Basis points for percent, cents for fixed, unused for equal.
-    split_value: Mapped[int] = mapped_column(Integer, default=0)
     account_id: Mapped[int | None] = mapped_column(
         ForeignKey('accounts.id', ondelete='SET NULL'), nullable=True
     )
     category_id: Mapped[int | None] = mapped_column(
         ForeignKey('categories.id', ondelete='SET NULL'), nullable=True
     )
-
-    bill: Mapped[Bill] = relationship(back_populates='shares')
+    match_tolerance_pct: Mapped[int] = mapped_column(Integer, default=5)
+    match_window_days: Mapped[int] = mapped_column(Integer, default=3)
+    description_hint: Mapped[str] = mapped_column(String(120), default='')
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime)
 
 
 class BillPayment(Base, Owned):
-    """One user's occurrence of a bill, marked paid (matched or by hand)."""
+    """An occurrence of a bill, marked paid (matched or by hand)."""
 
     __tablename__ = 'bill_payments'
     __table_args__ = (UniqueConstraint('bill_id', 'user_id', 'due_date'),)

@@ -1,4 +1,4 @@
-"""Calendar events: bills at this person's share, paydays and loan repayments.
+"""Calendar events: bills, paydays and loan repayments.
 
 The grid itself (month, week, day and agenda) is laid out here too, so the
 template only draws what it is given.
@@ -25,7 +25,7 @@ VIEWS = ('month', 'week', 'day', 'agenda')
 @dataclass
 class Event:
     date: date
-    kind: str  # bill | shared | pay | loan
+    kind: str  # bill | pay | loan
     title: str
     amount_cents: int
     status: str  # paid | overdue | due_soon | upcoming | scheduled
@@ -66,9 +66,9 @@ def events(db: Session, user: User, start: date, end: date, today: date) -> list
         out.append(
             Event(
                 occ.due,
-                'shared' if occ.shared else 'bill',
+                'bill',
                 occ.bill.name,
-                -occ.share_cents,
+                -occ.bill.amount_cents,
                 occ.status,
                 occ.bill.id,
             )
@@ -118,7 +118,7 @@ def events(db: Session, user: User, start: date, end: date, today: date) -> list
                     loan.id,
                 )
             )
-    order = {'pay': 0, 'shared': 1, 'bill': 1, 'loan': 2}
+    order = {'pay': 0, 'bill': 1, 'loan': 2}
     out.sort(key=lambda e: (e.date, order.get(e.kind, 3), e.title))
     return out
 
@@ -184,9 +184,9 @@ def grid(db: Session, clock: Clock, user: User, view: str, focus: date) -> Grid:
             overdue = [
                 Event(
                     o.due,
-                    'shared' if o.shared else 'bill',
+                    'bill',
                     f'{o.bill.name}, due {o.due.day} {o.due.strftime("%b")}',
-                    -o.share_cents,
+                    -o.bill.amount_cents,
                     'overdue',
                     o.bill.id,
                 )

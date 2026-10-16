@@ -1,21 +1,21 @@
 # Fiscus
 
-Self-hosted personal finance for an Australian household. Each person's
-accounts, budget, forecast and tax stay their own; bills can be shared. Runs
-as one Docker container on your homelab, signs in with passkeys, and installs
-on your phone as an app. Nothing leaves your network.
+Self-hosted personal finance for an Australian household, kept by one person:
+accounts, bills, pay, budget, forecast and tax. Runs as one Docker container
+on your homelab, signs in with passkeys, and installs on your phone as an app.
+Nothing leaves your network.
 
 - Account balances typed in as you go, with the history kept, and moved by
   the bills you mark paid and the payslips you add in between
 - A budget kept by hand: take spending off as you go, with saved-up lines for
   yearly and quarterly costs and savings goals inside your accounts
-- Bills, shared and split, marked paid in a tap
+- Bills, marked paid in a tap
 - Payslips, typed in or read from their PDFs, with a reminder for any not in
 - A calendar of bills and paydays with your projected balance on every day
 - Home loan with offset: interest saved and payoff date
 - Forecast 1 to 24 months ahead, with what-if scenarios
 - An Australian tax estimate against your set-aside
-- Optional reminders through your own ntfy server
+- Optional reminders through ntfy (ntfy.sh or your own server)
 - Optional sync from a Square seller account (payments, fees, payouts, unpaid invoices)
 
 Every forecast and tax figure is an estimate from your own data, not
@@ -25,7 +25,7 @@ financial or tax advice.
 
 - [Setup](#setup)
 - [First run: the bootstrap link](#first-run-the-bootstrap-link)
-- [Adding people and passkeys](#adding-people-and-passkeys)
+- [Passkeys and recovery](#passkeys-and-recovery)
 - [Installing the app on iOS and Android](#installing-the-app-on-ios-and-android)
 - [Budget import from a spreadsheet](#budget-import-from-a-spreadsheet)
 - [Importing bills from a file](#importing-bills-from-a-file)
@@ -119,34 +119,38 @@ If you lose it before using it, restart the container or run:
 docker compose exec fiscus python -m fiscus.cli bootstrap
 ```
 
-## Adding people and passkeys
+## Passkeys and recovery
 
-**Add a person** (admin): Admin, Users, "Add a user". Fiscus shows a one-time
-setup link, valid for 48 hours. Send it to them privately; they open it on
-their phone and create their passkey. Their finances are separate from yours.
+Fiscus is kept by one person (D52): the account made with the bootstrap link
+is the only one, and its admin. There is no users page and no password
+sign-in; passkeys are the way in.
 
-**Add another device** (anyone): Settings, Passkeys, "Add a passkey on this
-device", on the device you are signed in on. Name each one (phone, laptop,
-security key) so you can tell them apart; Settings shows when each was last
-used. To add a device you are not holding, sign in on that device with a
-recovery link from the admin.
+**Add another device**: Settings, Passkeys, "Add a passkey on this device",
+on the device you are signed in on. Name each one (phone, laptop, security
+key) so you can tell them apart; Settings shows when each was last used. To
+add a device you are not holding, sign in on it with a passkey you already
+have (most browsers offer a QR code to scan with your phone), then add one
+there.
 
 **Revoke a passkey**: Settings, Passkeys, Manage, Revoke. You cannot revoke
-your last one unless you also have a password set.
+your last one.
 
-**Lost every passkey**: the admin presses "Recovery link" next to your name
-and sends it to you. Open it on your new device, create a passkey, then
-revoke the lost ones in Settings. If the admin is the one locked out:
+**Lost every passkey**: get a recovery link on the server, open it on your
+new device, create a passkey, then revoke the lost ones in Settings.
 
 ```bash
 docker compose exec fiscus python -m fiscus.cli recovery-link <username>
 ```
 
-**Password fallback**: off for everyone by default. An admin can allow it per
-person (Admin, Users, Password); that person then sets one in Settings.
+**People added before**: earlier versions could add more people and share
+bills with them. On upgrade a shared bill became one bill each, at each
+person's share, so no figure moved. To remove someone and everything of
+theirs (take a backup first; it asks for their username again):
 
-**Disable a person**: Admin, Users, Disable. They are signed out everywhere
-and any pending link stops working. Nothing of theirs is deleted.
+```bash
+docker compose exec fiscus python -m fiscus.cli users
+docker compose exec fiscus python -m fiscus.cli remove-user <username>
+```
 
 ## Installing the app on iOS and Android
 
@@ -210,8 +214,8 @@ a CSV template.
 
 Every recurring cost lives in one place, **Bills**: rent, rates, insurance,
 strata, water, power, subscriptions. Each bill is on the calendar, in the
-forecast, and counts towards its category's budget at a monthly rate (your
-share, weekly x 52 / 12, quarterly / 3 and so on). You never enter a cost twice.
+forecast, and counts towards its category's budget at a monthly rate (weekly
+x 52 / 12, quarterly / 3 and so on). You never enter a cost twice.
 
 Type bills in one at a time, or Bills, **Import**, and upload a CSV or JSON
 file. Download a template from that page in either format.
@@ -219,10 +223,10 @@ file. Download a template from that page in either format.
 **CSV**
 
 ```csv
-name,amount,frequency,category,due_date,shared_with,split_percent
-Council rates,520.00,quarterly,Housing,2026-11-15,,
-Home insurance,1850.00,yearly,Insurance,2027-03-01,partner,50
-Water,310.00,quarterly,Utilities,,partner,50
+name,amount,frequency,category,due_date
+Council rates,520.00,quarterly,Housing,2026-11-15
+Home insurance,1850.00,yearly,Insurance,2027-03-01
+Water,310.00,quarterly,Utilities,
 ```
 
 **JSON**
@@ -231,7 +235,7 @@ Water,310.00,quarterly,Utilities,,partner,50
 {
   "bills": [
     {"name": "Council rates", "amount": "520.00", "frequency": "quarterly", "category": "Housing", "due_date": "2026-11-15"},
-    {"name": "Home insurance", "amount": "1850.00", "frequency": "yearly", "category": "Insurance", "due_date": "2027-03-01", "shared_with": "partner", "split_percent": 50}
+    {"name": "Home insurance", "amount": "1850.00", "frequency": "yearly", "category": "Insurance", "due_date": "2027-03-01"}
   ]
 }
 ```
@@ -243,16 +247,14 @@ Water,310.00,quarterly,Utilities,,partner,50
 | frequency | yes | weekly, fortnightly, monthly, bimonthly (every 2 months), quarterly, yearly or one-off |
 | category | no | Created if it does not exist |
 | due_date | no (yes for one-off) | YYYY-MM-DD, the next time it is due; left out, an existing bill keeps its own |
-| shared_with | no | Another Fiscus user's username |
-| split_percent | no | Their share, default 50 |
 
 A CSV with other column names gets a mapping step. Every import shows a
 preview first, compared with the bills you own by name: what will be added,
 what will change, and what is not in the file. Bills not in the file are left
 alone unless you tick the box, and then they are stopped rather than deleted,
-so their payment history stays. A bill split in a way a file cannot describe
-(fixed amounts, or more than two people) keeps its split. A housing costs file
-from an earlier version imports as it is.
+so their payment history stays. A file from an earlier version with
+shared_with and split_percent columns still imports: those are left out and
+each bill comes in at its full amount. So does a housing costs file.
 
 **Upgrading from a version with a Housing costs page**: on first start the
 housing items go and the bills they had already made stay, unchanged. Each
@@ -262,25 +264,26 @@ first (see [Backup and restore](#backup-and-restore)).
 
 ## Reminders with ntfy
 
-Fiscus can push reminders to your phone through your own
-[ntfy](https://docs.ntfy.sh) server. Off by default, set per person, and no
-third-party push service is involved.
+Fiscus can push reminders to your phone through [ntfy](https://docs.ntfy.sh):
+the public ntfy.sh, or a server of your own. Off by default.
 
-1. Run ntfy on your homelab (for example `binwiederhier/ntfy` in Dockge) and
-   install the ntfy app on your phone, pointed at your server.
-2. Subscribe the app to a topic, for example `fiscus-alex`. Use an access
-   token if your server requires one.
-3. In Fiscus: Settings, Reminders. Tick "Send me reminders", enter the server
-   (`http://192.168.1.20:8080` or `https://ntfy.home.example.com`), the topic
-   and the token, choose what to hear about, Save, then "Send a test".
+1. Install the ntfy app on your phone and subscribe to a topic. On ntfy.sh
+   anyone who knows a topic can read it, so pick one that is hard to guess
+   (`fiscus-alex-7f3k9q`), or reserve it with an account and use an access
+   token. A server of your own (for example `binwiederhier/ntfy` in Dockge)
+   works the same way.
+2. In Fiscus: Settings, Reminders. Tick "Send me reminders", enter the server
+   (`https://ntfy.sh`, `http://192.168.1.20:8080` or
+   `https://ntfy.home.example.com`), the topic and any token, choose what to
+   hear about, Save, then "Send a test". A topic's address as ntfy shows it
+   (`ntfy.sh/fiscus-alex-7f3k9q`) works in the server box too.
 
 You get one push per bill due within your chosen number of days, one per
 overdue bill, one per low-balance warning, and one per payday that passed
 without a payslip (the day after, for the last week's paydays), each once, at
 the hour you choose. Messages contain the bill or employer name, date and
-amount only. Private LAN
-addresses are allowed; the container's own loopback and link-local addresses
-are not.
+amount only. Public servers and private LAN addresses are allowed; the
+container's own loopback and link-local addresses are not.
 
 ## Square
 
@@ -317,9 +320,9 @@ time, `FISCUS_BACKUP_HOUR`) and kept for 14 days
 (`FISCUS_BACKUP_RETENTION_DAYS`). The copy uses SQLite's online backup, so it
 is consistent while Fiscus runs.
 
-**Download one** (admin): Admin, Backups, "Download a backup now". Keep a copy
-off the homelab: it holds every user's finances, so store it like you would
-a bank statement.
+**Download one**: Settings, Backups, "Download a backup now". Keep a copy off
+the homelab: it holds all your finances, so store it like you would a bank
+statement.
 
 **Back up the volume** with your usual tool if you prefer; `/data` is
 everything (`fiscus.db`, `backups/`, `uploads/`).

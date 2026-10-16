@@ -64,7 +64,6 @@ def create_user(
         is_admin=is_admin,
         is_active=True,
         user_handle=user_handle or secrets.token_bytes(32),
-        password_enabled=False,
         created_at=utcnow_naive(clock),
         data_version=0,
     )
@@ -83,22 +82,6 @@ def passkey_count(db: Session, user: User) -> int:
             select(func.count())
             .select_from(WebAuthnCredential)
             .where(WebAuthnCredential.user_id == user.id)
-        )
-        or 0
-    )
-
-
-def has_other_login(user: User) -> bool:
-    """A password counts only when the admin enabled it and the user set one."""
-    return bool(user.password_enabled and user.password_hash)
-
-
-def active_admin_count(db: Session) -> int:
-    return int(
-        db.scalar(
-            select(func.count())
-            .select_from(User)
-            .where(User.is_admin.is_(True), User.is_active.is_(True))
         )
         or 0
     )

@@ -1,21 +1,23 @@
-"""Personal settings: passkeys, password, forecast preferences and ntfy."""
+"""Personal settings: passkeys, forecast preferences, ntfy and, for the admin, backups."""
 
 from __future__ import annotations
 
+import shutil
+
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from starlette.background import BackgroundTask
 
 from fiscus.models import Account, User, WebAuthnCredential
 from fiscus.money import MoneyError, parse_cents
 from fiscus.routes.auth import _json, limit
-from fiscus.security import passwords
-from fiscus.services import audit, ntfy
+from fiscus.services import audit, backup, ntfy
 from fiscus.services import auth as svc
 from fiscus.services.access import in_range, owned
-from fiscus.services.users import has_other_login, passkey_count, settings_for
-from fiscus.web import client_ip, ctx, current_user, get_db, redirect, render
+from fiscus.services.users import passkey_count, settings_for
+from fiscus.web import admin_user, client_ip, ctx, current_user, get_db, redirect, render
 
 router = APIRouter()
 
@@ -37,16 +39,18 @@ def _page(
         .all()
     )
     accounts = db.execute(owned(Account, user).order_by(Account.name)).scalars().all()
+    c = ctx(request)
     return render(
         request,
         'settings.html',
         {
             'creds': creds,
-            'can_revoke_last': has_other_login(user),
+            'backups': backup.list_backups(c.settings) if user.is_admin else [],
+            'retention': c.settings.backup_retention_days,
             'prefs': settings_for(db, user),
             'accounts': accounts,
             'recovered': request.query_params.get('recovered') == '1',
-            'passkeys_allowed': ctx(request).settings.passkeys_allowed,
+            'passkeys_allowed': c.settings.passkeys_allowed,
             **(extra or {}),
         },
         status_code=status_code,
@@ -154,7 +158,7 @@ def revoke_passkey(
     cred = _own_cred(db, user, cred_id)
     if cred is None:
         return _page(request, db, user, {'error': 'Passkey not found'}, 404)
-    if passkey_count(db, user) <= 1 and not has_other_login(user):
+    if passkey_count(db, user) <= 1:
         return _page(
             request,
             db,
@@ -170,42 +174,6 @@ def revoke_passkey(
         db, c.clock, 'passkey.revoked', actor_id=user.id, ip=client_ip(request), name=cred.name
     )
     return redirect('/settings', flash='Passkey revoked', request=request)
-
-
-@router.post('/settings/password')
-def set_password(
-    request: Request,
-    password: str = Form(...),
-    confirm: str = Form(...),
-    user: User = Depends(current_user),
-    db: Session = Depends(get_db),
-) -> Response:
-    c = ctx(request)
-    if not user.password_enabled:
-        return _page(request, db, user, {'error': 'Password sign-in is not enabled for you.'}, 403)
-    if password != confirm:
-        return _page(request, db, user, {'pw_error': 'The two passwords do not match.'}, 400)
-    try:
-        passwords.check_policy(password, user.username)
-    except passwords.PasswordPolicyError as exc:
-        return _page(request, db, user, {'pw_error': str(exc)}, 400)
-    user.password_hash = passwords.hash_password(password)
-    audit.record(db, c.clock, 'password.set', actor_id=user.id, ip=client_ip(request))
-    return redirect('/settings', flash='Password saved', request=request)
-
-
-@router.post('/settings/password/clear')
-def clear_password(
-    request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
-) -> Response:
-    c = ctx(request)
-    if passkey_count(db, user) == 0:
-        return _page(
-            request, db, user, {'pw_error': 'Add a passkey before removing your password.'}, 400
-        )
-    user.password_hash = None
-    audit.record(db, c.clock, 'password.cleared', actor_id=user.id, ip=client_ip(request))
-    return redirect('/settings', flash='Password removed', request=request)
 
 
 @router.post('/settings/forecast')
@@ -248,15 +216,15 @@ def ntfy_prefs(
     db: Session = Depends(get_db),
 ) -> Response:
     prefs = settings_for(db, user)
-    url = url.strip()
+    url, topic = ntfy.normalise(url, topic)
     if enabled or url:
         try:
             ntfy.validate_target(url, topic)
         except ntfy.NtfyError as exc:
             return _page(request, db, user, {'ntfy_error': str(exc)}, 400)
     prefs.ntfy_enabled = enabled
-    prefs.ntfy_url = url.rstrip('/')
-    prefs.ntfy_topic = topic.strip()
+    prefs.ntfy_url = url
+    prefs.ntfy_topic = topic
     if token.strip():
         prefs.ntfy_token = token.strip()
     prefs.ntfy_bill_days = min(30, max(0, bill_days))
@@ -286,3 +254,34 @@ def ntfy_test(
     except ntfy.NtfyError as exc:
         return _page(request, db, user, {'ntfy_error': str(exc)}, 400)
     return redirect('/settings', flash='Test notification sent', request=request)
+
+
+# Backups: the whole database, so the admin's only (others get a 404).
+
+
+@router.post('/settings/backups/run')
+def run_backup(
+    request: Request, admin: User = Depends(admin_user), db: Session = Depends(get_db)
+) -> Response:
+    c = ctx(request)
+    path = backup.nightly(c.settings, c.engine, c.clock)
+    audit.record(
+        db, c.clock, 'backup.created', actor_id=admin.id, ip=client_ip(request), file=path.name
+    )
+    return redirect('/settings#backups', flash=f'Backup written: {path.name}', request=request)
+
+
+@router.post('/settings/backups/download')
+def download_backup(
+    request: Request, admin: User = Depends(admin_user), db: Session = Depends(get_db)
+) -> Response:
+    c = ctx(request)
+    path = backup.snapshot_to_temp(c.settings, c.engine, c.clock)
+    audit.record(db, c.clock, 'backup.downloaded', actor_id=admin.id, ip=client_ip(request))
+    db.commit()
+    return FileResponse(
+        path,
+        media_type='application/vnd.sqlite3',
+        filename=path.name,
+        background=BackgroundTask(shutil.rmtree, path.parent, ignore_errors=True),
+    )

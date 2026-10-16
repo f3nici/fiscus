@@ -7,7 +7,10 @@
       <h1>{{ loan.name }}</h1>
       <span class="muted text-sm">{{ loan.balance_cents | money }} owing as at {{ loan.balance_date | d }} · {{ s.rate }}% · {{ (loan.term_months // 12) }} years from {{ loan.start_date | d }}</span>
     </div>
-    <a class="btn" href="/loans/{{ loan.id }}/edit">Edit</a>
+    <div class="row">
+      <a class="btn" href="/loans/{{ loan.id }}/edit">Edit</a>
+      <a class="btn" href="/loans/new">Add loan</a>
+    </div>
   </div>
   <div class="grid grid-2 grid-4">
     <div class="card stat"><div class="label">Repayment</div><div class="value">{{ s.repayment_cents | money }}</div><span class="text-sm muted">{{ loan.repayment_frequency }}{{ ' (set by you)' if loan.repayment_override_cents else '' }}</span></div>

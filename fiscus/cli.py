@@ -5,6 +5,7 @@
     python -m fiscus.cli backup                     write a backup now
     python -m fiscus.cli restore <file>             replace the database (app stopped)
     python -m fiscus.cli users                      list accounts
+    python -m fiscus.cli remove-user <username>     delete a person and all their data
 
 Every command that changes something writes to the audit log.
 """
@@ -15,7 +16,8 @@ import argparse
 import sys
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
+from sqlalchemy.orm import Session
 
 from fiscus.clock import Clock
 from fiscus.config import load_settings
@@ -35,6 +37,9 @@ def main(argv: list[str] | None = None) -> int:
     res.add_argument('file', type=Path)
     res.add_argument('--yes', action='store_true', help='do not ask for confirmation')
     sub.add_parser('users', help='list users')
+    rem = sub.add_parser('remove-user', help='delete a person and everything they own')
+    rem.add_argument('username')
+    rem.add_argument('--yes', action='store_true', help='do not ask for confirmation')
     args = parser.parse_args(argv)
 
     settings = load_settings()
@@ -76,7 +81,6 @@ def main(argv: list[str] | None = None) -> int:
                     for f, on in (
                         ('admin', u.is_admin),
                         ('disabled', not u.is_active),
-                        ('password', u.password_enabled),
                     )
                     if on
                 )
@@ -92,6 +96,8 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
             print(link.url)
             return 0
+        if args.cmd == 'remove-user':
+            return _remove_user(db, clock, args.username, confirmed=args.yes)
         if args.cmd == 'recovery-link':
             user = db.execute(
                 select(User).where(User.username == args.username.strip().lower())
@@ -111,6 +117,42 @@ def main(argv: list[str] | None = None) -> int:
             print(link.url)
             return 0
     return 2
+
+
+def _remove_user(db: Session, clock: Clock, username: str, *, confirmed: bool) -> int:
+    """Delete a person and, through the database's cascades, every row they own.
+    Fiscus is kept by one person now (D52); this clears out anyone else."""
+    name = username.strip().lower()
+    users = db.execute(select(User)).scalars().all()
+    user = next((u for u in users if u.username == name), None)
+    if user is None:
+        print(f'No user called {username}', file=sys.stderr)
+        return 1
+    if len(users) == 1:
+        print(f'{user.username} is the only person here. Nothing removed.', file=sys.stderr)
+        return 1
+    if user.is_admin and not any(u.is_admin and u.is_active for u in users if u is not user):
+        print(
+            f'{user.username} is the only admin, who keeps the backups. Nothing removed.',
+            file=sys.stderr,
+        )
+        return 1
+    if not confirmed:
+        answer = input(
+            f'Delete {user.username} and all their accounts, bills, pay and budgets? '
+            'Type their username: '
+        )
+        if answer.strip().lower() != user.username:
+            print('Cancelled.')
+            return 1
+    uid, uname = user.id, user.username
+    db.expunge(user)
+    # A plain DELETE, so SQLite's ON DELETE CASCADE takes every owned row.
+    db.execute(delete(User).where(User.id == uid))
+    audit.record(db, clock, 'user.removed', subject_id=uid, via='cli', username=uname)
+    db.commit()
+    print(f'Removed {uname} and everything they owned.')
+    return 0
 
 
 if __name__ == '__main__':

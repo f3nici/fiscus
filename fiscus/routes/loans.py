@@ -21,10 +21,11 @@ def list_loans(
     request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
 ) -> Response:
     c = ctx(request)
-    rows = [
-        loans.summarise(db, user, loan, c.clock.today())
-        for loan in db.execute(owned(Loan, user).order_by(Loan.name)).scalars()
-    ]
+    found = db.execute(owned(Loan, user).order_by(Loan.name)).scalars().all()
+    # One loan: straight into it.
+    if len(found) == 1:
+        return redirect(f'/loans/{found[0].id}', request=request)
+    rows = [loans.summarise(db, user, loan, c.clock.today()) for loan in found]
     return render(request, 'loans/list.html', {'rows': rows})
 
 

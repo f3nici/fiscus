@@ -11,24 +11,29 @@
   and are deleted on first use, success or not.
 - **Origin**: passkeys are refused (503) unless `FISCUS_ORIGIN` is HTTPS or
   localhost. The verifier checks origin and RP ID on every ceremony.
-- **Setup links** (bootstrap, onboarding, recovery): 32 random bytes, only the
-  SHA-256 stored, single use, expire (`FISCUS_SETUP_LINK_HOURS`, bootstrap
-  `FISCUS_BOOTSTRAP_HOURS`), revoked by a newer link or by disabling the
-  person. The bootstrap link exists only while there are no users and is
-  replaced on each restart.
-- **Password fallback**: off by default; an admin allows it per person;
-  argon2id; 12 characters minimum; timing equalised for unknown users.
-- **Last passkey**: cannot be revoked unless a password is active.
+- **Setup links** (bootstrap, recovery): 32 random bytes, only the SHA-256
+  stored, single use, expire (`FISCUS_SETUP_LINK_HOURS`, bootstrap
+  `FISCUS_BOOTSTRAP_HOURS`), revoked by a newer link for the same person. The
+  bootstrap link exists only while there are no users and is replaced on each
+  restart. Since D52 nothing in the app issues one: bootstrap prints itself,
+  and recovery is the CLI.
+- **No password sign-in** (D52): passkeys are the only way in, and `users`
+  has no password columns (migration 0026). That migration rebuilds `users`
+  and refuses to run with foreign keys on, which would cascade the rebuild's
+  drop into every owned table.
+- **Last passkey**: cannot be revoked.
 - **Break-glass**: `python -m fiscus.cli recovery-link <user>` inside the
-  container, audited.
+  container, audited. `remove-user` deletes a person and everything they own
+  (database cascades), refuses the last person and the last admin, and is
+  audited.
 
 ## Sessions and requests
 
 - Server-side sessions; the cookie holds a random token, the table its
   SHA-256. `__Host-` prefixed, `Secure`, `HttpOnly`, `SameSite=Lax`. Idle
   expiry 30 days (sliding), absolute 90.
-- Disabling a user deletes their sessions; every request re-checks the user is
-  active.
+- Every request re-checks the user is active (no screen disables anyone since
+  D52; a recovery link from the CLI re-enables).
 - CSRF: a `__Host-` cookie, `SameSite=Strict`, compared in constant time with
   the form field or header, plus an `Origin`/`Referer` check, on every unsafe
   request.
@@ -64,9 +69,11 @@
   with redirects off. The access token is write-only in the UI, stored in the
   database like the ntfy token (so it is in backups), and setting or removing
   it is audited. Disconnecting forgets it.
-- ntfy: off by default; refuses loopback, link-local and unspecified targets,
-  and connects to the address it checked (a name is resolved once, then the
-  request goes to that address with the name as Host and for TLS), so a name
-  cannot be rebound to the container between the check and the send.
+- ntfy: off by default; public servers (ntfy.sh) and private LAN addresses
+  allowed; refuses loopback, link-local and unspecified targets, and connects
+  to the address it checked (a name is resolved once, then the request goes
+  to that address with the name as Host and for TLS), so a name cannot be
+  rebound to the container between the check and the send.
   Messages carry bill and employer names, dates and amounts only.
-- Backups contain everyone's data: admin only, audited.
+- Backups contain every row in the database: the admin's only (Settings,
+  Backups; 404 for anyone else), audited.

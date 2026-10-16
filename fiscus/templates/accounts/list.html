@@ -1,24 +1,6 @@
 {% extends "base.html" %}
 {% from "_macros.html" import money_cell %}
-{% block title %}Accounts  {% set active = accounts | rejectattr('archived') | list %}
-  {% if active %}
-    <form class="card mt" method="post" action="/accounts/balances">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <h2>Update balances</h2>
-      <p class="muted text-sm">Type in what each account is at today, from your banking app. Credit cards owing money are negative. Until you next do, bills you mark paid, payslips you add and spending you take off the budget move them.</p>
-      <div class="form-grid">
-        {% for a in active %}
-          <div class="field">
-            <label class="label" for="balance_{{ a.id }}">{{ a.name }}</label>
-            <input class="input" id="balance_{{ a.id }}" name="balance_{{ a.id }}" inputmode="decimal" value="{{ balances.get(a.id, 0) | money_plain }}">
-          </div>
-        {% endfor %}
-      </div>
-      <button class="btn btn-primary" type="submit">Save balances</button>
-    </form>
-  {% endif %}
-  <p class="muted text-sm mt">One account can hold several things: a trip, general savings, an emergency fund. Keep the account's real balance here and split it into <a href="/goals">goals</a>; what is left over shows as unallocated.</p>
-{% endblock %}
+{% block title %}Accounts{% endblock %}
 {% block content %}
   <div class="page-head">
     <h1>Accounts</h1>
@@ -36,7 +18,7 @@
               <td>
                 <a href="/accounts/{{ a.id }}">{{ a.name }}</a>
                 {% if a.is_set_aside %}<span class="pill">Tax set-aside</span>{% endif %}
-                {% if a.loan_id and loans.get(a.loan_id) %}<span class="pill pill-shared">Offsets {{ loans[a.loan_id].name }}</span>{% endif %}
+                {% if a.loan_id and loans.get(a.loan_id) %}<span class="pill pill-teal">Offsets {{ loans[a.loan_id].name }}</span>{% endif %}
                 {% if a.archived %}<span class="pill">Archived</span>{% endif %}
                 {% set split = splits.get(a.id) %}
                 {% if split %}
@@ -77,4 +59,5 @@
       <button class="btn btn-primary" type="submit">Save balances</button>
     </form>
   {% endif %}
+  <p class="muted text-sm mt">One account can hold several things: a trip, general savings, an emergency fund. Keep the account's real balance here and split it into <a href="/goals">goals</a>; what is left over shows as unallocated.</p>
 {% endblock %}

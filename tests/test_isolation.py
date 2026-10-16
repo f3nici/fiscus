@@ -45,7 +45,6 @@ OWNED_TABLES = [
     'imports',
     'import_mappings',
     'bills',
-    'bill_shares',
     'bill_payments',
     'pay_schedules',
     'payslips',
@@ -245,7 +244,6 @@ WRITES: list[tuple[str, dict[str, Any]]] = [
         {'name': 'x', 'amount': '1', 'frequency': 'monthly', 'next_due': '2026-10-01'},
     ),
     ('/bills/{bill}/delete', {}),
-    ('/bills/{bill}/my-share', {'account_id': '0'}),
     ('/bills/{bill}/occurrence/2026-10-15/paid', {}),
     ('/bills/{bill}/occurrence/2026-10-15/unpaid', {}),
     (
@@ -366,7 +364,8 @@ def test_b_lists_show_none_of_a(seeded: tuple[CsrfClient, CsrfClient, Ids, User,
         '$2,500',
     ]
     for page in pages:
-        assert a.get(page).status_code == 200
+        # A's one loan opens straight into it.
+        assert a.get(page, follow_redirects=True).status_code == 200
         body = b.get(page).text
         for m in markers:
             assert m not in body, f"{m!r} from A appears on B's {page}"
@@ -430,7 +429,7 @@ def test_b_cannot_add_a_to_their_rows(
         == 404
     )
     with env.db() as db:
-        assert db.execute(select(Bill).where(Bill.owner_id == blake.id)).first() is None
+        assert db.execute(select(Bill).where(Bill.user_id == blake.id)).first() is None
         assert (
             db.execute(select(BudgetSpend).where(BudgetSpend.user_id == blake.id)).first() is None
         )
@@ -514,3 +513,69 @@ def test_adjustment_from_another_scenario_cannot_be_deleted_through_mine(
         sc = db.get(Scenario, ids.scenario)
         assert sc is not None and len(sc.adjustments) == 1
         assert db.get(Account, ids.account) is not None
+
+
+def own_rows(env: Env, user_id: int) -> str:
+    """A digest of one person's rows in every owned table."""
+    out = {}
+    with env.db() as db:
+        for table in OWNED_TABLES:
+            rows = db.execute(
+                text(f'SELECT * FROM {table} WHERE user_id = :u ORDER BY 1'),  # noqa: S608
+                {'u': user_id},
+            ).all()
+            out[table] = [list(map(str, r)) for r in rows]
+    return hashlib.sha256(json.dumps(out, sort_keys=True).encode()).hexdigest()
+
+
+def test_removing_a_person_takes_only_their_rows(
+    env: Env,
+    seeded: tuple[CsrfClient, CsrfClient, Ids, User, User],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The remove-user command clears out someone else, and nothing of the person
+    who keeps Fiscus (D52)."""
+    from fiscus import cli
+
+    _a, b, _ids, alex, blake = seeded
+    b_acct = make_account(b, 'B account')
+    create_bill(b, name='B power', account_id=str(b_acct))
+    with env.db() as db:
+        stored = db.get(User, alex.id)
+        assert stored is not None
+        stored.is_admin = True
+        db.commit()
+    before = own_rows(env, alex.id)
+    for k, v in {
+        'FISCUS_DATA_DIR': str(env.data_dir),
+        'FISCUS_ORIGIN': 'https://fiscus.test',
+        'FISCUS_BASE_URL': 'https://fiscus.test',
+        'FISCUS_SECRET_KEY': 'x' * 64,
+    }.items():
+        monkeypatch.setenv(k, v)
+    # The only admin, an unknown name and a wrong confirmation remove nothing.
+    assert cli.main(['remove-user', 'alex', '--yes']) == 1
+    assert cli.main(['remove-user', 'nobody', '--yes']) == 1
+    monkeypatch.setattr('builtins.input', lambda _prompt: 'alex')
+    assert cli.main(['remove-user', 'blake']) == 1
+    monkeypatch.setattr('builtins.input', lambda _prompt: 'blake')
+    assert cli.main(['remove-user', 'blake']) == 0
+    assert 'Removed blake' in capsys.readouterr().out
+    with env.db() as db:
+        assert db.get(User, blake.id) is None
+        for table in OWNED_TABLES:
+            left = db.execute(
+                text(f'SELECT count(*) FROM {table} WHERE user_id = :u'),  # noqa: S608
+                {'u': blake.id},
+            ).scalar_one()
+            assert left == 0, table
+        assert (
+            db.execute(
+                text("SELECT count(*) FROM audit_log WHERE action = 'user.removed'")
+            ).scalar_one()
+            == 1
+        )
+    assert own_rows(env, alex.id) == before
+    # The one left cannot be removed.
+    assert cli.main(['remove-user', 'alex', '--yes']) == 1

@@ -9,10 +9,10 @@ user's `data_version` (the forecast cache key).
 
 | Table | Notes |
 | --- | --- |
-| users | username, display name, admin and active flags, random `user_handle` for WebAuthn, `password_enabled` (admin-controlled) and argon2id hash, `data_version` |
+| users | username, display name, admin and active flags, random `user_handle` for WebAuthn, `data_version`. No password columns: sign-in is passkeys only (D52), and migration 0026 dropped them |
 | webauthn_credentials | credential id, COSE public key, sign count, transports, name, backed-up flag, created and last used |
 | sessions | SHA-256 of the cookie token, idle and absolute expiry, sign-in method, IP, user agent |
-| setup_links | SHA-256 of the token, purpose (`bootstrap`, `onboard`, `recovery`), user, expiry, used and revoked times |
+| setup_links | SHA-256 of the token, purpose (`bootstrap`, `recovery`; `onboard` from before D52), user, expiry, used and revoked times |
 | auth_challenges | WebAuthn challenge by opaque handle, purpose, five-minute expiry, deleted on first use |
 | audit_log | append-only (triggers refuse UPDATE and DELETE) |
 | app_state | small key/value for instance state |
@@ -37,9 +37,8 @@ user's `data_version` (the forecast cache key).
 
 | Table | Notes |
 | --- | --- |
-| bills | owner, amount, frequency, next due (the recurrence anchor), end date, split mode, matching tolerance, window and hint |
-| bill_shares (owned) | one per participant, the owner included: split value (basis points or cents), the participant's own account and category |
-| bill_payments (owned) | one participant's occurrence marked paid, by hand or matched to a Square transaction; unique per bill, user and due date, and per transaction |
+| bills (owned) | amount, frequency, next due (the recurrence anchor), end date, the account it is paid from and its category (both optional), matching tolerance, window and hint. Not shared since D52: migration 0025 gave each person their share of a shared bill as a bill of their own, and dropped `bill_shares` |
+| bill_payments (owned) | an occurrence marked paid, by hand or matched to a Square transaction; unique per bill, user and due date, and per transaction |
 
 ## Income, loans, planning
 

@@ -1,17 +1,16 @@
-"""Bills, shares and payment matching."""
+"""Bills and payment matching."""
 
 from __future__ import annotations
 
 import csv
 import hashlib
 import io
-import re
 from datetime import date, datetime
 
 from sqlalchemy import func, select
 
 from fiscus.clock import utcnow_naive
-from fiscus.models import Account, Bill, BillPayment, Transaction, User
+from fiscus.models import Account, Bill, BillPayment, Category, Transaction, User
 from fiscus.money import parse_cents
 from fiscus.services import bills, ledger
 from tests.conftest import CsrfClient, Env
@@ -83,7 +82,6 @@ def create_bill(client: CsrfClient, **fields: str | list[str]) -> int:
         'amount': '121.40',
         'frequency': 'monthly',
         'next_due': '2026-09-15',
-        'split_mode': 'equal',
     }
     data.update(fields)
     resp = client.post('/bills', data=data)
@@ -123,85 +121,58 @@ def test_bill_states_overdue_due_soon_paid(env: Env) -> None:
     assert client.get(f'/bills/{bill}/occurrence/2026-10-21').status_code == 404
 
 
-def test_shared_bill_each_person_sees_their_share(env: Env) -> None:
+def test_a_bill_is_its_owners_alone(env: Env) -> None:
+    """Bills are not shared (D52): the form has no one to share with, and
+    naming someone the old way changes nothing for them."""
     alex = env.user('alex')
     sam = env.user('sam')
-    a = env.login(alex)
-    s = env.login(sam)
+    a, s = env.login(alex), env.login(sam)
+    acct = make_account(a)
+    with env.db() as db:
+        utilities = db.execute(
+            select(Category.id).where(Category.user_id == alex.id, Category.name == 'Utilities')
+        ).scalar_one()
+    form = a.get('/bills/new').text
+    assert 'Shared with' not in form and 'split' not in form.lower()
     bill = create_bill(
         a,
         name='Internet',
         amount='90',
         next_due='2026-10-10',
+        account_id=str(acct),
+        category_id=str(utilities),
         split_mode='percent',
         participants=[str(sam.id)],
         **{f'split_{alex.id}': '60', f'split_{sam.id}': '40'},
     )
-    alex_page = a.get('/bills').text
-    sam_page = s.get('/bills').text
-    assert '$54.00' in alex_page and '$36.00' in sam_page
-    assert 'Shared by Alex' in sam_page
-    # Sam sees it on the calendar at Sam's share.
-    cal = s.get('/calendar?view=agenda&date=2026-10-01').text
-    assert 'Internet' in cal and '-$36.00' in cal
-    # Sam cannot edit it, but can pay their own share.
-    assert s.get(f'/bills/{bill}/edit').status_code == 404
-    assert (
-        s.post(
-            f'/bills/{bill}',
-            data={'name': 'x', 'amount': '1', 'frequency': 'monthly', 'next_due': '2026-10-10'},
-        ).status_code
-        == 404
-    )
-    assert s.post(f'/bills/{bill}/occurrence/2026-10-10/paid').status_code == 303
-    with env.db() as db:
-        pays = db.execute(select(BillPayment)).scalars().all()
-        assert [(p.user_id, p.due_date) for p in pays] == [(sam.id, date(2026, 10, 10))]
-    # Alex's occurrence is still unpaid.
-    assert 'Paid' not in a.get(f'/bills/{bill}/occurrence/2026-10-10').text.split('Your share')[0]
-
-
-def test_split_must_add_up(env: Env) -> None:
-    alex = env.user('alex')
-    sam = env.user('sam')
-    a = env.login(alex)
-    resp = a.post(
+    page = a.get(f'/bills/{bill}').text
+    assert 'Everyday' in page and 'Utilities' in page and '$90.00' in page
+    assert 'Who pays' not in page and 'Your share' not in page
+    listed = a.get('/bills').text
+    assert 'Your share' not in listed and 'Shared' not in listed and '$90.00' in listed
+    # Sam neither sees it nor can reach it.
+    assert 'Internet' not in s.get('/bills').text
+    assert s.get(f'/bills/{bill}').status_code == 404
+    assert s.post(f'/bills/{bill}/occurrence/2026-10-10/paid').status_code == 404
+    # The edit form keeps its account and category.
+    edit = a.get(f'/bills/{bill}/edit').text
+    assert f'<option value="{acct}" selected>' in edit
+    assert f'<option value="{utilities}" selected>' in edit
+    # So does a new bill's form sent back with a mistake in it.
+    wrong = a.post(
         '/bills',
         data={
-            'name': 'x',
-            'amount': '100',
+            'name': 'Water',
+            'amount': '',
             'frequency': 'monthly',
-            'next_due': '2026-10-01',
-            'split_mode': 'percent',
-            'participants': [str(sam.id)],
-            f'split_{alex.id}': '50',
-            f'split_{sam.id}': '40',
+            'next_due': '2026-10-10',
+            'account_id': str(acct),
+            'category_id': str(utilities),
         },
     )
-    assert resp.status_code == 400 and 'add up to 100' in resp.text
-    assert count(env, Bill) == 0
-
-
-def test_participant_match_uses_their_share(env: Env) -> None:
-    alex = env.user('alex')
-    sam = env.user('sam')
-    a, s = env.login(alex), env.login(sam)
-    create_bill(a, name='Water', amount='200', next_due='2026-09-10', participants=[str(sam.id)])
-    sam_acct = make_account(s, 'Sam everyday')
-    # Sam pays Alex $100 for their half.
-    add_transactions(s, sam_acct, '11/09/2026,"-100.00","TRANSFER TO ALEX WATER"\n')
-    with env.db() as db:
-        pay = db.execute(select(BillPayment)).scalar_one()
-        assert pay.user_id == sam.id
-
-
-def test_bill_page_lists_who_pays(env: Env) -> None:
-    alex = env.user('alex')
-    sam = env.user('sam')
-    a = env.login(alex)
-    bill = create_bill(a, amount='100.01', participants=[str(sam.id)])
-    page = a.get(f'/bills/{bill}').text
-    assert re.search(r'Alex.*\$50\.01', page, re.S) and re.search(r'Sam.*\$50\.00', page, re.S)
+    assert wrong.status_code == 400
+    assert f'<option value="{acct}" selected>' in wrong.text
+    assert f'<option value="{utilities}" selected>' in wrong.text
 
 
 def test_deleting_an_account_removes_its_transactions(env: Env) -> None:

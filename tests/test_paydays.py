@@ -522,3 +522,53 @@ def test_a_varying_quarterly_pay_averages_over_a_year() -> None:
     assert expected_pay(date(2025, 10, 15), 'quarterly', deposits, TODAY, 1_00) == 3000_00
     # Weekly still looks back thirteen weeks only.
     assert expected_pay(date(2026, 7, 15), 'weekly', deposits, TODAY, 1_00) == 3000_00 // 12
+
+
+def test_payslips_list_ten_a_page(env: Env) -> None:
+    alex = env.user('alex')
+    a = env.login(alex)
+    with env.db() as db:
+        # 23 weekly payslips back from today: 14 this financial year, 9 last.
+        for i in range(23):
+            day = date.fromordinal(TODAY.toordinal() - 7 * i)
+            db.add(
+                Payslip(
+                    user_id=alex.id,
+                    date=day,
+                    gross_cents=100_00,
+                    tax_withheld_cents=20_00,
+                    net_cents=80_00,
+                    source=f'Slip {i:02d}',
+                )
+            )
+        db.commit()
+    first = a.get('/pay').text
+    assert first.count('>Slip ') == 10
+    assert 'Slip 00' in first and 'Slip 09' in first and 'Slip 10' not in first
+    assert 'Page 1 of 3' in first and 'href="/pay?page=2#payslips"' in first
+    assert '>Newer<' not in first
+    # This financial year counts every payslip in it, not just this page's.
+    assert 'gross $1,400.00' in first
+    third = a.get('/pay?page=3').text
+    assert third.count('>Slip ') == 3 and 'Slip 22' in third and 'Page 3 of 3' in third
+    assert '>Older<' not in third and 'href="/pay?page=2#payslips"' in third
+    # Editing from a later page keeps the list on it.
+    assert '&amp;page=3#slip-form' in third
+    # Past the end or nonsense: the nearest page.
+    assert 'Page 3 of 3' in a.get('/pay?page=99').text
+    assert 'Page 1 of 3' in a.get('/pay?page=-4').text
+    assert 'Page 1 of 3' in a.get('/pay?page=x').text
+    # One dated in the next financial year is not in this one's total.
+    with env.db() as db:
+        db.add(
+            Payslip(
+                user_id=alex.id,
+                date=date(2027, 7, 2),
+                gross_cents=500_00,
+                tax_withheld_cents=0,
+                net_cents=500_00,
+                source='Next year',
+            )
+        )
+        db.commit()
+    assert 'gross $1,400.00' in a.get('/pay').text

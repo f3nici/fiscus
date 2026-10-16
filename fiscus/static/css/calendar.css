@@ -31,7 +31,6 @@
 
 /* Event types (CareLane: .ev-scheduled / .ev-in_progress / .ev-completed). */
 .fiscus-cal .ev-bill { background: rgba(37, 99, 235, 0.85); }
-.fiscus-cal .ev-shared { background: rgba(20, 184, 166, 0.9); }
 .fiscus-cal .ev-pay { background: rgba(34, 197, 94, 0.7); }
 .fiscus-cal .ev-loan { background: rgba(168, 85, 247, 0.75); }
 /* States. Paid fades, overdue gets a red edge, due soon an amber one. */

@@ -173,12 +173,12 @@ def build_input(db: Session, user: User, today: date, months: int) -> ForecastIn
     ):
         if occ.payment is not None:
             continue
-        target = acct_or_default(occ.share.account_id)
+        target = acct_or_default(occ.bill.account_id)
         if target is None:
             continue
         # Still unpaid from the past: assume it goes out tomorrow.
         when = occ.due if occ.due > today else first
-        flows.append(Flow(when, target, -occ.share_cents, 'bill', occ.bill.name, occ.bill.id))
+        flows.append(Flow(when, target, -occ.bill.amount_cents, 'bill', occ.bill.name, occ.bill.id))
 
     for tr in db.execute(owned(RecurringTransfer, user)).scalars():
         if tr.from_account_id not in valid or tr.to_account_id not in valid:
@@ -281,9 +281,9 @@ def still_to_spend(db: Session, user: User, today: date, days: int) -> list[int]
     for occ in bills.occurrences(
         db, user, today - timedelta(days=bills.OVERDUE_CARRY_DAYS), horizon, today
     ):
-        if occ.payment is None and occ.share.category_id is not None:
+        if occ.payment is None and occ.bill.category_id is not None:
             when = occ.due if occ.due > today else first
-            unpaid[occ.share.category_id].append((when, occ.due, occ.share_cents))
+            unpaid[occ.bill.category_id].append((when, occ.due, occ.bill.amount_cents))
     lines = [
         BudgetLine(
             left_cents=r.remaining_cents,

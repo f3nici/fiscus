@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import importlib.util
 from pathlib import Path
+from typing import Any
 
+import pytest
 from alembic import command
-from sqlalchemy import create_engine, inspect, text
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
+from sqlalchemy import create_engine, event, inspect, text
 
-from fiscus.db import alembic_config
+from fiscus.db import MIGRATIONS_DIR, alembic_config
 
 
 def test_housing_items_become_plain_bills_and_budgets_keep_their_totals(tmp_path: Path) -> None:
@@ -291,4 +296,251 @@ def test_transactions_rebuilt_for_spends_keep_their_links(tmp_path: Path) -> Non
     with engine.connect() as c:
         assert c.execute(text('SELECT id FROM transactions')).scalars().all() == [1]
         assert c.execute(text('SELECT bill_payment_id FROM transactions')).scalar_one() == 1
+    engine.dispose()
+
+
+def test_a_shared_bill_becomes_one_bill_each(tmp_path: Path) -> None:
+    """0025 (D52): each person keeps their share as a bill of their own, with
+    their account, category, payments and reminders, so nothing moves."""
+    url = f'sqlite:///{tmp_path / "fiscus.db"}'
+    cfg = alembic_config(url)
+    command.upgrade(cfg, '0024')
+    engine = create_engine(url)
+    with engine.begin() as c:
+        for uid, name in ((1, 'alex'), (2, 'sam'), (3, 'kim')):
+            c.execute(
+                text(
+                    'INSERT INTO users (id, username, display_name, is_admin, is_active,'
+                    ' user_handle, password_enabled, data_version, created_at)'
+                    " VALUES (:id, :n, :n, 0, 1, :h, 0, 0, '2026-01-01')"
+                ),
+                {'id': uid, 'n': name, 'h': bytes([uid]) * 64},
+            )
+            c.execute(
+                text(
+                    'INSERT INTO accounts (id, user_id, name, type, opening_balance_cents,'
+                    " is_set_aside, archived, created_at) VALUES (:id, :id, 'Everyday',"
+                    " 'transaction', 0, 0, 0, '2026-01-01')"
+                ),
+                {'id': uid},
+            )
+            c.execute(
+                text(
+                    'INSERT INTO categories (id, user_id, name, is_business, is_deductible,'
+                    " is_income, is_transfer, budget_position) VALUES (:id, :id, 'Utilities',"
+                    ' 0, 0, 0, 0, 0)'
+                ),
+                {'id': 10 + uid},
+            )
+        # Internet, 90 a month, 60/40 with sam; Power, alex's alone.
+        for bid, name, cents, mode in (
+            (1, 'Internet', 9000, 'percent'),
+            (2, 'Power', 20000, 'equal'),
+        ):
+            c.execute(
+                text(
+                    'INSERT INTO bills (id, owner_id, name, amount_cents, frequency, next_due,'
+                    ' split_mode, match_tolerance_pct, match_window_days, description_hint,'
+                    " active, created_at) VALUES (:id, 1, :n, :a, 'monthly', '2026-09-10',"
+                    " :m, 5, 3, 'hint', 1, '2026-01-01')"
+                ),
+                {'id': bid, 'n': name, 'a': cents, 'm': mode},
+            )
+        shares = [(1, 1, 6000, 1, 11), (1, 2, 4000, 2, 12), (2, 1, 0, 1, 11)]
+        for bid, uid, value, acct, cat in shares:
+            c.execute(
+                text(
+                    'INSERT INTO bill_shares (bill_id, user_id, split_value, account_id,'
+                    ' category_id) VALUES (:b, :u, :v, :a, :c)'
+                ),
+                {'b': bid, 'u': uid, 'v': value, 'a': acct, 'c': cat},
+            )
+        # Each paid September's; kim paid once before leaving the bill.
+        for pid, uid, cents in ((1, 1, -5400), (2, 2, -3600), (3, 3, -3000)):
+            c.execute(
+                text(
+                    'INSERT INTO bill_payments (id, bill_id, user_id, due_date, paid_on,'
+                    " created_at) VALUES (:id, 1, :u, '2026-09-10', '2026-09-10', '2026-09-10')"
+                ),
+                {'id': pid, 'u': uid},
+            )
+            c.execute(
+                text(
+                    'INSERT INTO transactions (id, user_id, account_id, date, amount_cents,'
+                    ' description, dedup_hash, created_at, bill_payment_id) VALUES'
+                    " (:id, :u, :u, '2026-09-10', :a, 'Internet', :h, '2026-09-10', :id)"
+                ),
+                {'id': pid, 'u': uid, 'a': cents, 'h': f'bill-payment:{pid}'},
+            )
+        c.execute(
+            text(
+                'INSERT INTO notification_log (user_id, kind, key, sent_at) VALUES'
+                " (2, 'overdue', '1:2026-09-10', '2026-09-11'),"
+                " (1, 'overdue', '1:2026-09-10', '2026-09-11')"
+            )
+        )
+
+    command.upgrade(cfg, '0025')
+    insp = inspect(engine)
+    assert 'bill_shares' not in insp.get_table_names()
+    cols = {col['name'] for col in insp.get_columns('bills')}
+    assert {'user_id', 'account_id', 'category_id'} <= cols
+    assert not {'owner_id', 'split_mode'} & cols
+    with engine.connect() as c:
+        rows = c.execute(
+            text(
+                'SELECT id, user_id, name, amount_cents, account_id, category_id,'
+                ' description_hint FROM bills ORDER BY id'
+            )
+        )
+        assert [tuple(r) for r in rows] == [
+            (1, 1, 'Internet', 5400, 1, 11, 'hint'),
+            (2, 1, 'Power', 20000, 1, 11, 'hint'),
+            (3, 2, 'Internet', 3600, 2, 12, 'hint'),
+        ]
+        payments = c.execute(text('SELECT id, bill_id, user_id FROM bill_payments ORDER BY id'))
+        assert [tuple(r) for r in payments] == [(1, 1, 1), (2, 3, 2)]
+        # Kim's payment is gone; the money it moved is not. Its transaction lets
+        # go of the payment's key, which the next payment may be given.
+        txns = c.execute(
+            text('SELECT id, amount_cents, bill_payment_id, dedup_hash FROM transactions')
+        )
+        assert sorted(tuple(r) for r in txns) == [
+            (1, -5400, 1, 'bill-payment:1'),
+            (2, -3600, 2, 'bill-payment:2'),
+            (3, -3000, None, 'bill-left:3'),
+        ]
+        keys = c.execute(text('SELECT user_id, key FROM notification_log ORDER BY user_id'))
+        assert [tuple(r) for r in keys] == [(1, '1:2026-09-10'), (2, '3:2026-09-10')]
+
+    command.downgrade(cfg, '0024')
+    with engine.connect() as c:
+        shares_back = c.execute(
+            text('SELECT bill_id, user_id, account_id, category_id FROM bill_shares ORDER BY 1')
+        )
+        assert [tuple(r) for r in shares_back] == [(1, 1, 1, 11), (2, 1, 1, 11), (3, 2, 2, 12)]
+        owners = c.execute(text('SELECT id, owner_id, split_mode FROM bills ORDER BY id'))
+        assert [tuple(r) for r in owners] == [(1, 1, 'equal'), (2, 1, 'equal'), (3, 2, 'equal')]
+    command.upgrade(cfg, 'head')
+    engine.dispose()
+
+
+def test_a_bill_whose_owner_holds_no_share_still_moves(tmp_path: Path) -> None:
+    """0025 with a bill only someone else held a share of: no crash, and the
+    whole amount is still covered between them."""
+    url = f'sqlite:///{tmp_path / "fiscus.db"}'
+    cfg = alembic_config(url)
+    command.upgrade(cfg, '0024')
+    engine = create_engine(url)
+    with engine.begin() as c:
+        for uid, name in ((1, 'alex'), (2, 'sam')):
+            c.execute(
+                text(
+                    'INSERT INTO users (id, username, display_name, is_admin, is_active,'
+                    ' user_handle, password_enabled, data_version, created_at)'
+                    " VALUES (:id, :n, :n, 0, 1, :h, 0, 0, '2026-01-01')"
+                ),
+                {'id': uid, 'n': name, 'h': bytes([uid]) * 64},
+            )
+        c.execute(
+            text(
+                'INSERT INTO bills (id, owner_id, name, amount_cents, frequency, next_due,'
+                ' split_mode, match_tolerance_pct, match_window_days, description_hint,'
+                " active, created_at) VALUES (1, 1, 'Water', 10001, 'monthly', '2026-09-10',"
+                " 'equal', 5, 3, '', 1, '2026-01-01')"
+            )
+        )
+        c.execute(text('INSERT INTO bill_shares (bill_id, user_id, split_value) VALUES (1, 2, 0)'))
+
+    command.upgrade(cfg, '0025')
+    with engine.connect() as c:
+        rows = c.execute(text('SELECT user_id, amount_cents FROM bills ORDER BY id')).all()
+        assert [r.user_id for r in rows] == [1, 2]
+        assert sum(r.amount_cents for r in rows) == 10001
+    engine.dispose()
+
+
+def test_the_password_columns_go_and_everything_owned_stays(tmp_path: Path) -> None:
+    """0026 rebuilds users without the password columns (D52). Every owned
+    table points at it with ON DELETE CASCADE, so nothing may go with it."""
+    url = f'sqlite:///{tmp_path / "fiscus.db"}'
+    cfg = alembic_config(url)
+    command.upgrade(cfg, '0025')
+    engine = create_engine(url)
+    with engine.begin() as c:
+        c.execute(
+            text(
+                'INSERT INTO users (id, username, display_name, is_admin, is_active,'
+                ' user_handle, password_enabled, password_hash, data_version, created_at)'
+                " VALUES (1, 'alex', 'Alex', 1, 1, :h, 1, 'x', 7, '2026-01-01')"
+            ),
+            {'h': bytes([1]) * 64},
+        )
+        c.execute(
+            text(
+                'INSERT INTO webauthn_credentials (user_id, credential_id, public_key,'
+                ' sign_count, transports, name, backed_up, created_at) VALUES (1, :cid, :pk,'
+                " 0, '[]', 'Phone', 0, '2026-01-01')"
+            ),
+            {'cid': b'c' * 16, 'pk': b'k' * 16},
+        )
+        c.execute(
+            text(
+                'INSERT INTO accounts (id, user_id, name, type, opening_balance_cents,'
+                " is_set_aside, archived, created_at) VALUES (1, 1, 'Everyday', 'transaction',"
+                " 100, 0, 0, '2026-01-01')"
+            )
+        )
+        c.execute(
+            text(
+                'INSERT INTO bills (id, user_id, name, amount_cents, frequency, next_due,'
+                ' match_tolerance_pct, match_window_days, description_hint, active,'
+                " created_at, account_id) VALUES (1, 1, 'Power', 12140, 'monthly',"
+                " '2026-09-15', 5, 3, '', 1, '2026-01-01', 1)"
+            )
+        )
+
+    command.upgrade(cfg, '0026')
+    cols = {col['name'] for col in inspect(engine).get_columns('users')}
+    assert not {'password_enabled', 'password_hash'} & cols
+    with engine.connect() as c:
+        user = c.execute(text('SELECT username, is_admin, data_version FROM users')).one()
+        assert tuple(user) == ('alex', 1, 7)
+        for table in ('webauthn_credentials', 'accounts', 'bills'):
+            assert c.execute(text(f'SELECT count(*) FROM {table}')).scalar_one() == 1  # noqa: S608
+        assert c.execute(text('PRAGMA foreign_key_check')).all() == []
+
+    command.downgrade(cfg, '0025')
+    with engine.connect() as c:
+        back = c.execute(text('SELECT password_enabled, password_hash FROM users')).one()
+        assert tuple(back) == (0, None)
+        assert c.execute(text('SELECT count(*) FROM bills')).scalar_one() == 1
+    command.upgrade(cfg, 'head')
+    engine.dispose()
+
+
+def test_the_users_rebuild_refuses_with_foreign_keys_on(tmp_path: Path) -> None:
+    """With foreign keys on, dropping users to rebuild it would cascade into
+    every owned table: 0026 refuses instead."""
+    url = f'sqlite:///{tmp_path / "fiscus.db"}'
+    command.upgrade(alembic_config(url), '0025')
+    path = MIGRATIONS_DIR / 'versions' / '0026_no_password_columns.py'
+    spec = importlib.util.spec_from_file_location('m0026', path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    engine = create_engine(url)
+
+    @event.listens_for(engine, 'connect')
+    def _on(dbapi_conn: Any, _record: Any) -> None:
+        dbapi_conn.execute('PRAGMA foreign_keys=ON')
+
+    with (
+        engine.connect() as conn,
+        Operations.context(MigrationContext.configure(conn)),
+        pytest.raises(RuntimeError, match='foreign keys on'),
+    ):
+        module.upgrade()
+    cols = {col['name'] for col in inspect(engine).get_columns('users')}
+    assert 'password_hash' in cols
     engine.dispose()

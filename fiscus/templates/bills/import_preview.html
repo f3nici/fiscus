@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Bill import preview{% endblock %}
 {% block content %}
-  {% macro line(i) %}{{ i.name }}: {{ i.amount_cents | money }} {{ i.frequency | replace('_', '-') }}{% if i.category %}, {{ i.category }}{% endif %}{% if i.due_date %}, due {{ i.due_date | d }}{% endif %}{% if i.keep_shares %}, shared (kept as it is){% elif i.shared_with %}, shared with {{ i.shared_with }} ({{ '%g' % (i.split_bp / 100) }}%){% endif %}{% endmacro %}
+  {% macro line(i) %}{{ i.name }}: {{ i.amount_cents | money }} {{ i.frequency | replace('_', '-') }}{% if i.category %}, {{ i.category }}{% endif %}{% if i.due_date %}, due {{ i.due_date | d }}{% endif %}{% endmacro %}
   <h1>Preview</h1>
   <p class="muted">Compared with the bills you own, by name. Nothing changes until you press Apply.</p>
   {% if errors %}

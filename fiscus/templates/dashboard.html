@@ -98,7 +98,7 @@
                 <span class="text-xs muted">{{ e.date | d('dm') }}</span>
               </span>
               {{ money_cell(e.amount_cents) }}
-              {% if e.kind in ('bill', 'shared') %}{{ status_pill(e.status) }}{% endif %}
+              {% if e.kind == 'bill' %}{{ status_pill(e.status) }}{% endif %}
             </li>
           {% endfor %}
         {% else %}

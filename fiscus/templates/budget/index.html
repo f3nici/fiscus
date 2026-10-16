@@ -274,6 +274,28 @@
                       <button class="btn btn-sm btn-danger" type="submit">Remove from budget</button>
                     </form>
                   {% endif %}
+                  {% set taken = spends.get(r.category.id, []) %}
+                  {% if taken %}
+                    <div class="mt-sm" id="spent-{{ r.category.id }}">
+                      <div class="label">Taken off this month</div>
+                      <ul class="list">
+                        {% for s in taken %}
+                          <li>
+                            <span class="grow">
+                              <span class="title">{{ s.note or 'Spent' }}</span>
+                              <span class="text-xs muted">{{ s.date | d('dm') }}{% if s.id in spent_from %} · {{ spent_from[s.id] }}{% endif %}</span>
+                            </span>
+                            <span class="num">{{ s.amount_cents | money }}</span>
+                            <form class="inline" method="post" action="/budget/spend/{{ s.id }}/delete" data-confirm="Remove this entry?">
+                              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                              <input type="hidden" name="back" value="{{ back }}">
+                              <button class="btn btn-sm" type="submit" aria-label="Remove {{ s.amount_cents | money }} from {{ r.category.name }}">✕</button>
+                            </form>
+                          </li>
+                        {% endfor %}
+                      </ul>
+                    </div>
+                  {% endif %}
                 </details>
               </td>
             </tr>
@@ -343,28 +365,6 @@
     <button class="btn" type="submit">Add group</button>
     <p class="muted text-xs w-full">Groups put budget lines under headings with their own totals. Choose a line's group when you edit it. Tap a group's name to hide its lines and see just the totals.</p>
   </form>
-
-  <div class="card mt" id="spent">
-    <h2>Taken off this budget month</h2>
-    <ul class="list">
-      {% for s in spends %}
-        <li>
-          <span class="grow">
-            <span class="title">{{ cat_names.get(s.category_id, '') }}{% if s.note %} · {{ s.note }}{% endif %}</span>
-            <span class="text-xs muted">{{ s.date | d('dm') }}{% if s.id in spent_from %} · {{ spent_from[s.id] }}{% endif %}</span>
-          </span>
-          <span class="num">{{ s.amount_cents | money }}</span>
-          <form class="inline" method="post" action="/budget/spend/{{ s.id }}/delete" data-confirm="Remove this entry?">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <input type="hidden" name="back" value="{{ back }}">
-            <button class="btn btn-sm" type="submit" aria-label="Remove">✕</button>
-          </form>
-        </li>
-      {% else %}
-        <li class="muted">Nothing taken off yet.</li>
-      {% endfor %}
-    </ul>
-  </div>
 
   <form class="card mt row" id="start-day" method="post" action="/budget/start-day">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

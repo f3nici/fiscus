@@ -56,6 +56,10 @@ def budget_page(
         loan_paid_cents=sum(x.paid_cents for x in loan_lines),
     )
     cats = ledger.categories(db, user)
+    # A line's entries this month sit in its Edit panel, to remove a mistake.
+    spends: dict[int, list[BudgetSpend]] = {}
+    for sp in budgeting.spends(db, user, start, end):
+        spends.setdefault(sp.category_id, []).append(sp)
     return render(
         request,
         'budget/index.html',
@@ -81,8 +85,7 @@ def budget_page(
             'prev': recurrence.add_months(start, -1),
             'next': recurrence.add_months(start, 1),
             'start_day': budgeting.start_day(db, user),
-            'spends': budgeting.spends(db, user, start, end),
-            'cat_names': {cat.id: cat.name for cat in cats},
+            'spends': spends,
             'spend_cats': [r.category for r in rows if r.has_budget and not r.category.is_income],
             'spend_accts': accts,
             'spend_from': ledger.spending_account(db, user, accts),
@@ -404,11 +407,12 @@ def delete_spend(
     db: Session = Depends(get_db),
 ) -> Response:
     row = get_owned(db, BudgetSpend, spend_id, user)
+    line = f'line-{row.category_id}'
     today = ctx(request).clock.today()
     before = ledger.balances(db, user, today)
     goals.remove_spend(db, user, row)
     flash = f'Entry removed{ledger.now_at(db, user, before, today)}'
-    return redirect(_back(back, 'spent'), flash=flash, request=request)
+    return redirect(_back(back, line), flash=flash, request=request)
 
 
 @router.post('/budget/start-day')

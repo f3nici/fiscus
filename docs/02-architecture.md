@@ -11,7 +11,6 @@
 | uPlot (vendored) | 45 KB, fast with 730 points per series, overlays a scenario cleanly. |
 | vue-cal 4 stylesheet (vendored) | CareLane's calendar is vue-cal. Rendering vue-cal's DOM on the server and reusing its CSS reproduces the layout exactly without Vue. |
 | py_webauthn | Maintained, does the verification, leaves storage to us. |
-| argon2-cffi | argon2id for the optional password. |
 | One uvicorn worker | SQLite, in-memory rate limits and in-process jobs all assume one process. |
 
 ## Request flow
@@ -33,7 +32,8 @@ browser ─HTTPS─ NPMplus ─HTTP─ uvicorn (proxy headers from trusted IPs o
 
 ## Layers
 
-- `domain/`: pure functions and dataclasses. Recurrence, splits, reading
+- `domain/`: pure functions and dataclasses. Recurrence, splits (for the
+  migrations that move shared bills), reading
   uploaded files and PDF text, rules and bill matching (for Square), payslip
   reading, loan maths, the forecast engine and
   scenarios, tax, bill import parsing and diffs. No database, no clock.

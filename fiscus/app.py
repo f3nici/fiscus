@@ -263,7 +263,6 @@ def create_app(
 
     from fiscus.routes import (
         accounts,
-        admin,
         bill_import,
         bills,
         budget,
@@ -288,7 +287,6 @@ def create_app(
         pwa,
         auth_routes,
         setup,
-        admin,
         settings_routes,
         dashboard,
         accounts,

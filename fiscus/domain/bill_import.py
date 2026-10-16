@@ -1,9 +1,10 @@
 """Bills from a file: parsing an import and diffing it against the bills you own.
 
-Fields: name, amount, frequency, category, due_date (optional), shared_with
-(a username, optional), split_percent (the other person's share, optional).
-Bills are keyed by name, case-insensitively, so a re-import can say what was
-added, changed and removed before anything is applied.
+Fields: name, amount, frequency, category and due_date (optional). Bills are
+keyed by name, case-insensitively, so a re-import can say what was added,
+changed and removed before anything is applied. Files from before bills
+stopped being shared (D52) may carry shared_with and split_percent: they are
+left out, and the bill imports at its full amount.
 """
 
 from __future__ import annotations
@@ -11,13 +12,12 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import date
-from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 
 from fiscus.domain.uploads import ImportError_, decode, read_rows
 from fiscus.money import MoneyError, parse_cents
 
-FIELDS = ('name', 'amount', 'frequency', 'category', 'due_date', 'shared_with', 'split_percent')
+FIELDS = ('name', 'amount', 'frequency', 'category', 'due_date')
 REQUIRED = ('name', 'amount', 'frequency')
 FREQ_ALIASES = {
     'week': 'weekly',
@@ -49,8 +49,6 @@ TEMPLATE_ROWS: list[dict[str, str]] = [
         'frequency': 'quarterly',
         'category': 'Housing',
         'due_date': '2026-11-15',
-        'shared_with': '',
-        'split_percent': '',
     },
     {
         'name': 'Home insurance',
@@ -58,8 +56,6 @@ TEMPLATE_ROWS: list[dict[str, str]] = [
         'frequency': 'yearly',
         'category': 'Insurance',
         'due_date': '2027-03-01',
-        'shared_with': 'partner',
-        'split_percent': '50',
     },
     {
         'name': 'Water',
@@ -67,8 +63,6 @@ TEMPLATE_ROWS: list[dict[str, str]] = [
         'frequency': 'quarterly',
         'category': 'Utilities',
         'due_date': '',
-        'shared_with': 'partner',
-        'split_percent': '50',
     },
 ]
 
@@ -81,11 +75,6 @@ class BillSpec:
     # None: the file has no such column, so an existing bill keeps its own.
     category: str | None
     due_date: date | None
-    shared_with: str | None
-    split_bp: int
-    # An existing bill split in a way a file cannot say (fixed amounts, or more
-    # than two people): an import leaves its shares alone.
-    keep_shares: bool = False
 
     def key(self) -> str:
         return self.name.casefold()
@@ -114,8 +103,6 @@ def template_json() -> str:
                 'frequency': row['frequency'],
                 'category': row['category'],
                 'due_date': row['due_date'] or None,
-                'shared_with': row['shared_with'] or None,
-                'split_percent': float(row['split_percent']) if row['split_percent'] else None,
             }
         )
     return json.dumps({'bills': rows}, indent=2) + '\n'
@@ -145,19 +132,8 @@ def _item(raw: dict[str, Any], where: str) -> BillSpec:
             raise ValueError(f'{where}: due_date must be YYYY-MM-DD') from exc
     if freq == 'one_off' and due is None:
         raise ValueError(f'{where}: a one-off bill needs a due_date')
-    shared = str(raw.get('shared_with') or '').strip().lower() if 'shared_with' in raw else None
-    split_raw = raw.get('split_percent')
-    split_bp = 0
-    if shared:
-        try:
-            pct = Decimal(str(split_raw)) if split_raw not in (None, '') else Decimal(50)
-        except InvalidOperation as exc:
-            raise ValueError(f'{where}: split_percent must be a number') from exc
-        if not pct.is_finite() or not 0 < pct < 100:
-            raise ValueError(f'{where}: split_percent must be between 0 and 100')
-        split_bp = int((pct * 100).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
     category = str(raw.get('category') or '').strip()[:80] if 'category' in raw else None
-    return BillSpec(name[:120], amount, freq, category, due, shared, split_bp)
+    return BillSpec(name[:120], amount, freq, category, due)
 
 
 def parse_json(data: bytes) -> ParsedBills:
@@ -240,11 +216,7 @@ def _same(old: BillSpec, new: BillSpec) -> bool:
         return False
     if new.category is not None and new.category.casefold() != (old.category or '').casefold():
         return False
-    if new.due_date is not None and new.due_date != old.due_date:
-        return False
-    if new.shared_with is None or old.keep_shares:
-        return True
-    return (old.shared_with, old.split_bp) == (new.shared_with, new.split_bp)
+    return new.due_date is None or new.due_date == old.due_date
 
 
 def diff(existing: list[BillSpec], incoming: list[BillSpec]) -> Diff:

@@ -48,8 +48,6 @@ class UserView:
     username: str
     display_name: str
     is_admin: bool
-    password_enabled: bool
-    password_hash: str  # 'set' or '', never the hash itself
 
 
 def user_view(user: User) -> UserView:
@@ -58,8 +56,6 @@ def user_view(user: User) -> UserView:
         user.username,
         user.display_name,
         user.is_admin,
-        user.password_enabled,
-        'set' if user.password_hash else '',
     )
 
 

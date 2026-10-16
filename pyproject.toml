@@ -1,7 +1,7 @@
 [project]
 name = "fiscus"
 version = "0.1.0"
-description = "Self-hosted, multi-user personal finance tracker for an Australian household"
+description = "Self-hosted personal finance tracker for an Australian household"
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.12,<3.13"
@@ -9,7 +9,6 @@ requires-python = ">=3.12,<3.13"
 # hashes; regenerate both with `make lock`.
 dependencies = [
   "alembic==1.20.0",
-  "argon2-cffi==25.1.0",
   "defusedxml==0.7.1",
   "fastapi==0.142.2",
   "httpx==0.28.1",

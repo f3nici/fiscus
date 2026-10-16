@@ -45,7 +45,7 @@ def due_reminders(db: Session, clock: Clock, user: User) -> list[Reminder]:
                         'bill_due',
                         f'{occ.bill.id}:{occ.due.isoformat()}',
                         f'{occ.bill.name} due {when}',
-                        f'{occ.bill.name}: {fmt(occ.share_cents)} due {when}.',
+                        f'{occ.bill.name}: {fmt(occ.bill.amount_cents)} due {when}.',
                         tags='calendar',
                     )
                 )
@@ -56,8 +56,8 @@ def due_reminders(db: Session, clock: Clock, user: User) -> list[Reminder]:
                     'overdue',
                     f'{occ.bill.id}:{occ.due.isoformat()}',
                     f'{occ.bill.name} is overdue',
-                    f'{occ.bill.name}: {fmt(occ.share_cents)} was due {occ.due.strftime("%d %b")} '
-                    'and has not been marked paid.',
+                    f'{occ.bill.name}: {fmt(occ.bill.amount_cents)} was due '
+                    f'{occ.due.strftime("%d %b")} and has not been marked paid.',
                     priority='high',
                     tags='warning',
                 )

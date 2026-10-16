@@ -69,34 +69,21 @@ def test_marking_a_bill_paid_takes_it_off_its_account(env: Env) -> None:
     assert 'Since 30 Sep' not in a.get(f'/accounts/{acct}').text
 
 
-def test_each_person_pays_their_share_from_their_own_account(env: Env) -> None:
-    alex, sam = env.user('alex'), env.user('sam')
-    a, s = env.login(alex), env.login(sam)
+def test_a_bill_with_no_account_comes_off_the_spending_account(env: Env) -> None:
+    alex = env.user('alex')
+    a = env.login(alex)
     env.clock.set(SEPT_30)
     alex_acct = typed_account(a)
     a_savings = typed_account(a, 'Savings', '5000', 'savings')
-    sam_acct = typed_account(s, 'Sam everyday', '500')
     env.clock.set(NOW)
-    bill = create_bill(
-        a,
-        name='Internet',
-        amount='90',
-        next_due='2026-10-10',
-        split_mode='percent',
-        participants=[str(sam.id)],
-        **{f'split_{alex.id}': '60', f'split_{sam.id}': '40'},
-    )
-    # Neither share names an account: each comes off the person's spending account.
+    bill = create_bill(a, name='Internet', amount='90', next_due='2026-10-10')
     a.post(f'/bills/{bill}/occurrence/2026-10-10/paid')
-    s.post(f'/bills/{bill}/occurrence/2026-10-10/paid')
-    assert balance(env, alex, alex_acct) == 1000_00 - 54_00
+    assert balance(env, alex, alex_acct) == 1000_00 - 90_00
     assert balance(env, alex, a_savings) == 5000_00
-    assert balance(env, sam, sam_acct) == 500_00 - 36_00
-    assert {t.user_id for t in moves(env)} == {alex.id, sam.id}
     # Deleting the bill takes its payments, and what they moved, with it.
     a.post(f'/bills/{bill}/delete')
     assert balance(env, alex, alex_acct) == 1000_00
-    assert balance(env, sam, sam_acct) == 500_00
+    assert moves(env) == []
 
 
 def test_a_payslip_adds_its_net_to_its_account(env: Env) -> None:

@@ -1,7 +1,7 @@
-"""Reminders through a self-hosted ntfy server.
+"""Reminders through ntfy: the public ntfy.sh or a server of the person's own.
 
-Off by default, per user. A homelab ntfy usually lives on a private address, so
-private ranges are allowed; loopback, link-local (which includes cloud metadata
+Off by default, per user. Public servers are allowed, and so are private ranges,
+where a homelab ntfy lives; loopback, link-local (which includes cloud metadata
 at 169.254.169.254) and unspecified addresses are refused, so the setting cannot
 be used to make the Fiscus container poke itself.
 
@@ -37,6 +37,20 @@ def _blocked(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
 Address = ipaddress.IPv4Address | ipaddress.IPv6Address
 
 
+def normalise(url: str, topic: str) -> tuple[str, str]:
+    """The server and topic as typed, made whole: `ntfy.sh` is https://ntfy.sh,
+    and a topic given in the address (https://ntfy.sh/mytopic, as ntfy's own
+    pages show one) moves to the topic, unless a different topic was typed."""
+    url, topic = url.strip(), topic.strip()
+    if url and '://' not in url:
+        url = f'https://{url}'
+    parts = urlsplit(url)
+    path = parts.path.strip('/')
+    if path and '/' not in path and not parts.query and not parts.fragment and topic in ('', path):
+        url, topic = urlunsplit((parts.scheme, parts.netloc, '', '', '')), path
+    return url.rstrip('/'), topic
+
+
 def validate_target(url: str, topic: str, *, resolve: bool = True) -> list[Address]:
     """Refuse a server this container must not reach. Returns the addresses
     checked, so the request can go to one of them and not to whatever the
@@ -47,7 +61,11 @@ def validate_target(url: str, topic: str, *, resolve: bool = True) -> list[Addre
     if parts.username or parts.password:
         raise NtfyError('Put credentials in the access token field, not the URL')
     if parts.path not in ('', '/') or parts.query or parts.fragment:
-        raise NtfyError('Give the server address only, e.g. https://ntfy.home.lan')
+        raise NtfyError('Give the server address only, e.g. https://ntfy.sh')
+    try:
+        port = parts.port
+    except ValueError:
+        raise NtfyError('The port in the ntfy server address is not a number') from None
     if not TOPIC.match(topic.strip()):
         raise NtfyError('The topic is letters, numbers, dash and underscore, up to 64 characters')
     host = parts.hostname
@@ -59,7 +77,7 @@ def validate_target(url: str, topic: str, *, resolve: bool = True) -> list[Addre
         if not resolve:
             return []
         try:
-            infos = socket.getaddrinfo(host, parts.port or 443, proto=socket.IPPROTO_TCP)
+            infos = socket.getaddrinfo(host, port or 443, proto=socket.IPPROTO_TCP)
         except OSError as exc:
             raise NtfyError(f'Could not find {host}') from exc
         addrs = [ipaddress.ip_address(i[4][0]) for i in infos]
