@@ -76,6 +76,18 @@ def start_session(
     return token
 
 
+def end_sessions(db: Session, user: User, *, keep: AuthSession | None = None) -> int:
+    """Sign `user` out everywhere but the session `keep` (D56). Returns how many ended."""
+    q = select(AuthSession).where(AuthSession.user_id == user.id)
+    if keep is not None:
+        q = q.where(AuthSession.id != keep.id)
+    rows = list(db.execute(q).scalars())
+    for row in rows:
+        db.delete(row)
+    db.flush()
+    return len(rows)
+
+
 # --------------------------------------------------------------- setup links
 
 
@@ -420,6 +432,12 @@ def complete_setup(
         if found is None:
             raise AuthError('This setup link has expired or was already used.')
         user = found
+        # A recovery link is for a lost device, which may still be signed in.
+        ended = end_sessions(db, user)
+        if ended:
+            audit.record(
+                db, clock, 'sessions.ended', actor_id=user.id, ip=ip, via=link.purpose, count=ended
+            )
     cred = save_credential(db, clock, user, verified, name, transports)
     link.used_at = utcnow_naive(clock)
     db.flush()

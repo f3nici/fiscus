@@ -1,8 +1,10 @@
-"""Personal settings: passkeys, forecast preferences, ntfy and, for the admin, backups."""
+"""Personal settings: passkeys, where you are signed in, forecast preferences,
+ntfy and, for the admin, backups."""
 
 from __future__ import annotations
 
 import shutil
+from dataclasses import dataclass
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
@@ -10,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from starlette.background import BackgroundTask
 
-from fiscus.models import Account, User, WebAuthnCredential
+from fiscus.models import Account, AuthSession, User, WebAuthnCredential
 from fiscus.money import MoneyError, parse_cents
 from fiscus.routes.auth import _json, limit
 from fiscus.services import audit, backup, ntfy
@@ -20,6 +22,40 @@ from fiscus.services.users import passkey_count, settings_for
 from fiscus.web import DB, admin_user, client_ip, ctx, current_user, redirect, render
 
 router = APIRouter()
+
+# What a user agent says, first match wins: Android says Linux too, and
+# Chrome says Safari.
+_SYSTEMS = (
+    ('iPhone', 'iPhone'),
+    ('iPad', 'iPad'),
+    ('Android', 'Android'),
+    ('Macintosh', 'Mac'),
+    ('Windows', 'Windows'),
+    ('CrOS', 'ChromeOS'),
+    ('Linux', 'Linux'),
+)
+_BROWSERS = (
+    ('Edg', 'Edge'),
+    ('Firefox/', 'Firefox'),
+    ('FxiOS', 'Firefox'),
+    ('CriOS', 'Chrome'),
+    ('Chrome/', 'Chrome'),
+    ('Safari/', 'Safari'),
+)
+
+
+def device(user_agent: str) -> str:
+    """'Safari on iPhone', from a user agent, for the list of sessions."""
+    system = next((name for key, name in _SYSTEMS if key in user_agent), 'a device')
+    browser = next((name for key, name in _BROWSERS if key in user_agent), 'A browser')
+    return f'{browser} on {system}'
+
+
+@dataclass(frozen=True)
+class SignedIn:
+    session: AuthSession
+    device: str
+    current: bool
 
 
 def _page(
@@ -39,12 +75,22 @@ def _page(
         .all()
     )
     accounts = db.execute(owned(Account, user).order_by(Account.name)).scalars().all()
+    here = getattr(request.state, 'auth_session', None)
+    sessions = [
+        SignedIn(s, device(s.user_agent), here is not None and s.id == here.id)
+        for s in db.execute(
+            select(AuthSession)
+            .where(AuthSession.user_id == user.id)
+            .order_by(AuthSession.last_seen_at.desc())
+        ).scalars()
+    ]
     c = ctx(request)
     return render(
         request,
         'settings.html',
         {
             'creds': creds,
+            'sessions': sessions,
             'backups': backup.list_backups(c.settings) if user.is_admin else [],
             'retention': c.settings.backup_retention_days,
             'prefs': settings_for(db, user),
@@ -170,10 +216,38 @@ def revoke_passkey(
             400,
         )
     db.delete(cred)
+    # Whatever it signed in elsewhere goes with it; this session stays (D56).
+    ended = svc.end_sessions(db, user, keep=getattr(request.state, 'auth_session', None))
     audit.record(
-        db, c.clock, 'passkey.revoked', actor_id=user.id, ip=client_ip(request), name=cred.name
+        db,
+        c.clock,
+        'passkey.revoked',
+        actor_id=user.id,
+        ip=client_ip(request),
+        name=cred.name,
+        sessions_ended=ended,
     )
-    return redirect('/settings', flash='Passkey revoked', request=request)
+    return redirect('/settings', flash='Passkey revoked' + _signed_out(ended), request=request)
+
+
+def _signed_out(ended: int) -> str:
+    if not ended:
+        return ''
+    return f'. Signed out {ended} other session{"" if ended == 1 else "s"}'
+
+
+@router.post('/settings/sessions/end-others')
+def end_other_sessions(
+    request: Request, user: User = Depends(current_user), db: Session = DB
+) -> Response:
+    """Sign out everywhere but here, for a device lost while signed in (D56)."""
+    c = ctx(request)
+    ended = svc.end_sessions(db, user, keep=getattr(request.state, 'auth_session', None))
+    audit.record(
+        db, c.clock, 'sessions.ended', actor_id=user.id, ip=client_ip(request), count=ended
+    )
+    flash = 'Signed out everywhere else' if ended else 'No other sessions to sign out'
+    return redirect('/settings#sessions', flash=flash, request=request)
 
 
 @router.post('/settings/forecast')

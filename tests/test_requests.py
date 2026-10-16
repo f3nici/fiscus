@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from fiscus.clock import utcnow_naive
 from fiscus.models import Category, User, WebAuthnCredential
-from fiscus.routes import settings_routes
+from fiscus.services.users import passkey_count
 from tests.conftest import ORIGIN, CsrfClient, Env
 
 
@@ -50,7 +50,7 @@ def test_the_commit_runs_before_the_answer(env: Env) -> None:
 
         await inner(scope, receive, spy)
 
-    env.app.middleware_stack = app  # type: ignore[assignment]
+    env.app.middleware_stack = app
     a.get('/healthz')  # the CSRF cookie, before anything is recorded
     events.clear()
     assert a.post('/categories', data={'name': 'Pets'}).status_code == 303
@@ -72,7 +72,7 @@ def test_a_failed_commit_is_an_error_not_a_success(env: Env) -> None:
 
     env.ctx.sessions = broken  # type: ignore[assignment]
     resp = a.post('/categories', data={'name': 'Pets'})
-    env.ctx.sessions = real  # type: ignore[assignment]
+    env.ctx.sessions = real
     assert resp.status_code == 500
     assert 'Nothing was saved' in resp.text
     assert 'Category%20saved' not in resp.headers.get('set-cookie', '')
@@ -102,14 +102,13 @@ def test_two_revokes_at_once_leave_a_passkey(env: Env, monkeypatch: pytest.Monke
                 select(WebAuthnCredential).where(WebAuthnCredential.user_id == alex.id)
             ).scalars()
         ]
-    real_count = settings_routes.passkey_count
 
     def slow_count(db: Session, user: User) -> int:
-        n = real_count(db, user)
+        n = passkey_count(db, user)
         time.sleep(0.3)  # both would have counted two, without the lock
         return n
 
-    monkeypatch.setattr(settings_routes, 'passkey_count', slow_count)
+    monkeypatch.setattr('fiscus.routes.settings_routes.passkey_count', slow_count)
     clients = [quiet(env, alex), quiet(env, alex)]
     codes: list[int] = []
 
@@ -117,7 +116,8 @@ def test_two_revokes_at_once_leave_a_passkey(env: Env, monkeypatch: pytest.Monke
         codes.append(c.post(f'/settings/passkeys/{cred}/revoke').status_code)
 
     threads = [
-        threading.Thread(target=revoke, args=(c, cred)) for c, cred in zip(clients, ids, strict=True)
+        threading.Thread(target=revoke, args=(c, cred))
+        for c, cred in zip(clients, ids, strict=True)
     ]
     for t in threads:
         t.start()
