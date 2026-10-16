@@ -21,7 +21,7 @@ from fiscus.services import budget_groups, budgeting, goals, ledger, loans
 from fiscus.services import budget_import as importer
 from fiscus.services.access import get_owned, maybe_owned, owned
 from fiscus.services.users import settings_for
-from fiscus.web import ctx, current_user, get_db, redirect, render
+from fiscus.web import DB, ctx, current_user, redirect, render
 
 router = APIRouter()
 
@@ -31,7 +31,7 @@ def budget_page(
     request: Request,
     month: str = '',
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     c = ctx(request)
     today = c.clock.today()
@@ -119,7 +119,7 @@ def save_budget(
     group_id: int = Form(-1),
     back: str = Form('/budget'),
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     target = _back(back, f'line-{category_id}' if category_id else 'add-line')
     group = maybe_owned(db, BudgetGroup, group_id, user) if group_id > 0 else None
@@ -187,7 +187,7 @@ def add_group(
     name: str = Form(...),
     back: str = Form('/budget'),
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     try:
         clean = text(name, 'Group name', 80)
@@ -203,7 +203,7 @@ def fold_groups(
     collapsed: bool = Form(True),
     back: str = Form('/budget'),
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     budget_groups.fold_all(db, user, collapsed)
     return redirect(_back(back, 'lines'), request=request)
@@ -216,7 +216,7 @@ def rename_group(
     name: str = Form(...),
     back: str = Form('/budget'),
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     group = get_owned(db, BudgetGroup, group_id, user)
     try:
@@ -236,7 +236,7 @@ def move_group(
     direction: str = Form('down'),
     back: str = Form('/budget'),
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     group = get_owned(db, BudgetGroup, group_id, user)
     budget_groups.move_group(db, user, group, _step(direction))
@@ -250,7 +250,7 @@ def fold_group(
     collapsed: bool = Form(True),
     back: str = Form('/budget'),
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     group = get_owned(db, BudgetGroup, group_id, user)
     group.collapsed = collapsed
@@ -264,7 +264,7 @@ def delete_group(
     request: Request,
     back: str = Form('/budget'),
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     group = get_owned(db, BudgetGroup, group_id, user)
     budget_groups.delete_group(db, user, group)
@@ -282,7 +282,7 @@ def move_line(
     direction: str = Form('down'),
     back: str = Form('/budget'),
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     cat = get_owned(db, Category, category_id, user)
     budget_groups.move_line(db, user, cat, _step(direction))
@@ -295,7 +295,7 @@ def remove_budget(
     request: Request,
     back: str = Form('/budget'),
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     cat = get_owned(db, Category, category_id, user)
     row = db.execute(owned(Budget, user).where(Budget.category_id == cat.id)).scalar_one_or_none()
@@ -315,7 +315,7 @@ def set_saved(
     saved: str = Form(...),
     back: str = Form('/budget'),
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     """What a saved-up line holds this budget month, typed in or lined up
     with its next bill."""
@@ -351,7 +351,7 @@ def add_spend(
     account_id: int | None = Form(None),
     back: str = Form('/budget'),
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     cat = get_owned(db, Category, category_id, user)
     acct = maybe_owned(db, Account, account_id, user)
@@ -404,7 +404,7 @@ def delete_spend(
     request: Request,
     back: str = Form('/budget'),
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     row = get_owned(db, BudgetSpend, spend_id, user)
     line = f'line-{row.category_id}'
@@ -420,7 +420,7 @@ def save_start_day(
     request: Request,
     start_day: int = Form(...),
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     if not 1 <= start_day <= 31:
         return redirect('/budget#start-day', flash='Pick a day from 1 to 31', request=request)
@@ -481,7 +481,7 @@ def budget_preview(
     request: Request,
     sheet: str = '',
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     data = _staged(request, user, name)
     try:
@@ -518,7 +518,7 @@ async def budget_apply(
     name: str,
     request: Request,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     _staged(request, user, name)
     form = await request.form()

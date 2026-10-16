@@ -11,15 +11,13 @@ from fiscus.forms import FormError, text
 from fiscus.models import Budget, Category, User
 from fiscus.services import ledger
 from fiscus.services.access import get_owned, owned
-from fiscus.web import current_user, get_db, redirect, render
+from fiscus.web import DB, current_user, redirect, render
 
 router = APIRouter()
 
 
 @router.get('/categories')
-def categories(
-    request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
-) -> Response:
+def categories(request: Request, user: User = Depends(current_user), db: Session = DB) -> Response:
     budgeted = {b.category_id for b in db.execute(owned(Budget, user)).scalars()}
     return render(
         request,
@@ -39,7 +37,7 @@ def save_category(
     is_deductible: bool = Form(False),
     is_transfer: bool = Form(False),
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     cat = get_owned(db, Category, category_id, user) if category_id else None
     try:
@@ -69,7 +67,7 @@ def delete_category(
     category_id: int,
     request: Request,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     cat = get_owned(db, Category, category_id, user)
     db.delete(cat)

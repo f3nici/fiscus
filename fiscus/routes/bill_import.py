@@ -18,7 +18,7 @@ from fiscus.forms import int_or
 from fiscus.models import User
 from fiscus.services import bill_import as svc
 from fiscus.services.bills import user_bills
-from fiscus.web import ctx, current_user, get_db, redirect, render
+from fiscus.web import DB, ctx, current_user, redirect, render
 
 router = APIRouter()
 UPLOAD_NAME = re.compile(r'^bills-(\d+)-([0-9a-f]{32})\.(csv|json)$')
@@ -106,7 +106,7 @@ def _diff(db: Session, user: User, parsed: dom.ParsedBills) -> dom.Diff:
 
 @router.get('/bills/import/{name}')
 def review(
-    name: str, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
+    name: str, request: Request, user: User = Depends(current_user), db: Session = DB
 ) -> Response:
     data, kind = _staged(request, user, name)
     mapping = _mapping(request)
@@ -145,7 +145,7 @@ def review(
 
 @router.post('/bills/import/{name}/apply')
 async def apply(
-    name: str, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
+    name: str, request: Request, user: User = Depends(current_user), db: Session = DB
 ) -> Response:
     c = ctx(request)
     data, kind = _staged(request, user, name)

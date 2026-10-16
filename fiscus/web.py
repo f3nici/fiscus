@@ -77,6 +77,11 @@ def ctx(request: Request) -> AppContext:
 def get_db(request: Request) -> Iterator[Session]:
     db = ctx(request).sessions()
     try:
+        if request.method in UNSAFE:
+            # Take the write lock before reading, so what a request checks
+            # (the last passkey, a payment already marked) still holds when it
+            # writes. pysqlite would only begin at the first write (D59).
+            db.connection().exec_driver_sql('BEGIN IMMEDIATE')
         yield db
         db.commit()
     except Exception:
@@ -84,6 +89,12 @@ def get_db(request: Request) -> Iterator[Session]:
         raise
     finally:
         db.close()
+
+
+# Every route takes the database through this. Scoped to the function, so the
+# commit runs before the response goes out and a failed commit is the error
+# page, not a success redirect over nothing saved (D59).
+DB = Depends(get_db, scope='function')
 
 
 def client_ip(request: Request) -> str:
@@ -118,7 +129,7 @@ def load_session(request: Request, db: Session) -> tuple[AuthSession, User] | No
     return row, user
 
 
-def optional_user(request: Request, db: Session = Depends(get_db)) -> User | None:
+def optional_user(request: Request, db: Session = DB) -> User | None:
     cached: User | None = getattr(request.state, 'user', None)
     if cached is not None:
         return cached

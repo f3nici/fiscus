@@ -35,7 +35,7 @@ from fiscus.models import PAY_FREQUENCIES, Account, PaySchedule, Payslip, User
 from fiscus.money import fmt, fmt_plain
 from fiscus.services import ledger, pay
 from fiscus.services.access import get_owned, maybe_owned, owned
-from fiscus.web import ctx, current_user, get_db, redirect, render
+from fiscus.web import DB, ctx, current_user, redirect, render
 
 router = APIRouter()
 MAX_FILES = 40
@@ -115,9 +115,7 @@ def _prefill(db: Session, user: User, value: str, today: Date) -> SlipForm | Non
 
 
 @router.get('/pay')
-def pay_page(
-    request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
-) -> Response:
+def pay_page(request: Request, user: User = Depends(current_user), db: Session = DB) -> Response:
     q = request.query_params
     today = ctx(request).clock.today()
     slip = maybe_owned(db, Payslip, int_or(q.get('slip')), user)
@@ -229,7 +227,7 @@ def save_schedule(
     # No longer on the form (D25 hid transactions); saving from it clears any old text.
     match_text: str = Form(''),
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     ps = get_owned(db, PaySchedule, schedule_id, user) if schedule_id else None
     try:
@@ -263,7 +261,7 @@ def delete_schedule(
     schedule_id: int,
     request: Request,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     db.delete(get_owned(db, PaySchedule, schedule_id, user))
     return redirect('/pay', flash='Pay schedule deleted', request=request)
@@ -374,7 +372,7 @@ def no_pay(
     request: Request,
     payday: str = Form(...),
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     """Nothing was paid on this payday (no shifts, unpaid leave): a payslip of zero."""
     ps = get_owned(db, PaySchedule, schedule_id, user)
@@ -466,7 +464,7 @@ async def read_payslips(
     file: list[UploadFile] = File(...),
     payday: str = Form(''),
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     """Fill in payslips from PDFs. Nothing is saved until the person adds them."""
     if len(file) > MAX_FILES:
@@ -558,7 +556,7 @@ def _review(
 async def save_bulk(
     request: Request,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     """Add the reviewed payslips that are ticked. Each is checked like a single one."""
     data = await request.form()
@@ -635,7 +633,7 @@ def save_payslip(
     account_id: int = Form(0),
     payday: str = Form('auto'),
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     existing = get_owned(db, Payslip, slip_id, user) if slip_id else None
     clock = ctx(request).clock
@@ -665,7 +663,7 @@ def delete_payslip(
     slip_id: int,
     request: Request,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     today = ctx(request).clock.today()
     before = ledger.balances(db, user, today)

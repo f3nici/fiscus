@@ -15,7 +15,7 @@ from fiscus.models import FREQUENCIES, Account, Bill, Category, Transaction, Use
 from fiscus.services import bills as svc
 from fiscus.services import ledger
 from fiscus.services.access import get_owned, maybe_owned
-from fiscus.web import ctx, current_user, get_db, local_path, redirect, render
+from fiscus.web import DB, ctx, current_user, local_path, redirect, render
 
 router = APIRouter()
 
@@ -35,7 +35,7 @@ def list_bills(
     request: Request,
     category: int = 0,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     c = ctx(request)
     today = c.clock.today()
@@ -98,9 +98,7 @@ def _form(
 
 
 @router.get('/bills/new')
-def new_bill(
-    request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
-) -> Response:
+def new_bill(request: Request, user: User = Depends(current_user), db: Session = DB) -> Response:
     return _form(request, db, user, None)
 
 
@@ -109,7 +107,7 @@ def edit_bill(
     bill_id: int,
     request: Request,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     return _form(request, db, user, get_owned(db, Bill, bill_id, user))
 
@@ -120,7 +118,7 @@ async def save_bill(
     request: Request,
     bill_id: int | None = None,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     c = ctx(request)
     bill = get_owned(db, Bill, bill_id, user) if bill_id else None
@@ -169,7 +167,7 @@ def show_bill(
     bill_id: int,
     request: Request,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     c = ctx(request)
     today = c.clock.today()
@@ -210,7 +208,7 @@ def occurrence(
     due: str,
     request: Request,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     """The calendar's event panel: details and quick actions."""
     c = ctx(request)
@@ -235,7 +233,7 @@ async def mark_paid(
     due: str,
     request: Request,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     c = ctx(request)
     bill = get_owned(db, Bill, bill_id, user)
@@ -257,7 +255,7 @@ async def mark_unpaid(
     due: str,
     request: Request,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     bill = get_owned(db, Bill, bill_id, user)
     when = _occ(db, user, bill, due)
@@ -277,7 +275,7 @@ def delete_bill(
     bill_id: int,
     request: Request,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     bill = get_owned(db, Bill, bill_id, user)
     db.delete(bill)

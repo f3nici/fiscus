@@ -17,7 +17,7 @@ from fiscus.services import audit, backup, ntfy
 from fiscus.services import auth as svc
 from fiscus.services.access import in_range, owned
 from fiscus.services.users import passkey_count, settings_for
-from fiscus.web import admin_user, client_ip, ctx, current_user, get_db, redirect, render
+from fiscus.web import DB, admin_user, client_ip, ctx, current_user, redirect, render
 
 router = APIRouter()
 
@@ -59,14 +59,14 @@ def _page(
 
 @router.get('/settings')
 def settings_page(
-    request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
+    request: Request, user: User = Depends(current_user), db: Session = DB
 ) -> Response:
     return _page(request, db, user)
 
 
 @router.post('/settings/passkeys/options')
 async def add_passkey_options(
-    request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
+    request: Request, user: User = Depends(current_user), db: Session = DB
 ) -> Response:
     limit(request, 'register_ip', client_ip(request))
     c = ctx(request)
@@ -86,7 +86,7 @@ async def add_passkey_options(
 
 @router.post('/settings/passkeys/verify')
 async def add_passkey_verify(
-    request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
+    request: Request, user: User = Depends(current_user), db: Session = DB
 ) -> Response:
     body = await _json(request)
     c = ctx(request)
@@ -128,7 +128,7 @@ def rename_passkey(
     request: Request,
     name: str = Form(...),
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     c = ctx(request)
     cred = _own_cred(db, user, cred_id)
@@ -152,7 +152,7 @@ def revoke_passkey(
     cred_id: int,
     request: Request,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     c = ctx(request)
     cred = _own_cred(db, user, cred_id)
@@ -183,7 +183,7 @@ def forecast_prefs(
     forecast_months: int = Form(12),
     spending_account_id: int = Form(0),
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     prefs = settings_for(db, user)
     try:
@@ -213,7 +213,7 @@ def ntfy_prefs(
     low_balance: bool = Form(False),
     payslips: bool = Form(False),
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     prefs = settings_for(db, user)
     url, topic = ntfy.normalise(url, topic)
@@ -238,16 +238,14 @@ def ntfy_prefs(
 
 @router.post('/settings/ntfy/clear-token')
 def ntfy_clear_token(
-    request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
+    request: Request, user: User = Depends(current_user), db: Session = DB
 ) -> Response:
     settings_for(db, user).ntfy_token = ''
     return redirect('/settings', flash='ntfy token removed', request=request)
 
 
 @router.post('/settings/ntfy/test')
-def ntfy_test(
-    request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
-) -> Response:
+def ntfy_test(request: Request, user: User = Depends(current_user), db: Session = DB) -> Response:
     prefs = settings_for(db, user)
     try:
         ntfy.send(prefs, 'Fiscus test', 'Reminders from Fiscus will arrive here.')
@@ -260,9 +258,7 @@ def ntfy_test(
 
 
 @router.post('/settings/backups/run')
-def run_backup(
-    request: Request, admin: User = Depends(admin_user), db: Session = Depends(get_db)
-) -> Response:
+def run_backup(request: Request, admin: User = Depends(admin_user), db: Session = DB) -> Response:
     c = ctx(request)
     path = backup.nightly(c.settings, c.engine, c.clock)
     audit.record(
@@ -273,7 +269,7 @@ def run_backup(
 
 @router.post('/settings/backups/download')
 def download_backup(
-    request: Request, admin: User = Depends(admin_user), db: Session = Depends(get_db)
+    request: Request, admin: User = Depends(admin_user), db: Session = DB
 ) -> Response:
     c = ctx(request)
     path = backup.snapshot_to_temp(c.settings, c.engine, c.clock)

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from fiscus.models import User
 from fiscus.services import calendar_events
-from fiscus.web import ctx, current_user, get_db, render
+from fiscus.web import DB, ctx, current_user, render
 
 router = APIRouter()
 
@@ -21,7 +21,7 @@ def calendar_page(
     view: str = '',
     date_: str = '',
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     c = ctx(request)
     raw = request.query_params.get('date', date_)

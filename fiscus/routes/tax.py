@@ -11,15 +11,13 @@ from fiscus.domain.tax import TaxConfigError
 from fiscus.forms import FormError, money
 from fiscus.models import User
 from fiscus.services import taxes
-from fiscus.web import ctx, current_user, get_db, redirect, render
+from fiscus.web import DB, ctx, current_user, redirect, render
 
 router = APIRouter()
 
 
 @router.get('/tax')
-def tax_page(
-    request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
-) -> Response:
+def tax_page(request: Request, user: User = Depends(current_user), db: Session = DB) -> Response:
     c = ctx(request)
     try:
         view = taxes.view(db, user, c.clock.today(), c.tax_dir)
@@ -35,7 +33,7 @@ def save_deductions(
     request: Request,
     amount: str = Form(''),
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     label = tax.fy_label(ctx(request).clock.today())
     try:

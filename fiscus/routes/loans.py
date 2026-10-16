@@ -10,16 +10,14 @@ from fiscus.forms import FormError, choice, money, opt_money, rate, req_date, te
 from fiscus.models import Account, Loan, LoanRate, User
 from fiscus.services import ledger, loans
 from fiscus.services.access import get_owned, maybe_owned, owned
-from fiscus.web import ctx, current_user, get_db, redirect, render
+from fiscus.web import DB, ctx, current_user, redirect, render
 
 router = APIRouter()
 LOAN_FREQS = ('monthly', 'fortnightly', 'weekly')
 
 
 @router.get('/loans')
-def list_loans(
-    request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
-) -> Response:
+def list_loans(request: Request, user: User = Depends(current_user), db: Session = DB) -> Response:
     c = ctx(request)
     found = db.execute(owned(Loan, user).order_by(Loan.name)).scalars().all()
     # One loan: straight into it.
@@ -46,9 +44,7 @@ def _form(
 
 
 @router.get('/loans/new')
-def new_loan(
-    request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
-) -> Response:
+def new_loan(request: Request, user: User = Depends(current_user), db: Session = DB) -> Response:
     return _form(request, db, user, None)
 
 
@@ -57,7 +53,7 @@ def edit_loan(
     loan_id: int,
     request: Request,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     return _form(request, db, user, get_owned(db, Loan, loan_id, user))
 
@@ -78,7 +74,7 @@ def save_loan(
     repayment_override: str = Form(''),
     repayment_account_id: int = Form(0),
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     loan = get_owned(db, Loan, loan_id, user) if loan_id else None
     try:
@@ -121,7 +117,7 @@ def show_loan(
     loan_id: int,
     request: Request,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     c = ctx(request)
     loan = get_owned(db, Loan, loan_id, user)
@@ -148,7 +144,7 @@ def add_rate(
     effective_date: str = Form(...),
     new_rate: str = Form(...),
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     loan = get_owned(db, Loan, loan_id, user)
     try:
@@ -172,7 +168,7 @@ def delete_rate(
     rate_id: int,
     request: Request,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     loan = get_owned(db, Loan, loan_id, user)
     r = get_owned(db, LoanRate, rate_id, user)
@@ -190,7 +186,7 @@ def link_offset(
     request: Request,
     account_id: int = Form(...),
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     loan = get_owned(db, Loan, loan_id, user)
     acct = get_owned(db, Account, account_id, user)
@@ -207,7 +203,7 @@ def unlink_offset(
     account_id: int,
     request: Request,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     loan = get_owned(db, Loan, loan_id, user)
     acct = get_owned(db, Account, account_id, user)
@@ -221,7 +217,7 @@ def delete_loan(
     loan_id: int,
     request: Request,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     db.delete(get_owned(db, Loan, loan_id, user))
     return redirect('/loans', flash='Loan deleted', request=request)

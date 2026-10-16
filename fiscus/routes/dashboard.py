@@ -23,7 +23,7 @@ from fiscus.services import (
     taxes,
 )
 from fiscus.services.access import owned
-from fiscus.web import ctx, current_user, get_db, render
+from fiscus.web import DB, ctx, current_user, render
 
 router = APIRouter()
 
@@ -45,9 +45,7 @@ def sparkline(values: list[int], width: int = 300, height: int = 60) -> dict[str
 
 
 @router.get('/')
-def dashboard(
-    request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
-) -> Response:
+def dashboard(request: Request, user: User = Depends(current_user), db: Session = DB) -> Response:
     c = ctx(request)
     today = c.clock.today()
     accts = ledger.accounts(db, user)
