@@ -43,7 +43,6 @@ OWNED_TABLES = [
     'categories',
     'rules',
     'imports',
-    'import_mappings',
     'bills',
     'bill_payments',
     'pay_schedules',

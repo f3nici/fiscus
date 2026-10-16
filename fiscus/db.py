@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -46,15 +45,3 @@ def alembic_config(url: str) -> AlembicConfig:
 
 def run_migrations(url: str) -> None:
     command.upgrade(alembic_config(url), 'head')
-
-
-def session_scope(factory: sessionmaker[Session]) -> Iterator[Session]:
-    db = factory()
-    try:
-        yield db
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
-    finally:
-        db.close()

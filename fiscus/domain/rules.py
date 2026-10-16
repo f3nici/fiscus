@@ -5,12 +5,6 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-MAX_PATTERN = 200
-
-
-class RuleError(ValueError):
-    pass
-
 
 @dataclass(frozen=True)
 class RuleSpec:
@@ -19,20 +13,6 @@ class RuleSpec:
     is_regex: bool
     category_id: int
     priority: int
-
-
-def validate(pattern: str, is_regex: bool) -> str:
-    pattern = pattern.strip()
-    if not pattern:
-        raise RuleError('A rule needs something to match')
-    if len(pattern) > MAX_PATTERN:
-        raise RuleError(f'Keep the pattern under {MAX_PATTERN} characters')
-    if is_regex:
-        try:
-            re.compile(pattern, re.IGNORECASE)
-        except re.error as exc:
-            raise RuleError(f'That regex does not compile: {exc}') from exc
-    return pattern
 
 
 class Matcher:

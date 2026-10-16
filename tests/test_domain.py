@@ -8,7 +8,7 @@ import pytest
 
 from fiscus.domain import recurrence, saving, splits, uploads
 from fiscus.domain.matching import Candidate, OpenOccurrence, assign, matches
-from fiscus.domain.rules import Matcher, RuleError, RuleSpec, validate
+from fiscus.domain.rules import Matcher, RuleSpec
 from fiscus.money import MoneyError, fmt, fmt_short, parse_cents
 
 # --------------------------------------------------------------------- money
@@ -185,13 +185,6 @@ def test_rules_priority_and_regex() -> None:
     assert m.category_for('WOOLWORTHS PETROL 123') == 20
     assert m.category_for('Woolworths Metro') == 10
     assert m.category_for('Coles') is None
-
-
-def test_bad_regex_is_refused() -> None:
-    with pytest.raises(RuleError):
-        validate('([', True)
-    with pytest.raises(RuleError):
-        validate('   ', False)
 
 
 # ------------------------------------------------------------------ matching
