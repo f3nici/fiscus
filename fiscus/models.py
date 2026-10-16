@@ -53,8 +53,6 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     # WebAuthn user handle. Random, never the database id.
     user_handle: Mapped[bytes] = mapped_column(LargeBinary(64), unique=True)
-    password_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
-    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     data_version: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime)
 

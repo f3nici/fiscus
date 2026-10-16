@@ -64,7 +64,6 @@ def create_user(
         is_admin=is_admin,
         is_active=True,
         user_handle=user_handle or secrets.token_bytes(32),
-        password_enabled=False,
         created_at=utcnow_naive(clock),
         data_version=0,
     )

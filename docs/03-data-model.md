@@ -9,7 +9,7 @@ user's `data_version` (the forecast cache key).
 
 | Table | Notes |
 | --- | --- |
-| users | username, display name, admin and active flags, random `user_handle` for WebAuthn, `password_enabled` and `password_hash` (unread since D52: no password sign-in), `data_version` |
+| users | username, display name, admin and active flags, random `user_handle` for WebAuthn, `data_version`. No password columns: sign-in is passkeys only (D52), and migration 0026 dropped them |
 | webauthn_credentials | credential id, COSE public key, sign count, transports, name, backed-up flag, created and last used |
 | sessions | SHA-256 of the cookie token, idle and absolute expiry, sign-in method, IP, user agent |
 | setup_links | SHA-256 of the token, purpose (`bootstrap`, `recovery`; `onboard` from before D52), user, expiry, used and revoked times |

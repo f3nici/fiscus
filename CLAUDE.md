@@ -76,7 +76,7 @@ doc 10 wins.
 - **Passkeys refuse to run unless the origin is HTTPS** (localhost excepted).
   `Settings.passkeys_allowed` decides; the routes answer 503 otherwise.
 - **A user cannot revoke their last passkey.** There is no password sign-in
-  (D52); the `users` password columns stay, unread.
+  (D52), and `users` has no password columns since migration 0026.
 - **Setup links are single use, time-limited and stored as hashes.** A new
   link for a person revokes their previous one. Bootstrap and recovery are the
   same mechanism; only the bootstrap print and the CLI issue one.

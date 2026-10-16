@@ -17,8 +17,10 @@
   bootstrap link exists only while there are no users and is replaced on each
   restart. Since D52 nothing in the app issues one: bootstrap prints itself,
   and recovery is the CLI.
-- **No password sign-in** (D52): passkeys are the only way in. The password
-  columns on `users` stay in the schema, unread.
+- **No password sign-in** (D52): passkeys are the only way in, and `users`
+  has no password columns (migration 0026). That migration rebuilds `users`
+  and refuses to run with foreign keys on, which would cascade the rebuild's
+  drop into every owned table.
 - **Last passkey**: cannot be revoked.
 - **Break-glass**: `python -m fiscus.cli recovery-link <user>` inside the
   container, audited. `remove-user` deletes a person and everything they own

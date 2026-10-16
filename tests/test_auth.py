@@ -6,7 +6,7 @@ from datetime import timedelta
 from typing import Any
 
 import pytest
-from sqlalchemy import select, text
+from sqlalchemy import inspect, select, text
 from sqlalchemy.exc import DatabaseError
 
 from fiscus.models import AuditLog, User, WebAuthnCredential
@@ -316,14 +316,12 @@ def test_cannot_touch_another_users_passkey(env: Env, authenticator: SoftAuthent
 
 
 def test_there_is_no_password_sign_in(env: Env) -> None:
-    """Passkeys are the only way in; a lost one is a recovery link (D52)."""
+    """Passkeys are the only way in; a lost one is a recovery link (D52). The
+    password columns are gone from users too (0026)."""
     sam = env.user('sam')
     with env.db() as db:
-        stored = db.get(User, sam.id)
-        assert stored is not None
-        stored.password_enabled = True
-        stored.password_hash = '$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$aGFzaA'
-        db.commit()
+        cols = {c['name'] for c in inspect(db.get_bind()).get_columns('users')}
+    assert not {'password_enabled', 'password_hash'} & cols
     client = env.client()
     login = client.get('/login').text
     assert 'type="password"' not in login and 'recovery-link' in login
