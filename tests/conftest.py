@@ -26,7 +26,6 @@ from fiscus.config import Settings, load_settings
 from fiscus.db import run_migrations
 from fiscus.models import User
 from fiscus.services import auth as auth_service
-from fiscus.services import square as square_service
 from fiscus.services.users import create_user
 from fiscus.web import AppContext
 from tests.authenticator import SoftAuthenticator
@@ -47,16 +46,6 @@ def settings_for(data_dir: Path, **extra: str) -> Settings:
         **extra,
     }
     return load_settings(env)
-
-
-@pytest.fixture(autouse=True)
-def no_square(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Tests never reach the real Square; test_square.py swaps in a fake."""
-
-    def refuse(token: str) -> Any:
-        raise AssertionError('a test tried to call the real Square API')
-
-    monkeypatch.setattr(square_service, 'client_factory', refuse)
 
 
 @pytest.fixture(scope='session')

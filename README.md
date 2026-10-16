@@ -33,7 +33,7 @@
 - **A tax estimate** for the financial year, against what you have set aside.
 - **Private by design.** One container and one SQLite file. Passkey sign-in, no
   telemetry, and no outside calls unless you turn on reminders through
-  [ntfy](https://ntfy.sh) or Square sync.
+  [ntfy](https://ntfy.sh).
 
 Forecast and tax figures are estimates from your own data, not financial or
 tax advice.

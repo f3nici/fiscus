@@ -34,8 +34,7 @@ browser ─HTTPS─ NPMplus ─HTTP─ uvicorn (proxy headers from trusted IPs o
 
 - `domain/`: pure functions and dataclasses. Recurrence, splits (for the
   migrations that move shared bills), reading
-  uploaded files and PDF text, rules and bill matching (for Square), payslip
-  reading, loan maths, the forecast engine and
+  uploaded files and PDF text, payslip reading, loan maths, the forecast engine and
   scenarios, tax, bill import parsing and diffs. No database, no clock.
 - `services/`: database work for one concern each. Every per-user query goes
   through `access.owned` / `get_owned`.

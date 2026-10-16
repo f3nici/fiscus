@@ -9,7 +9,7 @@ and is used mostly from phones as an installed PWA.
 
 - **Your data stays home.** No bank feeds, no telemetry, no CDN. The only
   outbound calls are to an ntfy server (ntfy.sh or the household's own) when
-  reminders are on, and to Square once it is connected (D24).
+  reminders are on.
 - **One person keeps it.** Accounts, categories, bills, payslips, budget,
   goals, loans, forecast and tax all belong to the one account. There is no
   users page and nothing is shared (D52); rows are still owned, so a person
@@ -36,7 +36,6 @@ and is used mostly from phones as an installed PWA.
 | Dashboard | Overdue bills, balances, unbudgeted money and what is left in each budget, the next 14 days, budget status, tax position, offset savings and a 3-month sparkline with any low-balance warning. |
 | PWA | Installable on iOS, Android and desktop. The service worker caches the app shell only; offline shows an offline screen. Bottom navigation when installed. Update prompt. |
 | Reminders | Optional ntfy pushes, through ntfy.sh or a server of your own, for bills due soon, overdue bills, low balances and paydays without a payslip. |
-| Square | Optional, per person, page unlinked since D25. Payments, fees, refunds and payouts from a Square seller account synced into an account every six hours, categorised as chosen and matched to bills; unpaid invoices shown on the calendar. |
 | Ops | One container, a named volume, health and ready checks, nightly backups with retention, download from Settings, CLI restore, recovery links and removing a person. |
 
 ## Out of scope for v1

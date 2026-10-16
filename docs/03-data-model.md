@@ -16,8 +16,6 @@ user's `data_version` (the forecast cache key).
 | auth_challenges | WebAuthn challenge by opaque handle, purpose, five-minute expiry, deleted on first use |
 | audit_log | append-only (triggers refuse UPDATE and DELETE) |
 | app_state | small key/value for instance state |
-| square_connections (owned) | one per user: enabled, access token, target account, categories for payments, fees and payouts, start date, synced-until, last result and error |
-| square_invoices (owned) | unpaid invoice payment requests as of the last sync: number, customer, due date, amount owing |
 | user_settings (owned) | low-balance threshold, forecast horizon, spending account, ntfy settings (`ntfy_payslips`: a payday passed without a payslip), `budget_start_day` (the budget month runs from this day), `chart_lines` (forecast chart lines turned off or on in its legend, JSON, D50) |
 
 ## Money
@@ -26,18 +24,17 @@ user's `data_version` (the forecast cache key).
 | --- | --- |
 | accounts (owned) | type, opening balance (used only while no balance has been typed in), set-aside flag, `loan_id` for an offset, archived, `balance_updated_on` |
 | account_balances (owned) | each balance typed in: account, date (one a day, the last wins), cents, `typed_at` (when; none before D45). Any day's balance, today's too, is the last one on or before it plus the transactions dated after that day and those dated its day put in after `typed_at`; offset savings read it (D39, D42, D45) |
-| transactions (owned) | date, signed amount, description, category, import, `dedup_hash` unique per account. Written by Square sync, kept from imports before D37, and written for a bill marked paid by hand (`bill_payment_id`), a payslip (`payslip_id`) or a budget spend (`budget_spend_id`) so the balance moves with it; deleted with that row (D42, D49). The account page lists those since the balance was typed in |
-| imports (owned) | a Square sync batch, or a statement import from before D37 |
+| transactions (owned) | date, signed amount, description, category, import, `dedup_hash` unique per account. Kept from Square sync and statement imports (both gone, D37 and D55), and written for a bill marked paid by hand (`bill_payment_id`), a payslip (`payslip_id`) or a budget spend (`budget_spend_id`) so the balance moves with it; deleted with that row (D42, D49). The account page lists those since the balance was typed in |
+| imports (owned) | a Square sync batch or statement import from before D55 and D37; nothing writes one now, but their transactions point here |
 | categories (owned) | name unique per user; income, business, deductible, transfer flags; the budget group its line sits in and its place there (0 until moved); the goal its line saves into (optional) |
 | budget_groups (owned) | a heading on the budget page: name, position, collapsed (shows only its totals) |
-| rules (owned) | pattern, regex flag, category, priority; Square sync applies them; no screen edits them since D37 |
 
 ## Bills
 
 | Table | Notes |
 | --- | --- |
-| bills (owned) | amount, frequency, next due (the recurrence anchor), end date, the account it is paid from and its category (both optional), matching tolerance, window and hint. Not shared since D52: migration 0025 gave each person their share of a shared bill as a bill of their own, and dropped `bill_shares` |
-| bill_payments (owned) | an occurrence marked paid, by hand or matched to a Square transaction; unique per bill, user and due date, and per transaction |
+| bills (owned) | amount, frequency, next due (the recurrence anchor), end date, the account it is paid from and its category (both optional). Not shared since D52: migration 0025 gave each person their share of a shared bill as a bill of their own, and dropped `bill_shares` |
+| bill_payments (owned) | an occurrence marked paid by hand (or, before D55, matched to a synced transaction); unique per bill, user and due date, and per transaction |
 
 ## Income, loans, planning
 

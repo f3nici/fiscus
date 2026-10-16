@@ -276,7 +276,6 @@ def create_app(
         pwa,
         settings_routes,
         setup,
-        square,
         tax,
     )
     from fiscus.routes import auth as auth_routes
@@ -300,7 +299,6 @@ def create_app(
         budget,
         goals,
         tax,
-        square,
     ):
         app.include_router(module.router)
 

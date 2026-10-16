@@ -18,16 +18,15 @@ bill import; the tax estimate, each job taxed on its own figures (D38); the
 dashboard; ntfy reminders through ntfy.sh or a server of the person's own
 (D53), payslips to put in among them; backups, downloaded from Settings;
 payslip PDFs, single or in bulk, recording schedule paydays; casual pay;
-Square sync; savings goals inside accounts, out of the budget, one of them
+savings goals inside accounts, out of the budget, one of them
 the tax money, any of them saved from budget lines, one goal from several
 (D32 to D34, D36); saved-up lines say if they will cover their bills in the
 year ahead, overdue ones first, and what they hold is typed in or lined up
 with them (D36, D40, D43, D44); budget lines in groups and in an order set by
 hand (D35). Since D25 the budget is kept by hand (spending taken off,
 balances typed in); the transactions, statement import, rules and matching
-screens were removed in D37 (their tables stay, but for `import_mappings`,
-dropped in migration 0027; Square, bills marked paid, payslips and budget
-spends write to them; Square's page is unlinked). Next
+screens went in D37 and Square sync in D55. Bills marked paid, payslips and
+budget spends still write transactions; rows those features left stay. Next
 steps are in `docs/10-decisions.md` §3.
 
 ## Read before building
@@ -68,9 +67,9 @@ doc 10 wins.
   offline screen, never stale figures. `tests/test_pwa_ops.py` and
   `tests/test_browser.py` hold this.
 - **The forecast cache is keyed on `users.data_version`.** A flush that
-  touches an `Owned` row bumps its user in `services/versioning.py`. Bulk `DELETE`/`UPDATE` statements skip
-  the ORM, so pair them with an ORM change to an owned row, as Square's sync
-  does after clearing its invoices.
+  touches an `Owned` row bumps its user in `services/versioning.py`. Bulk
+  `DELETE`/`UPDATE` statements skip the ORM, so pair them with an ORM change
+  to an owned row.
 - **The audit log is append-only**, enforced by SQLite triggers. Logins,
   failed logins, every credential change, setup links, backups and CLI
   actions. No page shows it since D52.
@@ -90,13 +89,11 @@ doc 10 wins.
   script tag when it swaps a boosted page.
 - **Everything frontend is vendored** in `fiscus/static/vendor` with its
   licence and a line in its README. Nothing loads from another origin.
-- **No external calls** except two, both off by default and per user: the
-  ntfy server the user names (ntfy.sh or their own, D53), and Square's API.
-  ntfy refuses loopback, link-local (cloud metadata) and unspecified
-  addresses, and allows public servers and private LAN ranges, where a
-  homelab ntfy lives. Square only ever goes to the
-  fixed `connect.squareup.com` host (no address from a form), reads only, and
-  tests never reach it (`conftest.no_square`).
+- **No external calls** except one, off by default and per user: the ntfy
+  server the user names (ntfy.sh or their own, D53). It refuses loopback,
+  link-local (cloud metadata) and unspecified addresses, and allows public
+  servers and private LAN ranges, where a homelab ntfy lives. Square sync
+  went in D55.
 - **Every tax figure is labelled an estimate.** Rates live in
   `config/tax/<year>.yaml`, one per financial year, checked each July.
 - Australian English in all user-facing strings. No em dashes in prose.
@@ -120,14 +117,14 @@ doc 10 wins.
 ```
 fiscus/
   config.py clock.py money.py db.py models.py web.py app.py jobs.py cli.py
-  domain/     recurrence, splits (migrations only), uploads, rules, matching,
-              loan, forecast, tax, bill_import, budget_import, pdftext,
-              payslip, pay, square, goals, saving, arrange.
+  domain/     recurrence, splits (migrations only), uploads, loan, forecast,
+              tax, bill_import, budget_import, pdftext, payslip, pay, goals,
+              saving, arrange.
               Pure, no I/O.
   services/   access (ownership), auth (sessions, links, WebAuthn), users,
               ledger, pay, bills, forecasting, loans, taxes, budgeting,
               budget_import, budget_groups, bill_import, calendar_events,
-              reminders, ntfy, square, backup, versioning, audit, goals
+              reminders, ntfy, backup, versioning, audit, goals
   routes/     one module per screen
   templates/  Jinja2 + HTMX
   static/     css, js (app, webauthn, calendar, forecast-chart, sw.src.js),
@@ -143,7 +140,7 @@ scripts/      smoke.sh, generate_icons.py, icon.svg, screenshots.py (README
 ## Stack
 
 Python 3.12, FastAPI, SQLAlchemy 2.1 + Alembic on SQLite (WAL), Jinja2 +
-HTMX, py_webauthn, httpx (ntfy and Square only), openpyxl + defusedxml
+HTMX, py_webauthn, httpx (ntfy only), openpyxl + defusedxml
 (budget XLSX import), pdfminer.six (payslip PDFs). uPlot for the forecast
 chart, vue-cal's stylesheet for the calendar. pytest, ruff, mypy --strict,
 djlint, Playwright.

@@ -1,7 +1,7 @@
-"""Bills: occurrences, status and matching.
+"""Bills: occurrences and their status.
 
-An occurrence is paid by a matched transaction for the bill, or by marking it
-paid by hand, which takes it off the bill's account (D42).
+An occurrence is paid by marking it paid by hand, which takes it off the
+bill's account (D42).
 """
 
 from __future__ import annotations
@@ -14,8 +14,7 @@ from sqlalchemy.orm import Session
 
 from fiscus.clock import Clock, utcnow_naive
 from fiscus.domain import recurrence
-from fiscus.domain.matching import Candidate, OpenOccurrence, assign
-from fiscus.models import Bill, BillPayment, Transaction, User
+from fiscus.models import Bill, BillPayment, User
 from fiscus.services import ledger
 from fiscus.services.access import owned
 
@@ -85,60 +84,6 @@ def overdue(db: Session, user: User, today: date) -> list[Occurrence]:
         for o in occurrences(db, user, today - timedelta(days=OVERDUE_CARRY_DAYS), today, today)
         if o.status == 'overdue'
     ]
-
-
-def auto_match(db: Session, clock: Clock, user: User, txns: list[Transaction]) -> int:
-    """Mark this user's open occurrences paid from newly imported transactions."""
-    outgoing = [t for t in txns if t.amount_cents < 0]
-    if not outgoing:
-        return 0
-    lo = min(t.date for t in outgoing)
-    hi = max(t.date for t in outgoing)
-    widest = max((b.match_window_days for b in user_bills(db, user)), default=0)
-    open_occ: list[OpenOccurrence] = []
-    for o in occurrences(
-        db, user, lo - timedelta(days=widest), hi + timedelta(days=widest), clock.today()
-    ):
-        if o.payment is not None:
-            continue
-        open_occ.append(
-            OpenOccurrence(
-                bill_id=o.bill.id,
-                due_date=o.due,
-                expected_cents=o.bill.amount_cents,
-                account_id=o.bill.account_id,
-                tolerance_pct=o.bill.match_tolerance_pct,
-                window_days=o.bill.match_window_days,
-                hint=o.bill.description_hint,
-            )
-        )
-    already = set(
-        db.execute(
-            select(BillPayment.transaction_id).where(
-                BillPayment.transaction_id.in_([t.id for t in outgoing])
-            )
-        ).scalars()
-    )
-    candidates = [
-        Candidate(t.id, t.account_id, t.date, t.amount_cents, t.description)
-        for t in outgoing
-        if t.id not in already
-    ]
-    now = utcnow_naive(clock)
-    pairs = assign(open_occ, candidates)
-    for occ, txn in pairs:
-        db.add(
-            BillPayment(
-                bill_id=occ.bill_id,
-                user_id=user.id,
-                due_date=occ.due_date,
-                paid_on=txn.date,
-                transaction_id=txn.transaction_id,
-                created_at=now,
-            )
-        )
-    db.flush()
-    return len(pairs)
 
 
 def mark_paid(db: Session, clock: Clock, user: User, bill: Bill, due: date) -> BillPayment:

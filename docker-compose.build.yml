@@ -1,9 +1,4 @@
-# Build from source instead of pulling.
-#
-#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
-#
-# For contributors and for testing a branch. A deployment does not need this
-# file: it runs the image CI published, which is the artefact that was tested.
+# Builds the image from source instead of pulling it (see docs/guide.md).
 services:
   fiscus:
     build:

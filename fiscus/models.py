@@ -186,56 +186,6 @@ class UserSettings(Base, Owned):
     chart_lines: Mapped[str] = mapped_column(Text, default='{}')
 
 
-class SquareConnection(Base, Owned):
-    """A person's Square seller account, synced into one of their accounts.
-
-    Off until they save an access token. The token is stored like the ntfy
-    token: in the database, never shown again, and in backups.
-    """
-
-    __tablename__ = 'square_connections'
-
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey('users.id', ondelete='CASCADE'), primary_key=True
-    )
-    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
-    access_token: Mapped[str] = mapped_column(String(255), default='')
-    account_id: Mapped[int | None] = mapped_column(
-        ForeignKey('accounts.id', ondelete='SET NULL'), nullable=True
-    )
-    income_category_id: Mapped[int | None] = mapped_column(
-        ForeignKey('categories.id', ondelete='SET NULL'), nullable=True
-    )
-    fee_category_id: Mapped[int | None] = mapped_column(
-        ForeignKey('categories.id', ondelete='SET NULL'), nullable=True
-    )
-    payout_category_id: Mapped[int | None] = mapped_column(
-        ForeignKey('categories.id', ondelete='SET NULL'), nullable=True
-    )
-    start_date: Mapped[date] = mapped_column(Date)
-    # Everything created before this (UTC) has been fetched; the next sync
-    # starts a week earlier, as Square can complete a payment late.
-    synced_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    last_result: Mapped[str] = mapped_column(String(255), default='')
-    last_error: Mapped[str] = mapped_column(String(255), default='')
-
-
-class SquareInvoice(Base, Owned):
-    """An unpaid Square invoice as of the last sync. Replaced on every sync."""
-
-    __tablename__ = 'square_invoices'
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'), index=True)
-    square_id: Mapped[str] = mapped_column(String(120))
-    number: Mapped[str] = mapped_column(String(120), default='')
-    customer: Mapped[str] = mapped_column(String(255), default='')
-    due_date: Mapped[date] = mapped_column(Date)
-    amount_due_cents: Mapped[int] = mapped_column(Integer)
-    status: Mapped[str] = mapped_column(String(30), default='')
-
-
 # ---------------------------------------------------------------- accounts etc.
 
 
@@ -275,6 +225,9 @@ class AccountBalance(Base, Owned):
 
 
 class Import(Base, Owned):
+    """A batch of transactions from a statement import or Square sync, both gone
+    (D37, D55). Nothing writes one now; their transactions still point here."""
+
     __tablename__ = 'imports'
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -368,18 +321,6 @@ class Transaction(Base, Owned):
     )
 
 
-class Rule(Base, Owned):
-    __tablename__ = 'rules'
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'), index=True)
-    pattern: Mapped[str] = mapped_column(String(200))
-    is_regex: Mapped[bool] = mapped_column(Boolean, default=False)
-    category_id: Mapped[int] = mapped_column(ForeignKey('categories.id', ondelete='CASCADE'))
-    priority: Mapped[int] = mapped_column(Integer, default=100)
-    created_at: Mapped[datetime] = mapped_column(DateTime)
-
-
 # ------------------------------------------------------------------------ bills
 
 
@@ -401,9 +342,6 @@ class Bill(Base, Owned):
     category_id: Mapped[int | None] = mapped_column(
         ForeignKey('categories.id', ondelete='SET NULL'), nullable=True
     )
-    match_tolerance_pct: Mapped[int] = mapped_column(Integer, default=5)
-    match_window_days: Mapped[int] = mapped_column(Integer, default=3)
-    description_hint: Mapped[str] = mapped_column(String(120), default='')
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime)
 

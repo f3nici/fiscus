@@ -33,6 +33,5 @@ Rate limited: everything under `/auth/` and `/setup/`, by IP and by username.
 | Bill import | `/bills/import`, `POST /bills/import`, `/bills/template.csv`, `/bills/template.json`, `/bills/import/{file}`, `POST .../apply`; `/housing` redirects to `/bills` |
 | Goals | `/goals`, `POST /goals`, `/goals/{id}`, `POST /goals/{id}`, `/move`, `/moves/{move}/delete`, `/done`, `/delete` |
 | Tax | `/tax`, `POST /tax/deductions` |
-| Square | `/square`, `POST /square`, `/square/sync`, `/square/disconnect` |
 | Settings | `/settings`, `POST /settings/passkeys/options`, `/verify`, `/{id}/rename`, `/{id}/revoke`, `POST /settings/forecast`, `POST /settings/ntfy`, `/ntfy/test`, `/ntfy/clear-token`; the admin's `POST /settings/backups/run`, `/backups/download` (404 for anyone else) |
 | Sign out | `POST /auth/logout` |
