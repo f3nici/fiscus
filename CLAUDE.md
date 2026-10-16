@@ -4,7 +4,9 @@ Self-hosted personal finance for an Australian household, kept by one person
 (D52). One Docker container on a homelab behind a reverse proxy with HTTPS,
 installable as a PWA on phones. No external calls, no telemetry, no CDN.
 
-**Status: v1 complete.** Passkeys, the bootstrap link and CLI recovery links;
+**Status: v1 complete.** Passkeys (user verification required, D60), the
+bootstrap link and CLI recovery links, other sessions ended by revoking a
+passkey or using a recovery link (D56);
 one person, with no users page, nothing shared and no password (D52);
 accounts with balances typed in and kept by day (D39), moved by bills marked
 paid, payslips and spending taken off the budget until the next is typed in
@@ -48,6 +50,11 @@ doc 10 wins.
   One person keeps Fiscus (D52), but a person left from an earlier version
   still sees only their own. Bills are owned rows like any other, not shared.
   Any new route that takes an id gets a line in `tests/test_isolation.py`.
+- **A route takes the database as `db: Session = DB`** (`fiscus/web.py`).
+  It commits before the response goes out, so a failed commit is the error
+  page, and an unsafe request holds SQLite's write lock from its start, so
+  what it checks still holds when it writes (D59). Never `Depends(get_db)`:
+  two declarations would be two sessions.
 - **Money is integer cents. Rates are decimal strings.** Never a float in a
   stored value or a calculation. `fiscus/money.py` parses and formats.
 - **"Today" comes from the clock**, `ctx.clock.today()`, in

@@ -114,13 +114,24 @@ on the device you are signed in on. Name each one (phone, laptop, security
 key) so you can tell them apart; Settings shows when each was last used. To
 add a device you are not holding, sign in on it with a passkey you already
 have (most browsers offer a QR code to scan with your phone), then add one
-there.
+there. A passkey has to check who is holding it (a face, fingerprint, PIN or
+screen lock, D60), so a security key needs a PIN set.
 
 **Revoke a passkey**: Settings, Passkeys, Manage, Revoke. You cannot revoke
-your last one.
+your last one. Revoking signs out every other device, so a lost phone that
+was still signed in is signed out too (D56).
+
+**Where you are signed in**: Settings, Signed in, lists each device with when
+it was last seen. "Sign out everywhere else" ends all but the one you are
+using. From the server, this ends every one:
+
+```bash
+docker compose exec fiscus python -m fiscus.cli sign-out <username>
+```
 
 **Lost every passkey**: get a recovery link on the server, open it on your
-new device, create a passkey, then revoke the lost ones in Settings.
+new device, create a passkey, then revoke the lost ones in Settings. Using
+the link signs you out everywhere else first.
 
 ```bash
 docker compose exec fiscus python -m fiscus.cli recovery-link <username>
