@@ -1,4 +1,4 @@
-"""Pure domain logic: recurrence, splits, CSV dedup, rules, bill matching, money."""
+"""Pure domain logic: recurrence, splits, uploads, budget months, money."""
 
 from __future__ import annotations
 
@@ -7,8 +7,6 @@ from datetime import date
 import pytest
 
 from fiscus.domain import recurrence, saving, splits, uploads
-from fiscus.domain.matching import Candidate, OpenOccurrence, assign, matches
-from fiscus.domain.rules import Matcher, RuleSpec
 from fiscus.money import MoneyError, fmt, fmt_short, parse_cents
 
 # --------------------------------------------------------------------- money
@@ -172,58 +170,7 @@ def test_csv_rows_are_read_with_their_delimiter() -> None:
         uploads.decode(b'\x00binary')
 
 
-# --------------------------------------------------------------------- rules
-
-
-def test_rules_priority_and_regex() -> None:
-    m = Matcher(
-        [
-            RuleSpec(1, 'woolworths', False, 10, 100),
-            RuleSpec(2, r'^WOOL.*PETROL', True, 20, 200),
-        ]
-    )
-    assert m.category_for('WOOLWORTHS PETROL 123') == 20
-    assert m.category_for('Woolworths Metro') == 10
-    assert m.category_for('Coles') is None
-
-
-# ------------------------------------------------------------------ matching
-
-
-def occ(
-    bill_id: int = 1,
-    due: date = date(2026, 9, 15),
-    expected: int = 100_00,
-    account: int | None = 1,
-    hint: str = '',
-) -> OpenOccurrence:
-    return OpenOccurrence(bill_id, due, expected, account, 5, 3, hint)
-
-
-def txn(i: int, d: date, amount: int, desc: str = 'BPAY', account: int = 1) -> Candidate:
-    return Candidate(i, account, d, amount, desc)
-
-
-def test_match_within_tolerance_and_window() -> None:
-    assert matches(occ(), txn(1, date(2026, 9, 17), -104_00))
-    assert not matches(occ(), txn(1, date(2026, 9, 19), -100_00))  # 4 days late
-    assert not matches(occ(), txn(1, date(2026, 9, 15), -106_00))  # over 5 %
-    assert not matches(occ(), txn(1, date(2026, 9, 15), 100_00))  # money in
-    assert not matches(occ(), txn(1, date(2026, 9, 15), -100_00, account=2))
-
-
-def test_hint_must_appear() -> None:
-    assert matches(occ(hint='origin'), txn(1, date(2026, 9, 15), -100_00, 'ORIGIN ENERGY'))
-    assert not matches(occ(hint='origin'), txn(1, date(2026, 9, 15), -100_00, 'AGL'))
-
-
-def test_assignment_is_one_to_one_and_prefers_nearest() -> None:
-    occs = [occ(due=date(2026, 9, 1)), occ(due=date(2026, 9, 3))]
-    pairs = assign(occs, [txn(1, date(2026, 9, 3), -100_00), txn(2, date(2026, 9, 4), -100_00)])
-    assert [(o.due_date, t.transaction_id) for o, t in pairs] == [
-        (date(2026, 9, 3), 1),
-        (date(2026, 9, 1), 2),
-    ]
+# ------------------------------------------------------------- budget months
 
 
 @pytest.mark.parametrize(

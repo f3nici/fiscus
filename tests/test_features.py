@@ -433,7 +433,8 @@ def test_spending_is_taken_off_the_budget_by_hand(env: Env) -> None:
     a = env.login(alex)
     acct = make_account(a)
     groceries = _groceries(env, alex)
-    # Transactions (from Square, or old imports) do not count towards the budget.
+    # Transactions (from Square sync or imports before they went) do not count
+    # towards the budget.
     add_transactions(a, acct, '01/10/2026,"-450.00","COLES"\n', category_id=groceries)
     a.post('/budget', data={'category_id': str(groceries), 'amount': '400'})
     page = a.get('/budget?month=2026-10').text
@@ -1281,6 +1282,14 @@ def test_every_page_renders(env: Env) -> None:
         # The tab shows the title as text: a block left open puts markup there.
         title = re.search(r'<title>(.*?)</title>', resp.text, re.S)
         assert title and '<' not in title[1] and '\n' not in title[1], (page, title)
+
+
+def test_square_sync_is_gone(env: Env) -> None:
+    """Square sync was removed (D55): its pages answer 404."""
+    a = env.login(env.user('alex'))
+    assert a.get('/square').status_code == 404
+    for path in ('/square', '/square/sync', '/square/disconnect'):
+        assert a.post(path, data={}).status_code in (404, 405)
 
 
 def test_dashboard_contents(env: Env) -> None:

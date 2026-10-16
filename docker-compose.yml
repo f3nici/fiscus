@@ -1,13 +1,4 @@
-# Fiscus, running from the published image.
-#
-# `docker compose up -d` pulls and runs; nothing is built here. Set TAG in .env
-# to pin a release (TAG=v1.0.0), or leave it and get `latest`.
-#
-# To build from source instead, add the override:
-#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
-#
-# Works as a Dockge stack as-is. Put it behind your reverse proxy (NPMplus)
-# with HTTPS; passkeys refuse to run on plain HTTP.
+# Fiscus from the published image; settings go in .env (see .env.example).
 name: fiscus
 
 services:
@@ -18,25 +9,21 @@ services:
     ports:
       - '${FISCUS_HOST_PORT:-8000}:8000'
     environment:
-      # REQUIRED. Signs nothing a user can see, but must be stable and secret.
-      # Generate with: openssl rand -hex 32
-      FISCUS_SECRET_KEY: '${FISCUS_SECRET_KEY:?set FISCUS_SECRET_KEY in .env, generate one with openssl rand -hex 32}'
-      # The address people type, exactly, with https://. Setup links use it.
+      FISCUS_SECRET_KEY: '${FISCUS_SECRET_KEY:?set FISCUS_SECRET_KEY in .env (openssl rand -hex 32)}'
       FISCUS_BASE_URL: ${FISCUS_BASE_URL:?set FISCUS_BASE_URL in .env, e.g. https://fiscus.example.com}
-      # WebAuthn: the origin the browser sees and the relying party ID (the
-      # domain). Both default from FISCUS_BASE_URL.
       FISCUS_ORIGIN: ${FISCUS_ORIGIN:-}
       FISCUS_RP_ID: ${FISCUS_RP_ID:-}
-      # Only these addresses may set X-Forwarded-For / -Proto. Your proxy's
-      # address on the Docker network, or a comma-separated list.
       FISCUS_TRUSTED_PROXIES: ${FISCUS_TRUSTED_PROXIES:-172.16.0.0/12}
       FISCUS_TIMEZONE: ${FISCUS_TIMEZONE:-Australia/Perth}
       FISCUS_BACKUP_HOUR: ${FISCUS_BACKUP_HOUR:-2}
       FISCUS_BACKUP_RETENTION_DAYS: ${FISCUS_BACKUP_RETENTION_DAYS:-14}
       FISCUS_SETUP_LINK_HOURS: ${FISCUS_SETUP_LINK_HOURS:-48}
+      FISCUS_BOOTSTRAP_HOURS: ${FISCUS_BOOTSTRAP_HOURS:-24}
+      FISCUS_SESSION_IDLE_DAYS: ${FISCUS_SESSION_IDLE_DAYS:-30}
+      FISCUS_SESSION_ABSOLUTE_DAYS: ${FISCUS_SESSION_ABSOLUTE_DAYS:-90}
       FISCUS_LOG_LEVEL: ${FISCUS_LOG_LEVEL:-info}
     volumes:
-      # SQLite database, staged uploads and nightly backups.
+      # The database, staged uploads and nightly backups.
       - fiscus-data:/data
 
 volumes:

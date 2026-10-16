@@ -136,7 +136,6 @@ def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any
         '/settings',
         '/tax',
         '/bills/import',
-        '/square',
         '/goals',
     ]:
         page.goto(f'{base}{path}')

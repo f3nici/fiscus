@@ -560,3 +560,99 @@ def test_import_mappings_go(tmp_path: Path) -> None:
     assert set(inspect(engine).get_table_names()) == before
     command.upgrade(cfg, 'head')
     engine.dispose()
+
+
+def test_square_goes_and_its_transactions_stay(tmp_path: Path) -> None:
+    """0028 (D55) drops Square's connection and invoices, the rules and the bill
+    matching columns. What Square synced, and payments matched to it, stay."""
+    url = f'sqlite:///{tmp_path / "fiscus.db"}'
+    cfg = alembic_config(url)
+    command.upgrade(cfg, '0027')
+    engine = create_engine(url)
+    with engine.begin() as c:
+        c.execute(
+            text(
+                'INSERT INTO users (id, username, display_name, is_admin, is_active,'
+                " user_handle, data_version, created_at) VALUES (1, 'alex', 'Alex', 1, 1, :h,"
+                " 0, '2026-01-01')"
+            ),
+            {'h': bytes([1]) * 64},
+        )
+        c.execute(
+            text(
+                'INSERT INTO accounts (id, user_id, name, type, opening_balance_cents,'
+                " is_set_aside, archived, created_at) VALUES (1, 1, 'Square', 'transaction',"
+                " 0, 0, 0, '2026-01-01')"
+            )
+        )
+        c.execute(
+            text(
+                'INSERT INTO categories (id, user_id, name, is_business, is_deductible,'
+                " is_income, is_transfer, budget_position) VALUES (1, 1, 'Sales', 1, 0, 1, 0, 0)"
+            )
+        )
+        c.execute(
+            text(
+                'INSERT INTO square_connections (user_id, enabled, access_token, account_id,'
+                " start_date, last_result, last_error) VALUES (1, 1, 'EAAA-secret', 1,"
+                " '2026-01-01', '', '')"
+            )
+        )
+        c.execute(
+            text(
+                'INSERT INTO square_invoices (user_id, square_id, number, customer, due_date,'
+                " amount_due_cents, status) VALUES (1, 'inv', '7', 'Kim', '2026-11-01', 5000,"
+                " 'UNPAID')"
+            )
+        )
+        c.execute(
+            text(
+                'INSERT INTO rules (user_id, pattern, is_regex, category_id, priority,'
+                " created_at) VALUES (1, 'SQUARE', 0, 1, 100, '2026-01-01')"
+            )
+        )
+        c.execute(
+            text(
+                'INSERT INTO bills (id, user_id, name, amount_cents, frequency, next_due,'
+                ' match_tolerance_pct, match_window_days, description_hint, active,'
+                " created_at, account_id) VALUES (1, 1, 'Fees', 2000, 'monthly', '2026-09-15',"
+                " 5, 3, 'square', 1, '2026-01-01', 1)"
+            )
+        )
+        c.execute(
+            text(
+                'INSERT INTO transactions (id, user_id, account_id, date, amount_cents,'
+                " description, dedup_hash, created_at) VALUES (1, 1, 1, '2026-09-15', -2000,"
+                " 'SQUARE FEES', 'sq:1', '2026-09-15')"
+            )
+        )
+        c.execute(
+            text(
+                'INSERT INTO bill_payments (bill_id, user_id, due_date, paid_on,'
+                " transaction_id, created_at) VALUES (1, 1, '2026-09-15', '2026-09-15', 1,"
+                " '2026-09-15')"
+            )
+        )
+
+    command.upgrade(cfg, '0028')
+    insp = inspect(engine)
+    assert not {'square_connections', 'square_invoices', 'rules'} & set(insp.get_table_names())
+    cols = {col['name'] for col in insp.get_columns('bills')}
+    assert not {'match_tolerance_pct', 'match_window_days', 'description_hint'} & cols
+    with engine.connect() as c:
+        assert c.execute(text('SELECT name, amount_cents FROM bills')).one() == ('Fees', 2000)
+        assert c.execute(text('SELECT transaction_id FROM bill_payments')).scalar_one() == 1
+        assert c.execute(text('SELECT amount_cents FROM transactions')).scalar_one() == -2000
+        assert c.execute(text('PRAGMA foreign_key_check')).all() == []
+
+    command.downgrade(cfg, '0027')
+    insp = inspect(engine)
+    assert {'square_connections', 'square_invoices', 'rules'} <= set(insp.get_table_names())
+    with engine.connect() as c:
+        back = c.execute(
+            text('SELECT match_tolerance_pct, match_window_days, description_hint FROM bills')
+        ).one()
+        assert tuple(back) == (5, 3, '')
+        assert c.execute(text('SELECT count(*) FROM bill_payments')).scalar_one() == 1
+    command.upgrade(cfg, 'head')
+    engine.dispose()

@@ -1,18 +1,17 @@
-"""Bills and payment matching."""
+"""Bills: their pages, states and payments."""
 
 from __future__ import annotations
 
 import csv
 import hashlib
 import io
-from datetime import date, datetime
+from datetime import datetime
 
 from sqlalchemy import func, select
 
 from fiscus.clock import utcnow_naive
-from fiscus.models import Account, Bill, BillPayment, Category, Transaction, User
+from fiscus.models import Account, Category, Transaction, User
 from fiscus.money import parse_cents
-from fiscus.services import bills, ledger
 from tests.conftest import CsrfClient, Env
 
 ANZ_SEPT = (
@@ -34,9 +33,9 @@ def make_account(
 def add_transactions(
     client: CsrfClient, account_id: int, text: str, category_id: int | None = None
 ) -> list[int]:
-    """Transactions in an account, as a Square sync (or an import before they
-    were removed) leaves them: one per line of date (DD/MM/YYYY), amount and
-    description. Rules and bill matching run on them, as a sync does."""
+    """Transactions in an account, as Square sync and statement imports left
+    them before they were removed: one per line of date (DD/MM/YYYY), amount
+    and description."""
     ctx = client.app.state.ctx  # type: ignore[attr-defined]
     with ctx.sessions() as db:
         acct = db.get(Account, account_id)
@@ -61,9 +60,6 @@ def add_transactions(
             )
             db.add(t)
             created.append(t)
-        db.flush()
-        ledger.apply_rules(db, user, created)
-        bills.auto_match(db, ctx.clock, user, created)
         db.commit()
         return [t.id for t in created]
 
@@ -87,23 +83,6 @@ def create_bill(client: CsrfClient, **fields: str | list[str]) -> int:
     resp = client.post('/bills', data=data)
     assert resp.status_code == 303, resp.text
     return int(resp.headers['location'].rsplit('/', 1)[1])
-
-
-def test_bill_auto_matches_a_synced_payment(env: Env) -> None:
-    client = env.login(env.user('alex'))
-    acct = make_account(client)
-    bill = create_bill(client, account_id=str(acct))
-    with env.db() as db:
-        b = db.get(Bill, bill)
-        assert b is not None
-        b.description_hint = 'origin'
-        db.commit()
-    add_transactions(client, acct, ANZ_SEPT)
-    with env.db() as db:
-        pay = db.execute(select(BillPayment)).scalar_one()
-        assert pay.bill_id == bill and pay.due_date == date(2026, 9, 15) and pay.transaction_id
-    page = client.get(f'/bills/{bill}')
-    assert 'matched' in page.text
 
 
 def test_bill_states_overdue_due_soon_paid(env: Env) -> None:

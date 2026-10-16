@@ -65,10 +65,6 @@
   encrypted ones are refused.
 - The service worker never stores data responses; offline shows a static
   screen.
-- Square: off by default, per user, read only, only to `connect.squareup.com`
-  with redirects off. The access token is write-only in the UI, stored in the
-  database like the ntfy token (so it is in backups), and setting or removing
-  it is audited. Disconnecting forgets it.
 - ntfy: off by default; public servers (ntfy.sh) and private LAN addresses
   allowed; refuses loopback, link-local and unspecified targets, and connects
   to the address it checked (a name is resolved once, then the request goes

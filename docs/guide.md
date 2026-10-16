@@ -10,7 +10,6 @@ the short version.
 - [Budget import from a spreadsheet](#budget-import-from-a-spreadsheet)
 - [Importing bills from a file](#importing-bills-from-a-file)
 - [Reminders with ntfy](#reminders-with-ntfy)
-- [Square](#square)
 - [Backup and restore](#backup-and-restore)
 - [Configuration](#configuration)
 - [Tax tables](#tax-tables)
@@ -258,34 +257,6 @@ without a payslip (the day after, for the last week's paydays), each once, at
 the hour you choose. Messages contain the bill or employer name, date and
 amount only. Public servers and private LAN addresses are allowed; the
 container's own loopback and link-local addresses are not.
-
-## Square
-
-If you take payments or send invoices through Square, Fiscus can pull them in.
-It only reads, only talks to Square's API, and is off until you connect it.
-
-1. In the [Square Developer Console](https://developer.squareup.com/apps),
-   create an application (any name), open **Credentials**, switch to
-   **Production** and copy the access token.
-2. In Fiscus, add an account for the Square balance (for example "Square",
-   opening balance 0), and categories: one marked income and business for
-   payments, one marked business for fees, and a transfer category for payouts.
-3. Open `/square` (it has been out of the menus since the budget became
-   hand-kept), tick **Sync from Square**,
-   paste the token, choose the account, categories and the date to fetch
-   from, Save, then **Sync now**.
-
-After that it syncs every six hours. Each payment is income at its full
-amount, with Square's fee as a separate expense; the forecast averages them
-as business income. Refunds come out, and a payout is money leaving the
-Square account, so put payouts in the transfer category. Bills are matched to
-synced payments. Unpaid invoices are listed on the Square page and on the
-calendar on their due date. For the tax estimate, enter the income as pay
-(D31).
-
-Disconnect forgets the token; transactions already synced stay. Anyone with
-the token can read your Square data, so treat it like a password; it is kept
-in the Fiscus database and therefore in its backups.
 
 ## Backup and restore
 

@@ -10,7 +10,6 @@ from sqlalchemy import ColumnElement, and_, func, or_, select
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from fiscus.clock import Clock, utcnow_naive
-from fiscus.domain.rules import Matcher, RuleSpec
 from fiscus.models import (
     Account,
     AccountBalance,
@@ -19,7 +18,6 @@ from fiscus.models import (
     BudgetSpend,
     Category,
     Payslip,
-    Rule,
     Transaction,
     User,
 )
@@ -371,25 +369,3 @@ def move_aside(db: Session, user: User, name: str, besides: Category) -> Categor
     other.name = aside
     db.flush()
     return None
-
-
-def matcher_for(db: Session, user: User) -> Matcher:
-    rules = db.execute(owned(Rule, user)).scalars().all()
-    return Matcher(
-        [RuleSpec(r.id, r.pattern, r.is_regex, r.category_id, r.priority) for r in rules]
-    )
-
-
-def apply_rules(
-    db: Session, user: User, txns: list[Transaction], *, overwrite: bool = False
-) -> int:
-    m = matcher_for(db, user)
-    changed = 0
-    for t in txns:
-        if t.category_id is not None and not overwrite:
-            continue
-        cat = m.category_for(t.description)
-        if cat is not None and cat != t.category_id:
-            t.category_id = cat
-            changed += 1
-    return changed
