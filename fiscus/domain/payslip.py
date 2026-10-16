@@ -20,6 +20,7 @@ from datetime import date
 
 from fiscus.domain.pdftext import Cell, Line, extract_chars, is_pdf, lines_from_chars
 from fiscus.domain.uploads import ImportError_
+from fiscus.forms import EARLIEST, LATEST
 from fiscus.money import MoneyError, parse_cents
 
 MAX_PAGES = 5
@@ -150,7 +151,8 @@ def dates_in(text: str) -> list[date]:
                 found.append(date(int(g['y3'] or g['y4']), mon, int(g['d3'] or g['d4'])))
         except ValueError:
             continue
-    return found
+    # A misread year (0202) is no date a payslip has.
+    return [d for d in found if EARLIEST <= d <= LATEST]
 
 
 def _cents(text: str) -> int | None:

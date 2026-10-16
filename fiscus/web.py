@@ -15,6 +15,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session, sessionmaker
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from fiscus import __version__
 from fiscus.clock import Clock, utcnow_naive
@@ -61,6 +62,49 @@ def user_view(user: User) -> UserView:
 
 class LoginRequired(Exception):
     pass
+
+
+# The most a request may send. Uploads are 10 MB a file; forty payslips at
+# once are rarely more than a few. A form is read before the route checks who
+# is signed in, so this is what keeps a stranger from filling memory or disk.
+MAX_BODY = 64 * 1024 * 1024
+
+
+class BodyTooLarge(HTTPException):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=413, detail=f'That is more than {MAX_BODY // 2**20} MB to send at once.'
+        )
+
+
+class LimitBody:
+    """Refuses a request body over MAX_BODY: at the first read when its
+    Content-Length says so, else once that much has streamed in. Raised as
+    the body is read, so the answer is the usual error page."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope['type'] != 'http':
+            await self.app(scope, receive, send)
+            return
+        declared = dict(scope['headers']).get(b'content-length', b'')
+        limit = MAX_BODY
+        seen = 0
+
+        async def limited() -> Message:
+            nonlocal seen
+            if declared.isdigit() and int(declared) > limit:
+                raise BodyTooLarge
+            message = await receive()
+            if message['type'] == 'http.request':
+                seen += len(message.get('body', b''))
+                if seen > limit:
+                    raise BodyTooLarge
+            return message
+
+        await self.app(scope, limited, send)
 
 
 class RateLimited(Exception):

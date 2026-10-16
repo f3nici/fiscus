@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import date
-
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
+from fiscus.forms import iso_date
 from fiscus.models import User
 from fiscus.services import calendar_events
 from fiscus.web import DB, ctx, current_user, render
@@ -24,11 +23,7 @@ def calendar_page(
     db: Session = DB,
 ) -> Response:
     c = ctx(request)
-    raw = request.query_params.get('date', date_)
-    try:
-        focus = date.fromisoformat(raw) if raw else c.clock.today()
-    except ValueError:
-        focus = c.clock.today()
+    focus = iso_date(request.query_params.get('date', date_)) or c.clock.today()
     # No view in the URL: the month, on a phone too.
     chosen = view if view in calendar_events.VIEWS else 'month'
     grid = calendar_events.grid(db, c.clock, user, chosen, focus)

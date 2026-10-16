@@ -28,8 +28,8 @@ def setup_page(token: str, request: Request, db: Session = DB) -> Response:
             'error.html',
             {
                 'title': 'Link expired',
-                'message': 'This setup link has expired or was already used. '
-                'Ask your Fiscus admin for a new one.',
+                'message': 'This setup link has expired or was already used. On the server, '
+                'python -m fiscus.cli recovery-link <username> prints a new one.',
             },
             status_code=410,
         )

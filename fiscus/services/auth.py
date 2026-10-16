@@ -258,7 +258,8 @@ def registration_options(
         user_display_name=display_name,
         authenticator_selection=AuthenticatorSelectionCriteria(
             resident_key=ResidentKeyRequirement.REQUIRED,
-            user_verification=UserVerificationRequirement.PREFERRED,
+            # The passkey is the only factor (D52): it must check who holds it (D60).
+            user_verification=UserVerificationRequirement.REQUIRED,
         ),
         exclude_credentials=exclude,
         timeout=120000,
@@ -293,6 +294,7 @@ def finish_registration(
             expected_challenge=challenge.challenge,
             expected_rp_id=settings.rp_id,
             expected_origin=settings.origin,
+            require_user_verification=True,
         )
     except (InvalidRegistrationResponse, ValueError, KeyError, TypeError) as exc:
         log.info('passkey registration refused: %s', exc)
@@ -349,7 +351,7 @@ def authentication_options(
     opts = generate_authentication_options(
         rp_id=settings.rp_id,
         allow_credentials=allow,
-        user_verification=UserVerificationRequirement.PREFERRED,
+        user_verification=UserVerificationRequirement.REQUIRED,
         timeout=120000,
     )
     handle = _store_challenge(db, clock, 'login', opts.challenge)
@@ -384,6 +386,7 @@ def finish_authentication(
             expected_origin=settings.origin,
             credential_public_key=cred.public_key,
             credential_current_sign_count=cred.sign_count,
+            require_user_verification=True,
         )
     except (InvalidAuthenticationResponse, ValueError) as exc:
         log.info('passkey sign-in refused for user %s: %s', user.id, exc)

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 import uuid
-from datetime import date
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import PlainTextResponse, Response
@@ -14,7 +13,7 @@ from fiscus.clock import utcnow_naive
 from fiscus.domain import recurrence
 from fiscus.domain.budget_import import MORTGAGE
 from fiscus.domain.uploads import MAX_BYTES, ImportError_
-from fiscus.forms import FormError, money, text
+from fiscus.forms import FormError, iso_date, money, req_date, text
 from fiscus.models import Account, Budget, BudgetGroup, BudgetSpend, Category, Loan, User
 from fiscus.money import fmt
 from fiscus.services import budget_groups, budgeting, goals, ledger, loans
@@ -35,9 +34,10 @@ def budget_page(
 ) -> Response:
     c = ctx(request)
     today = c.clock.today()
-    try:
-        start, end = budgeting.period_starting_in(db, user, date.fromisoformat(month + '-01'))
-    except ValueError:
+    first = iso_date(f'{month}-01')
+    if first is not None:
+        start, end = budgeting.period_starting_in(db, user, first)
+    else:
         start, end = budgeting.period(db, user, today)
     rows = budgeting.rows(db, user, start, end)
     budgeted = {r.category.id for r in rows if r.has_budget}
@@ -361,11 +361,9 @@ def add_spend(
         cents = money(amount, 'Amount')
         if cents == 0:
             raise FormError('Enter an amount')
-        when = date.fromisoformat(on) if on else today
+        when = req_date(on, 'Date') if on else today
     except FormError as exc:
         return redirect(target, flash=str(exc), request=request)
-    except ValueError:
-        return redirect(target, flash='That date is not valid', request=request)
     before = ledger.balances(db, user, today)
     spend = BudgetSpend(
         user_id=user.id,

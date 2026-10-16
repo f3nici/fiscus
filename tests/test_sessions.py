@@ -72,7 +72,6 @@ def test_the_cli_signs_a_person_out(env: Env, monkeypatch: pytest.MonkeyPatch) -
     for k, v in {
         'FISCUS_DATA_DIR': str(env.data_dir),
         'FISCUS_BASE_URL': 'https://fiscus.test',
-        'FISCUS_SECRET_KEY': 'x' * 64,
     }.items():
         monkeypatch.setenv(k, v)
     assert cli.main(['sign-out', 'alex']) == 0

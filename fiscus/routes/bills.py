@@ -10,7 +10,17 @@ from sqlalchemy.orm import Session
 
 from fiscus.clock import utcnow_naive
 from fiscus.domain import recurrence
-from fiscus.forms import FormError, choice, ends_after, int_or, money, opt_date, req_date, text
+from fiscus.forms import (
+    FormError,
+    choice,
+    ends_after,
+    int_or,
+    iso_date,
+    money,
+    opt_date,
+    req_date,
+    text,
+)
 from fiscus.models import FREQUENCIES, Account, Bill, Category, Transaction, User
 from fiscus.services import bills as svc
 from fiscus.services import ledger
@@ -193,11 +203,8 @@ def show_bill(
 
 
 def _occ(db: Session, user: User, bill: Bill, due_raw: str) -> date:
-    try:
-        due = date.fromisoformat(due_raw)
-    except ValueError:
-        raise HTTPException(status_code=404) from None
-    if not svc.is_occurrence(bill, due):
+    due = iso_date(due_raw)
+    if due is None or not svc.is_occurrence(bill, due):
         raise HTTPException(status_code=404)
     return due
 

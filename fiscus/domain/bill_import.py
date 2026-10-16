@@ -15,6 +15,7 @@ from datetime import date
 from typing import Any
 
 from fiscus.domain.uploads import ImportError_, decode, read_rows
+from fiscus.forms import iso_date
 from fiscus.money import MoneyError, parse_cents
 
 FIELDS = ('name', 'amount', 'frequency', 'category', 'due_date')
@@ -126,10 +127,9 @@ def _item(raw: dict[str, Any], where: str) -> BillSpec:
     due_raw = str(raw.get('due_date') or '').strip()
     due: date | None = None
     if due_raw:
-        try:
-            due = date.fromisoformat(due_raw)
-        except ValueError as exc:
-            raise ValueError(f'{where}: due_date must be YYYY-MM-DD') from exc
+        due = iso_date(due_raw)
+        if due is None:
+            raise ValueError(f'{where}: due_date must be a YYYY-MM-DD date')
     if freq == 'one_off' and due is None:
         raise ValueError(f'{where}: a one-off bill needs a due_date')
     category = str(raw.get('category') or '').strip()[:80] if 'category' in raw else None

@@ -7,10 +7,11 @@ from typing import Any
 
 import httpx
 import pytest
+from sqlalchemy import select
 
 from fiscus.domain.uploads import MAX_BYTES, ImportError_, decode
 from fiscus.forms import FormError, int_or, rate
-from fiscus.models import Goal, UserSettings
+from fiscus.models import Goal, Loan, UserSettings
 from fiscus.money import MoneyError, parse_cents
 from fiscus.services import ntfy
 from fiscus.web import local_path
@@ -288,3 +289,23 @@ def test_oversized_and_binary_uploads_are_refused(env: Env) -> None:
         assert 'The file is not text' in page.text, path
     with pytest.raises(ImportError_, match='larger than 10 MB'):
         decode(big)
+
+
+def test_a_loan_repayment_cannot_be_negative(env: Env) -> None:
+    client = env.login(env.user('alex'))
+    fields = {
+        'name': 'Home',
+        'principal': '500000',
+        'start_date': '2024-01-15',
+        'term_years': '30',
+        'repayment_frequency': 'monthly',
+        'initial_rate': '6',
+        'balance': '480000',
+        'balance_date': '2026-09-01',
+    }
+    resp = client.post('/loans', data={**fields, 'repayment_override': '-100'})
+    assert resp.status_code == 400 and 'cannot be negative' in resp.text
+    assert client.post('/loans', data={**fields, 'repayment_override': '0'}).status_code == 303
+    with env.db() as db:
+        loan = db.execute(select(Loan)).scalar_one()
+        assert loan.repayment_override_cents is None

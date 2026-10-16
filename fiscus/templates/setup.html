@@ -21,7 +21,7 @@
       <p>Your Fiscus account is <strong>{{ target.username }}</strong>. Register a passkey on this device to sign in. You can add more devices later.</p>
     {% endif %}
     {% if not passkeys_allowed %}
-      <div class="alert alert-error">Passkeys need HTTPS. Ask your admin to check FISCUS_ORIGIN.</div>
+      <div class="alert alert-error">Passkeys need HTTPS. Check that FISCUS_ORIGIN is the https:// address you open Fiscus at.</div>
     {% endif %}
     <div class="field">
       <label class="label" for="passkey_name">Name this passkey</label>

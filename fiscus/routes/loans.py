@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
-from fiscus.forms import FormError, choice, money, opt_money, rate, req_date, text
+from fiscus.forms import FormError, choice, money, rate, req_date, text
 from fiscus.models import Account, Loan, LoanRate, User
 from fiscus.services import ledger, loans
 from fiscus.services.access import get_owned, maybe_owned, owned
@@ -86,7 +86,12 @@ def save_loan(
             repayment_frequency=choice(repayment_frequency, LOAN_FREQS, 'Repayments'),
             balance_cents=money(balance, 'Balance owing', allow_negative=False),
             balance_date=req_date(balance_date, 'Balance as at'),
-            repayment_override_cents=opt_money(repayment_override, 'Repayment'),
+            # Nothing, or zero, is the repayment worked out from the loan.
+            repayment_override_cents=(
+                money(repayment_override, 'Repayment', allow_negative=False) or None
+                if repayment_override.strip()
+                else None
+            ),
         )
         first_rate = rate(initial_rate, 'Interest rate') if loan is None else None
     except FormError as exc:

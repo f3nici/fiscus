@@ -253,7 +253,6 @@ def test_cli_break_glass_recovery_link(
         'FISCUS_DATA_DIR': str(env.data_dir),
         'FISCUS_ORIGIN': 'https://fiscus.test',
         'FISCUS_BASE_URL': 'https://fiscus.test',
-        'FISCUS_SECRET_KEY': 'x' * 64,
     }.items():
         monkeypatch.setenv(k, v)
     assert cli.main(['recovery-link', 'alex']) == 0
@@ -467,3 +466,26 @@ def test_the_admin_pages_are_gone(env: Env) -> None:
         assert admin.get(path).status_code == 404
     assert admin.post('/admin/users', data={'username': 'eve'}).status_code == 404
     assert '/admin' not in admin.get('/more').text and '/admin' not in admin.get('/').text
+
+
+def test_a_passkey_must_check_who_holds_it(env: Env, authenticator: SoftAuthenticator) -> None:
+    """User verification is required (D60): a key that only shows it is present
+    cannot register or sign in."""
+    client = env.client()
+    token = bootstrap_link(env)
+    unverified = SoftAuthenticator(authenticator.origin)
+    unverified.user_verified = False
+    resp = register_via_link(client, token, unverified, {'username': 'alex'})
+    assert resp.status_code == 400
+    start = client.post(f'/setup/{token}/options', json={'username': 'alex'}).json()
+    assert start['options']['authenticatorSelection']['userVerification'] == 'required'
+    assert register_via_link(client, token, authenticator, {'username': 'alex'}).status_code == 200
+    unverified.credentials = authenticator.credentials
+    assert passkey_login(env.client(), unverified).status_code == 400
+    assert passkey_login(env.client(), authenticator).status_code == 200
+
+
+def test_an_expired_setup_link_says_how_to_get_another(env: Env) -> None:
+    page = env.client().get('/setup/nothing-like-a-real-token')
+    assert page.status_code == 410
+    assert 'recovery-link' in page.text and 'admin' not in page.text

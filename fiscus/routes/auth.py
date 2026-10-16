@@ -107,7 +107,15 @@ def logout(request: Request, db: Session = DB) -> Response:
         audit.record(db, c.clock, 'logout', actor_id=found.user_id, ip=client_ip(request))
         db.delete(found)
     resp = redirect('/login')
-    resp.delete_cookie(c.settings.session_cookie, path='/')
+    # With the attributes it was set with: a __Host- cookie deleted without
+    # Secure is ignored by the browser.
+    resp.delete_cookie(
+        c.settings.session_cookie,
+        path='/',
+        secure=c.settings.cookie_secure,
+        httponly=True,
+        samesite='lax',
+    )
     return resp
 
 

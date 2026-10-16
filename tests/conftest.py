@@ -40,7 +40,6 @@ def settings_for(data_dir: Path, **extra: str) -> Settings:
         'FISCUS_BASE_URL': ORIGIN,
         'FISCUS_ORIGIN': ORIGIN,
         'FISCUS_RP_ID': 'fiscus.test',
-        'FISCUS_SECRET_KEY': 'x' * 64,
         'FISCUS_TIMEZONE': 'Australia/Perth',
         'FISCUS_RUN_JOBS': 'false',
         **extra,

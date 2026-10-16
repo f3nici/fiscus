@@ -131,3 +131,95 @@ def test_two_revokes_at_once_leave_a_passkey(env: Env, monkeypatch: pytest.Monke
             .where(WebAuthnCredential.user_id == alex.id)
         )
     assert left == 1
+
+
+# ---------------------------------------------------------- cookies, redirects
+
+
+def test_logout_deletes_the_cookie_as_it_was_set(env: Env) -> None:
+    a = env.login(env.user('alex'))
+    resp = a.post('/auth/logout')
+    cookie = next(
+        v for k, v in resp.headers.multi_items() if k == 'set-cookie' and v.startswith('__Host-')
+    )
+    # Without Secure a browser ignores a __Host- cookie, deletion included.
+    assert 'Secure' in cookie and 'Max-Age=0' in cookie and 'Path=/' in cookie
+
+
+def test_sign_in_comes_back_to_the_whole_address(env: Env) -> None:
+    c = env.client()
+    resp = c.get('/budget?month=2026-09&view=all')
+    assert resp.headers['location'] == '/login?next=/budget%3Fmonth%3D2026-09%26view%3Dall'
+    page = c.get(resp.headers['location']).text
+    assert 'data-next="/budget?month=2026-09&amp;view=all"' in page
+
+
+# ------------------------------------------------------------------- dates
+
+
+def test_dates_far_off_are_refused_or_ignored(env: Env) -> None:
+    from tests.test_bills import create_bill, make_account
+
+    a = env.login(env.user('alex'))
+    bill = create_bill(a, account_id=str(make_account(a)))
+    assert a.get('/calendar?date=9999-12-15').status_code == 200
+    assert a.get('/calendar?date=0001-01-01&view=month').status_code == 200
+    assert a.get('/budget?month=9999-12').status_code == 200
+    assert a.get(f'/bills/{bill}/occurrence/9999-12-15').status_code == 404
+    resp = a.post(
+        '/bills',
+        data={'name': 'Old', 'amount': '10', 'frequency': 'monthly', 'next_due': '0001-01-31'},
+    )
+    assert resp.status_code == 400 and 'from 1900 to 2199' in resp.text
+
+
+# --------------------------------------------------------------- body size
+
+
+def test_a_body_too_large_is_refused_before_it_is_read(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr('fiscus.web.MAX_BODY', 1000)
+    a = env.login(env.user('alex'))
+    resp = a.post('/categories', data={'name': 'x' * 2000})
+    assert resp.status_code == 413
+    assert 'to send at once' in resp.text
+    assert resp.headers['cache-control'] == 'no-store'
+    assert "script-src 'self'" in resp.headers['content-security-policy']
+    assert a.post('/categories', data={'name': 'Pets'}).status_code == 303
+
+
+def test_a_streamed_body_too_large_is_refused(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr('fiscus.web.MAX_BODY', 1000)
+    a = env.login(env.user('alex'))
+    token = a.cookies.get('__Host-fiscus-csrf') or a.get('/healthz').cookies['__Host-fiscus-csrf']
+
+    def chunks() -> Any:
+        for _ in range(10):
+            yield b'name=' + b'x' * 300 + b'&'
+
+    resp = a.post(
+        '/categories',
+        content=chunks(),
+        headers={'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-Token': token},
+    )
+    assert resp.status_code == 413
+
+
+# ------------------------------------------------------------ forecast cache
+
+
+def test_turning_a_chart_line_off_keeps_the_forecast_cache(env: Env) -> None:
+    alex = env.user('alex')
+    a = env.login(alex)
+
+    def version() -> int:
+        with env.db() as db:
+            return int(db.scalar(select(User.data_version).where(User.id == alex.id)) or 0)
+
+    before = version()
+    assert a.post('/forecast/lines', data={'key': 'trend', 'shown': 'false'}).status_code == 204
+    a.post('/settings/ntfy', data={'hour': '9'})
+    assert version() == before
+    a.post('/settings/forecast', data={'low_balance': '100', 'forecast_months': '12'})
+    assert version() > before

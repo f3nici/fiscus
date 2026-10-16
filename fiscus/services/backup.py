@@ -14,6 +14,8 @@ from fiscus.clock import Clock
 from fiscus.config import Settings
 
 PREFIX = 'fiscus-'
+# Folders in the data directory holding a copy being downloaded.
+DOWNLOAD_PREFIX = 'fiscus-download-'
 
 
 @dataclass(frozen=True)
@@ -70,7 +72,7 @@ def list_backups(settings: Settings) -> list[BackupFile]:
 
 def snapshot_to_temp(settings: Settings, engine: Engine, clock: Clock) -> Path:
     stamp = clock.local_now().strftime('%Y%m%d-%H%M%S')
-    folder = Path(tempfile.mkdtemp(prefix='fiscus-download-', dir=settings.data_dir))
+    folder = Path(tempfile.mkdtemp(prefix=DOWNLOAD_PREFIX, dir=settings.data_dir))
     dest = folder / f'{PREFIX}{stamp}.db'
     _copy(settings, engine, dest)
     return dest

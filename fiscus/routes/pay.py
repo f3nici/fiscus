@@ -26,6 +26,7 @@ from fiscus.forms import (
     choice,
     ends_after,
     int_or,
+    iso_date,
     money,
     opt_date,
     req_date,
@@ -84,12 +85,12 @@ def _with(options: list[OpenPayday], extra: list[OpenPayday]) -> list[OpenPayday
 
 def _parse_payday(db: Session, user: User, value: str) -> tuple[PaySchedule, Date] | None:
     sid, _, day = value.partition(':')
+    when = iso_date(day)
     try:
-        when = Date.fromisoformat(day)
         ps = maybe_owned(db, PaySchedule, int(sid), user)
     except ValueError:
         return None
-    if ps is None or not pay.is_payday(ps, when):
+    if ps is None or when is None or not pay.is_payday(ps, when):
         return None
     return ps, when
 
@@ -519,13 +520,6 @@ def _match(
     return [next(it) if d is not None else None for d, _e in dated]
 
 
-def _iso(value: str) -> Date | None:
-    try:
-        return Date.fromisoformat(value)
-    except ValueError:
-        return None
-
-
 def _review(
     request: Request,
     user: User,
@@ -535,7 +529,7 @@ def _review(
     today: Date,
     saved: str = '',
 ) -> Response:
-    dates = [d for d in (_iso(r.form.date) for r in rows) if d is not None]
+    dates = [d for d in (iso_date(r.form.date) for r in rows) if d is not None]
     lo = min([*dates, today]) - timedelta(days=LINK_DAYS)
     hi = max([*dates, today]) + timedelta(days=AHEAD_DAYS)
     options = pay.open_paydays(db, user, lo, hi)

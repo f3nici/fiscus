@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import shutil
 
 from sqlalchemy import delete, select
 
@@ -32,6 +33,12 @@ def housekeeping(c: AppContext) -> None:
         for f in c.settings.upload_dir.glob(pattern):
             if f.stat().st_mtime < cutoff:
                 f.unlink(missing_ok=True)
+    # Backup downloads remove their copy once sent; one cut short (a dropped
+    # connection, a bad Range header) leaves it, a whole database, behind.
+    stale = c.clock.now().timestamp() - 3600
+    for folder in c.settings.data_dir.glob(f'{backup.DOWNLOAD_PREFIX}*'):
+        if folder.is_dir() and folder.stat().st_mtime < stale:
+            shutil.rmtree(folder, ignore_errors=True)
 
 
 def run_reminders(c: AppContext) -> int:

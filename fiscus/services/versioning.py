@@ -9,20 +9,29 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import event, update
+from sqlalchemy import event, inspect, update
 from sqlalchemy.orm import Session
 
 from fiscus.models import ForecastCache, Owned, User, UserSettings
 
 _KEY = 'fiscus_touched_users'
 
-# Settings that do not change a forecast are noise; low balance and horizon do.
 _IGNORED = (ForecastCache,)
+
+
+def _quiet(key: str) -> bool:
+    """A setting no forecast reads: a chart line turned off (D50), reminders.
+    Low balance, the horizon and the spending account do change one."""
+    return key == 'chart_lines' or key.startswith('ntfy_')
 
 
 def _users_for(obj: Any) -> set[int]:
     if isinstance(obj, _IGNORED):
         return set()
+    if isinstance(obj, UserSettings) and inspect(obj).persistent:
+        changed = {a.key for a in inspect(obj).attrs if a.history.has_changes()}
+        if changed and all(_quiet(k) for k in changed):
+            return set()
     if isinstance(obj, Owned | UserSettings):
         uid = getattr(obj, 'user_id', None)
         return {uid} if uid else set()

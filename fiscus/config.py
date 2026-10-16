@@ -7,7 +7,6 @@ the package reads `os.environ`.
 from __future__ import annotations
 
 import os
-import secrets
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -39,7 +38,6 @@ def _int(env: Mapping[str, str], key: str, default: int) -> int:
 
 @dataclass(frozen=True)
 class Settings:
-    secret_key: str
     base_url: str
     rp_id: str
     rp_name: str
@@ -121,14 +119,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
             f'FISCUS_RP_ID {rp_id!r} must be the origin host {host!r} or a parent domain of it'
         )
 
-    secret = env.get('FISCUS_SECRET_KEY', '')
-    if not secret:
-        if parts.scheme == 'https':
-            raise ConfigError('FISCUS_SECRET_KEY is required. Generate one: openssl rand -hex 32')
-        secret = secrets.token_hex(32)
-    elif len(secret) < 32:
-        raise ConfigError('FISCUS_SECRET_KEY must be at least 32 characters')
-
+    # FISCUS_SECRET_KEY was required once and never used; one still set is ignored.
     timezone = env.get('FISCUS_TIMEZONE', 'Australia/Perth')
     try:
         ZoneInfo(timezone)
@@ -140,7 +131,6 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         raise ConfigError('FISCUS_BACKUP_HOUR must be 0 to 23')
 
     return Settings(
-        secret_key=secret,
         base_url=base_url,
         rp_id=rp_id,
         rp_name=env.get('FISCUS_RP_NAME', 'Fiscus'),
