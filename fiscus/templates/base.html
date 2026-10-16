@@ -50,9 +50,6 @@
           {% endfor %}
           <div class="section">You</div>
           <a href="/settings" class="{{ 'active' if path.startswith('/settings') else '' }}">{{ icon('cog') }} Settings</a>
-          {% if user and user.is_admin %}
-            <a href="/admin/users" class="{{ 'active' if path.startswith('/admin') else '' }}">{{ icon('shield') }} Admin</a>
-          {% endif %}
           <form method="post" action="/auth/logout" hx-boost="false">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button class="btn btn-link text-sm" type="submit">Sign out {{ user.display_name if user else '' }}</button>

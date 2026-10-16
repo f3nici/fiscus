@@ -1,28 +1,33 @@
 # Fiscus: instructions for Claude Code
 
-Self-hosted, multi-user personal finance for an Australian household. One
-Docker container on a homelab behind a reverse proxy with HTTPS, installable as
-a PWA on phones. No external calls, no telemetry, no CDN.
+Self-hosted personal finance for an Australian household, kept by one person
+(D52). One Docker container on a homelab behind a reverse proxy with HTTPS,
+installable as a PWA on phones. No external calls, no telemetry, no CDN.
 
-**Status: v1 complete.** Passkeys, setup links and recovery, users and admin;
+**Status: v1 complete.** Passkeys, the bootstrap link and CLI recovery links;
+one person, with no users page, nothing shared and no password (D52);
 accounts with balances typed in and kept by day (D39), moved by bills marked
 paid, payslips and spending taken off the budget until the next is typed in
-(D42, D45, D49); categories; bills with
-shares and states; pay schedules and payslips; the calendar; home loan and
-offset; forecasting with scenarios, its trend and what is free to spend
-as the budget has it, lines turned off staying off (D46, D47, D50, D51); the budget (bills paid out of it); bill
-import; the tax estimate, each job taxed on its own figures (D38); the
-dashboard; ntfy reminders, payslips to put in among them; backups; payslip
-PDFs, single or in bulk, recording schedule paydays; casual pay; Square sync;
-savings goals inside accounts, out of the budget, one of them the tax money,
-any of them saved from budget lines, one goal from several (D32 to D34, D36);
-saved-up lines say if they will cover their bills in the year ahead, overdue
-ones first, and what they hold is typed in or lined up with them (D36, D40,
-D43, D44); budget lines in groups and in an order set by hand (D35). Since
-D25 the budget is kept by hand (spending taken off, balances typed in); the
-transactions, statement import, rules and matching screens were removed in
-D37 (their tables stay; Square, bills marked paid, payslips and budget
-spends write to them; Square's page is unlinked). Next steps are in `docs/10-decisions.md` §3.
+(D42, D45, D49); categories; bills with states, each paid from an account and
+filed under a category; pay schedules and payslips (listed ten a page); the
+calendar (the month by default, D54); home loan and offset (one loan opens
+straight into it); forecasting with scenarios, its trend and what is free to
+spend as the budget has it, lines turned off staying off (D46, D47, D50,
+D51); the budget (bills paid out of it, a line's entries in its Edit panel);
+bill import; the tax estimate, each job taxed on its own figures (D38); the
+dashboard; ntfy reminders through ntfy.sh or a server of the person's own
+(D53), payslips to put in among them; backups, downloaded from Settings;
+payslip PDFs, single or in bulk, recording schedule paydays; casual pay;
+Square sync; savings goals inside accounts, out of the budget, one of them
+the tax money, any of them saved from budget lines, one goal from several
+(D32 to D34, D36); saved-up lines say if they will cover their bills in the
+year ahead, overdue ones first, and what they hold is typed in or lined up
+with them (D36, D40, D43, D44); budget lines in groups and in an order set by
+hand (D35). Since D25 the budget is kept by hand (spending taken off,
+balances typed in); the transactions, statement import, rules and matching
+screens were removed in D37 (their tables stay; Square, bills marked paid,
+payslips and budget spends write to them; Square's page is unlinked). Next
+steps are in `docs/10-decisions.md` §3.
 
 ## Read before building
 
@@ -40,9 +45,9 @@ doc 10 wins.
 - **Ownership is enforced on every query.** Per-user reads go through
   `fiscus/services/access.py` (`owned`, `get_owned`, `maybe_owned`). A row that
   belongs to someone else is a **404, never a 403**, so ids cannot be probed.
-  Bills are shared and are reached only through the caller's `BillShare`
-  (`visible_bill`), and only the owner edits one (`owned_bill`). Any new route
-  that takes an id gets a line in `tests/test_isolation.py`.
+  One person keeps Fiscus (D52), but a person left from an earlier version
+  still sees only their own. Bills are owned rows like any other, not shared.
+  Any new route that takes an id gets a line in `tests/test_isolation.py`.
 - **Money is integer cents. Rates are decimal strings.** Never a float in a
   stored value or a calculation. `fiscus/money.py` parses and formats.
 - **"Today" comes from the clock**, `ctx.clock.today()`, in
@@ -62,19 +67,19 @@ doc 10 wins.
   offline screen, never stale figures. `tests/test_pwa_ops.py` and
   `tests/test_browser.py` hold this.
 - **The forecast cache is keyed on `users.data_version`.** A flush that
-  touches an `Owned` row bumps its user (and every participant of a touched
-  bill) in `services/versioning.py`. Bulk `DELETE`/`UPDATE` statements skip
+  touches an `Owned` row bumps its user in `services/versioning.py`. Bulk `DELETE`/`UPDATE` statements skip
   the ORM, so pair them with an ORM change to an owned row, as Square's sync
   does after clearing its invoices.
 - **The audit log is append-only**, enforced by SQLite triggers. Logins,
-  failed logins, every credential change, setup links and admin actions.
+  failed logins, every credential change, setup links, backups and CLI
+  actions. No page shows it since D52.
 - **Passkeys refuse to run unless the origin is HTTPS** (localhost excepted).
   `Settings.passkeys_allowed` decides; the routes answer 503 otherwise.
-- **A user cannot revoke their last passkey** unless an admin-enabled password
-  is set. Password sign-in is off for everyone by default.
+- **A user cannot revoke their last passkey.** There is no password sign-in
+  (D52); the `users` password columns stay, unread.
 - **Setup links are single use, time-limited and stored as hashes.** A new
-  link for a person revokes their previous one; disabling a person revokes
-  theirs. Bootstrap, onboarding and recovery are the same mechanism.
+  link for a person revokes their previous one. Bootstrap and recovery are the
+  same mechanism; only the bootstrap print and the CLI issue one.
 - **Break-glass recovery is a CLI** (`python -m fiscus.cli recovery-link`),
   never an HTTP endpoint without a session.
 - **CSP is strict**: `script-src 'self'`, `style-src 'self'`. No inline
@@ -85,9 +90,10 @@ doc 10 wins.
 - **Everything frontend is vendored** in `fiscus/static/vendor` with its
   licence and a line in its README. Nothing loads from another origin.
 - **No external calls** except two, both off by default and per user: the
-  user's own ntfy server, and Square's API. ntfy refuses loopback, link-local
-  (cloud metadata) and unspecified addresses, and allows private LAN ranges,
-  because that is where a homelab ntfy lives. Square only ever goes to the
+  ntfy server the user names (ntfy.sh or their own, D53), and Square's API.
+  ntfy refuses loopback, link-local (cloud metadata) and unspecified
+  addresses, and allows public servers and private LAN ranges, where a
+  homelab ntfy lives. Square only ever goes to the
   fixed `connect.squareup.com` host (no address from a form), reads only, and
   tests never reach it (`conftest.no_square`).
 - **Every tax figure is labelled an estimate.** Rates live in
@@ -113,9 +119,9 @@ doc 10 wins.
 ```
 fiscus/
   config.py clock.py money.py db.py models.py web.py app.py jobs.py cli.py
-  domain/     recurrence, splits, uploads, rules, matching, loan, forecast,
-              tax, bill_import, budget_import, pdftext, payslip, pay,
-              square, goals, saving, arrange.
+  domain/     recurrence, splits (migrations only), uploads, rules, matching,
+              loan, forecast, tax, bill_import, budget_import, pdftext,
+              payslip, pay, square, goals, saving, arrange.
               Pure, no I/O.
   services/   access (ownership), auth (sessions, links, WebAuthn), users,
               ledger, pay, bills, forecasting, loans, taxes, budgeting,
@@ -134,7 +140,7 @@ scripts/      smoke.sh, generate_icons.py, icon.svg
 ## Stack
 
 Python 3.12, FastAPI, SQLAlchemy 2.1 + Alembic on SQLite (WAL), Jinja2 +
-HTMX, py_webauthn, argon2-cffi, httpx (ntfy and Square only), openpyxl + defusedxml
+HTMX, py_webauthn, httpx (ntfy and Square only), openpyxl + defusedxml
 (budget XLSX import), pdfminer.six (payslip PDFs). uPlot for the forecast
 chart, vue-cal's stylesheet for the calendar. pytest, ruff, mypy --strict,
 djlint, Playwright.
@@ -186,3 +192,9 @@ FISCUS_DATA_DIR=./data FISCUS_BASE_URL=http://localhost:8000 python -m fiscus
   10:00 on Thursday 1 October 2026 in Perth.
 - Templates see `user` as a `UserView` snapshot, not the ORM object, so an
   error page after a rollback can still render.
+- **One person (D52).** No users page, invites or audit view; the admin flag
+  only gates backups in Settings. Bills carry their own `account_id` and
+  `category_id`; `bill_shares` is gone (migration 0025 gave each person their
+  share as a bill of their own). `domain/splits.py` stays only because
+  migrations 0003, 0009 and 0025 work out shares with it. Anyone left from
+  before is removed with `python -m fiscus.cli remove-user`.

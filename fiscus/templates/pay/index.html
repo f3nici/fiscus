@@ -119,7 +119,7 @@
           {% if slip or putting_in %}<a class="btn" href="/pay">Cancel</a>{% endif %}
         </div>
       </form>
-      <div class="table-wrap mt">
+      <div class="table-wrap mt" id="payslips">
         <table class="stack-table cols-3">
           <thead><tr><th>Date</th><th>From</th><th class="num">Gross</th><th class="num">Tax</th><th class="num">Net</th><th></th></tr></thead>
           <tbody>
@@ -131,7 +131,7 @@
                 </td>
                 <td class="num" data-label="Gross">{{ p.gross_cents | money }}</td><td class="num" data-label="Tax">{{ p.tax_withheld_cents | money }}</td><td class="num" data-label="Net">{{ p.net_cents | money }}</td>
                 <td class="nowrap cell-full cell-actions">
-                  <a class="btn btn-sm" href="/pay?slip={{ p.id }}#slip-form">Edit</a>
+                  <a class="btn btn-sm" href="/pay?slip={{ p.id }}{{ '&page=' ~ page if page > 1 else '' }}#slip-form">Edit</a>
                   <form class="inline" method="post" action="/payslips/{{ p.id }}/delete" data-confirm="Delete this payslip?">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <button class="btn btn-sm" type="submit" aria-label="Delete">✕</button>
@@ -144,6 +144,13 @@
           </tbody>
         </table>
       </div>
+      {% if pages > 1 %}
+        <nav class="row between mt" aria-label="Payslip pages">
+          {% if page > 1 %}<a class="btn btn-sm" href="/pay?page={{ page - 1 }}#payslips">Newer</a>{% else %}<span></span>{% endif %}
+          <span class="muted text-sm">Page {{ page }} of {{ pages }}</span>
+          {% if page < pages %}<a class="btn btn-sm" href="/pay?page={{ page + 1 }}#payslips">Older</a>{% else %}<span></span>{% endif %}
+        </nav>
+      {% endif %}
     </div>
   </div>
 {% endblock %}

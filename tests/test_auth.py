@@ -9,8 +9,7 @@ import pytest
 from sqlalchemy import select, text
 from sqlalchemy.exc import DatabaseError
 
-from fiscus.models import AuditLog, AuthSession, SetupLink, User, WebAuthnCredential
-from fiscus.security import passwords
+from fiscus.models import AuditLog, User, WebAuthnCredential
 from fiscus.services import auth as auth_service
 from tests.authenticator import SoftAuthenticator, b64u
 from tests.conftest import CsrfClient, Env
@@ -45,6 +44,16 @@ def passkey_login(
     return client.post(
         '/auth/passkey/verify', json={'handle': start.json()['handle'], 'credential': cred}
     )
+
+
+def issue(env: Env, user: User, purpose: str = 'recovery') -> str:
+    """A setup link for `user`, as the recovery-link command issues one."""
+    with env.db() as db:
+        fresh = db.get(User, user.id)
+        assert fresh is not None
+        link = auth_service.issue_link(db, env.ctx.settings, env.clock, purpose, fresh, None)
+        db.commit()
+    return link.token
 
 
 def bootstrap_admin(env: Env, authn: SoftAuthenticator) -> CsrfClient:
@@ -168,29 +177,26 @@ def test_expired_challenge_is_refused(env: Env, authenticator: SoftAuthenticator
 
 
 def test_disabled_user_cannot_sign_in(env: Env, authenticator: SoftAuthenticator) -> None:
-    admin_client = bootstrap_admin(env, authenticator)
+    bootstrap_admin(env, authenticator)
     sam = env.user('sam')
     sam_client = env.login(sam)
     assert sam_client.get('/').status_code == 200
-    resp = admin_client.post(f'/admin/users/{sam.id}/active', data={'active': 'false'})
-    assert resp.status_code == 303
-    # Existing session is gone...
-    assert sam_client.get('/').status_code == 303
-    # ...and a new one cannot be made.
     with env.db() as db:
-        assert db.execute(select(AuthSession).where(AuthSession.user_id == sam.id)).first() is None
+        stored = db.get(User, sam.id)
+        assert stored is not None
+        stored.is_active = False
+        db.commit()
+    # The session no longer works.
+    assert sam_client.get('/').status_code == 303
 
 
 # ------------------------------------------------------- onboarding, recovery
 
 
-def test_admin_onboards_a_user_with_a_one_time_link(
-    env: Env, authenticator: SoftAuthenticator
-) -> None:
-    admin = bootstrap_admin(env, authenticator)
-    page = admin.post('/admin/users', data={'username': 'sam', 'display_name': 'Sam'})
-    assert page.status_code == 200
-    token = page.text.split('/setup/')[1].split('<')[0].strip()
+def test_a_setup_link_works_once(env: Env, authenticator: SoftAuthenticator) -> None:
+    bootstrap_admin(env, authenticator)
+    sam = env.user('sam')
+    token = issue(env, sam, 'onboard')
     sam_device = SoftAuthenticator(authenticator.origin)
     client = env.client()
     assert client.get(f'/setup/{token}').status_code == 200
@@ -205,32 +211,20 @@ def test_admin_onboards_a_user_with_a_one_time_link(
 
 
 def test_a_new_link_revokes_the_previous_one(env: Env, authenticator: SoftAuthenticator) -> None:
-    admin = bootstrap_admin(env, authenticator)
-    first = (
-        admin.post('/admin/users', data={'username': 'sam'}).text.split('/setup/')[1].split('<')[0]
-    )
-    with env.db() as db:
-        sam = db.execute(select(User).where(User.username == 'sam')).scalar_one()
-    second = admin.post(f'/admin/users/{sam.id}/invite').text.split('/setup/')[1].split('<')[0]
-    assert env.client().get(f'/setup/{first.strip()}').status_code == 410
-    assert env.client().get(f'/setup/{second.strip()}').status_code == 200
+    bootstrap_admin(env, authenticator)
+    sam = env.user('sam')
+    first = issue(env, sam)
+    second = issue(env, sam)
+    assert env.client().get(f'/setup/{first}').status_code == 410
+    assert env.client().get(f'/setup/{second}').status_code == 200
 
 
 def test_recovery_after_losing_every_passkey(env: Env, authenticator: SoftAuthenticator) -> None:
-    admin = bootstrap_admin(env, authenticator)
-    token = (
-        admin.post('/admin/users', data={'username': 'sam'})
-        .text.split('/setup/')[1]
-        .split('<')[0]
-        .strip()
-    )
+    bootstrap_admin(env, authenticator)
+    sam = env.user('sam')
     lost_phone = SoftAuthenticator(authenticator.origin)
-    register_via_link(env.client(), token, lost_phone)
-    with env.db() as db:
-        sam = db.execute(select(User).where(User.username == 'sam')).scalar_one()
-    page = admin.post(f'/admin/users/{sam.id}/invite')
-    assert 'Recovery link' in page.text or 'recovery' in page.text.lower()
-    rtoken = page.text.split('/setup/')[1].split('<')[0].strip()
+    register_via_link(env.client(), issue(env, sam, 'onboard'), lost_phone)
+    rtoken = issue(env, sam)
     new_phone = SoftAuthenticator(authenticator.origin)
     client = env.client()
     resp = register_via_link(client, rtoken, new_phone)
@@ -309,19 +303,6 @@ def test_cannot_revoke_last_passkey_without_another_login(
     assert 'last passkey' in resp.text
 
 
-def test_can_revoke_last_passkey_when_password_is_active(
-    env: Env, authenticator: SoftAuthenticator
-) -> None:
-    client = bootstrap_admin(env, authenticator)
-    with env.db() as db:
-        user = db.execute(select(User)).scalar_one()
-        user.password_enabled = True
-        user.password_hash = passwords.hash_password('correct horse battery staple')
-        db.commit()
-        cred_id = db.execute(select(WebAuthnCredential.id)).scalar_one()
-    assert client.post(f'/settings/passkeys/{cred_id}/revoke').status_code == 303
-
-
 def test_cannot_touch_another_users_passkey(env: Env, authenticator: SoftAuthenticator) -> None:
     bootstrap_admin(env, authenticator)
     with env.db() as db:
@@ -334,43 +315,24 @@ def test_cannot_touch_another_users_passkey(env: Env, authenticator: SoftAuthent
 # ------------------------------------------------------------------ password
 
 
-def test_password_is_off_by_default(env: Env) -> None:
+def test_there_is_no_password_sign_in(env: Env) -> None:
+    """Passkeys are the only way in; a lost one is a recovery link (D52)."""
     sam = env.user('sam')
-    with env.db() as db:
-        u = db.get(User, sam.id)
-        assert u is not None
-        u.password_hash = passwords.hash_password('correct horse battery staple')
-        db.commit()
-    resp = env.client().post(
-        '/auth/password', data={'username': 'sam', 'password': 'correct horse battery staple'}
-    )
-    assert resp.status_code == 400
-
-
-def test_admin_enables_password_fallback(env: Env, authenticator: SoftAuthenticator) -> None:
-    admin = bootstrap_admin(env, authenticator)
-    sam = env.user('sam')
-    assert (
-        admin.post(f'/admin/users/{sam.id}/password', data={'enabled': 'true'}).status_code == 303
-    )
-    sam_client = env.login(sam)
-    weak = sam_client.post('/settings/password', data={'password': 'short', 'confirm': 'short'})
-    assert weak.status_code == 400
-    ok = sam_client.post(
-        '/settings/password',
-        data={'password': 'a long passphrase here', 'confirm': 'a long passphrase here'},
-    )
-    assert ok.status_code == 303
-    fresh = env.client()
-    resp = fresh.post(
-        '/auth/password', data={'username': 'sam', 'password': 'a long passphrase here'}
-    )
-    assert resp.status_code == 303
-    assert fresh.get('/').status_code == 200
     with env.db() as db:
         stored = db.get(User, sam.id)
-        assert stored is not None and stored.password_hash is not None
-        assert stored.password_hash.startswith('$argon2id$')
+        assert stored is not None
+        stored.password_enabled = True
+        stored.password_hash = '$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$aGFzaA'
+        db.commit()
+    client = env.client()
+    login = client.get('/login').text
+    assert 'type="password"' not in login and 'recovery-link' in login
+    resp = client.post('/auth/password', data={'username': 'sam', 'password': 'x' * 12})
+    assert resp.status_code in (404, 405)
+    signed_in = env.login(sam)
+    assert 'Password sign-in' not in signed_in.get('/settings').text
+    for path in ('/settings/password', '/settings/password/clear'):
+        assert signed_in.post(path, data={'password': 'x' * 12}).status_code in (404, 405)
 
 
 # ------------------------------------------------------- csrf, limits, audit
@@ -396,14 +358,12 @@ def test_cross_origin_post_is_refused(env: Env, authenticator: SoftAuthenticator
     assert resp.status_code == 403
 
 
-def test_login_is_rate_limited(env: Env) -> None:
+def test_login_is_rate_limited_by_username(env: Env) -> None:
     client = env.client()
     codes = [
-        client.post('/auth/password', data={'username': 'x', 'password': 'y' * 12}).status_code
-        for _ in range(12)
+        client.post('/auth/passkey/options', json={'username': 'x'}).status_code for _ in range(12)
     ]
-    assert codes[-1] == 429
-    assert 400 in codes
+    assert codes[0] == 200 and codes[-1] == 429
 
 
 def test_passkey_options_are_rate_limited(env: Env) -> None:
@@ -491,31 +451,21 @@ def test_localhost_is_allowed_for_development(tmp_path: Any) -> None:
 def test_setup_link_cannot_be_used_for_a_disabled_user(
     env: Env, authenticator: SoftAuthenticator
 ) -> None:
-    admin = bootstrap_admin(env, authenticator)
-    token = (
-        admin.post('/admin/users', data={'username': 'sam'})
-        .text.split('/setup/')[1]
-        .split('<')[0]
-        .strip()
-    )
+    bootstrap_admin(env, authenticator)
+    sam = env.user('sam')
+    token = issue(env, sam, 'onboard')
     with env.db() as db:
-        sam = db.execute(select(User).where(User.username == 'sam')).scalar_one()
-    admin.post(f'/admin/users/{sam.id}/active', data={'active': 'false'})
+        stored = db.get(User, sam.id)
+        assert stored is not None
+        stored.is_active = False
+        db.commit()
     assert env.client().get(f'/setup/{token}').status_code == 410
-    with env.db() as db:
-        link = db.execute(select(SetupLink).where(SetupLink.user_id == sam.id)).scalar_one()
-        assert link.revoked_at is not None
 
 
-def test_last_admin_cannot_be_disabled(env: Env, authenticator: SoftAuthenticator) -> None:
-    admin = bootstrap_admin(env, authenticator)
-    with env.db() as db:
-        me = db.execute(select(User)).scalar_one()
-    resp = admin.post(f'/admin/users/{me.id}/active', data={'active': 'false'})
-    assert 'last admin' in resp.text
-
-
-def test_non_admin_cannot_reach_admin(env: Env) -> None:
-    sam = env.login(env.user('sam'))
-    assert sam.get('/admin/users').status_code == 404
-    assert sam.post('/admin/users', data={'username': 'eve'}).status_code == 404
+def test_the_admin_pages_are_gone(env: Env) -> None:
+    """One person keeps Fiscus: no users page, invites or audit view (D52)."""
+    admin = env.login(env.user('alex', admin=True))
+    for path in ('/admin/users', '/admin/audit', '/admin/backups'):
+        assert admin.get(path).status_code == 404
+    assert admin.post('/admin/users', data={'username': 'eve'}).status_code == 404
+    assert '/admin' not in admin.get('/more').text and '/admin' not in admin.get('/').text

@@ -16,7 +16,7 @@
                   {% if c.id in budgeted %}<a class="pill pill-upcoming" href="/budget#line-{{ c.id }}">Budget line</a>{% endif %}
                   {% if c.is_income %}<span class="pill pill-ok">Income</span>{% endif %}
                   {% if c.is_business %}<span class="pill pill-upcoming">Business</span>{% endif %}
-                  {% if c.is_deductible %}<span class="pill pill-shared">Deductible</span>{% endif %}
+                  {% if c.is_deductible %}<span class="pill pill-teal">Deductible</span>{% endif %}
                   {% if c.is_transfer %}<span class="pill">Transfer</span>{% endif %}
                 </td>
                 <td class="cell-full">

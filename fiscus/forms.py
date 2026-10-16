@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
-from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation
 
 from fiscus.money import MoneyError, parse_cents
 
@@ -68,17 +68,6 @@ def text(value: str, label: str, max_len: int = 120) -> str:
     if not v:
         raise FormError(f'{label} is required')
     return v[:max_len]
-
-
-def pct_bp(value: str, label: str) -> int:
-    """'12.5' percent to 1250 basis points."""
-    try:
-        pct = Decimal(value.strip().rstrip('%'))
-    except InvalidOperation as exc:
-        raise FormError(f'{label}: enter a percentage') from exc
-    if not pct.is_finite() or not 0 <= pct <= 100:
-        raise FormError(f'{label}: enter a percentage from 0 to 100')
-    return int((pct * 100).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
 
 
 def rate(value: str, label: str) -> str:

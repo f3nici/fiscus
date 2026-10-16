@@ -24,7 +24,7 @@
                 <input class="input" name="name" value="{{ c.name }}" maxlength="80" aria-label="Name">
                 <button class="btn btn-sm mt-sm" type="submit">Rename</button>
               </form>
-              {% if creds | length > 1 or can_revoke_last %}
+              {% if creds | length > 1 %}
                 <form class="mt-sm" method="post" action="/settings/passkeys/{{ c.id }}/revoke" data-confirm="Revoke {{ c.name }}? That device will no longer sign in.">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                   <button class="btn btn-sm btn-danger" type="submit">Revoke</button>
@@ -42,7 +42,7 @@
       <div class="field"><label class="label" for="passkey_name">Name</label><input class="input" id="passkey_name" name="passkey_name" maxlength="80"></div>
       <div data-passkey-status class="hidden"></div>
       <button class="btn btn-primary" type="button" data-passkey-go {{ 'disabled' if not passkeys_allowed }}>Add passkey</button>
-      <p class="muted text-xs mt">To add a phone or a security key you are not holding right now, sign in on it once with a setup link from your admin, or add it from that device.</p>
+      <p class="muted text-xs mt">To add another phone or computer, sign in on it with a passkey you already have (most browsers offer a QR code to scan with your phone), then add one there. Lost every passkey? On the server, <code>python -m fiscus.cli recovery-link {{ user.username }}</code> prints a recovery link.</p>
     </div>
 
     <div class="card">
@@ -62,14 +62,14 @@
 
     <div class="card">
       <h2>Reminders (ntfy)</h2>
-      <p class="muted text-sm">Optional pushes from your own ntfy server. Off until you turn them on. No third-party push service is used.</p>
+      <p class="muted text-sm">Optional pushes through ntfy: the public ntfy.sh or a server of your own. Off until you turn them on. Each one names a bill, a date and an amount, never an account.</p>
       {% if ntfy_error %}<div class="alert alert-error">{{ ntfy_error }}</div>{% endif %}
       <form method="post" action="/settings/ntfy">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <label class="check"><input type="checkbox" name="enabled" value="true" {{ 'checked' if prefs.ntfy_enabled }}> Send me reminders</label>
         <div class="form-grid">
-          <div class="field"><label class="label" for="ntfy-url">Server</label><input class="input" id="ntfy-url" name="url" placeholder="https://ntfy.home.lan" value="{{ prefs.ntfy_url }}"></div>
-          <div class="field"><label class="label" for="ntfy-topic">Topic</label><input class="input" id="ntfy-topic" name="topic" maxlength="64" value="{{ prefs.ntfy_topic }}"></div>
+          <div class="field"><label class="label" for="ntfy-url">Server</label><input class="input" id="ntfy-url" name="url" placeholder="https://ntfy.sh" value="{{ prefs.ntfy_url }}"></div>
+          <div class="field"><label class="label" for="ntfy-topic">Topic</label><input class="input" id="ntfy-topic" name="topic" maxlength="64" value="{{ prefs.ntfy_topic }}"><small>On ntfy.sh anyone who knows a topic can read it: choose one that is hard to guess, or reserve it and use an access token.</small></div>
           <div class="field"><label class="label" for="ntfy-token">Access token (optional)</label><input class="input" id="ntfy-token" name="token" type="password" autocomplete="off" placeholder="{{ 'saved, leave blank to keep' if prefs.ntfy_token else '' }}"></div>
           <div class="field"><label class="label" for="ntfy-hour">Send at (hour, 0-23)</label><input class="input" type="number" id="ntfy-hour" name="hour" min="0" max="23" value="{{ prefs.ntfy_hour }}"></div>
           <div class="field"><label class="label" for="ntfy-days">Bills due within (days)</label><input class="input" type="number" id="ntfy-days" name="bill_days" min="0" max="30" value="{{ prefs.ntfy_bill_days }}"></div>
@@ -96,27 +96,29 @@
       </div>
     </div>
 
-    <div class="card">
-      <h2>Password</h2>
-      {% if pw_error %}<div class="alert alert-error">{{ pw_error }}</div>{% endif %}
-      {% if not user.password_enabled %}
-        <p class="muted text-sm">Password sign-in is off for your account. Passkeys are the way in. An admin can turn a password fallback on for you.</p>
-      {% else %}
-        <p class="muted text-sm">{{ 'You have a password set.' if user.password_hash else 'Your admin allows a password for you, but you have not set one.' }}</p>
-        <form method="post" action="/settings/password">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <input type="text" name="username" value="{{ user.username }}" autocomplete="username" class="hidden" aria-hidden="true" tabindex="-1">
-          <div class="field"><label class="label" for="password">New password (12 characters or more)</label><input class="input" type="password" id="password" name="password" autocomplete="new-password" minlength="12" required></div>
-          <div class="field"><label class="label" for="confirm">Again</label><input class="input" type="password" id="confirm" name="confirm" autocomplete="new-password" minlength="12" required></div>
-          <button class="btn btn-primary" type="submit">Save password</button>
-        </form>
-        {% if user.password_hash %}
-          <form class="mt" method="post" action="/settings/password/clear">
+    {% if user.is_admin %}
+      <div class="card" id="backups">
+        <h2>Backups</h2>
+        <p class="muted text-sm">A copy of the whole database is written to <code>/data/backups</code> every night and kept for {{ retention }} days. Download one to keep somewhere else, and store it carefully: it holds all your finances.</p>
+        <div class="row">
+          <form method="post" action="/settings/backups/download" hx-boost="false">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button class="btn btn-sm" type="submit">Remove my password</button>
+            <button class="btn btn-primary" type="submit">Download a backup now</button>
           </form>
-        {% endif %}
-      {% endif %}
-    </div>
+          <form method="post" action="/settings/backups/run">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="btn" type="submit">Write one to /data/backups</button>
+          </form>
+        </div>
+        <ul class="list mt">
+          {% for f in backups %}
+            <li><span class="mono">{{ f.name }}</span><span class="text-xs muted">{{ (f.size / 1024) | round(1) }} KB · {{ f.modified.strftime('%d %b %Y %H:%M') }}</span></li>
+          {% else %}
+            <li class="muted">No backups yet. The first runs tonight.</li>
+          {% endfor %}
+        </ul>
+        <p class="muted text-xs mt">Restore with the container stopped: <code>docker compose run --rm fiscus python -m fiscus.cli restore /data/backups/&lt;file&gt;</code></p>
+      </div>
+    {% endif %}
   </div>
 {% endblock %}

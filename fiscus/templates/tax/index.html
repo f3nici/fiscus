@@ -6,10 +6,6 @@
     <h1>Tax {{ v.year.label }} {{ estimate() }}</h1>
     <span class="muted text-sm">{{ v.year.start | d }} to {{ v.year.end | d }} · day {{ v.days_elapsed }} of {{ v.days_in_year }}</span>
   </div>
-  <div class="alert alert-info">
-    Every figure here is an estimate from your payslips and the deductions you enter, using the Australian resident rates in <code>config/tax/{{ v.year.label }}.yaml</code>. It is not tax advice. HELP repayments, the Medicare levy surcharge and tax offsets (including the low income tax offset) are not included.
-  </div>
-
   {% if v.missing %}
     <div class="card alert-warn" id="missing-payslips">
       <h2>{{ v.missing | length }} payday{{ '' if v.missing | length == 1 else 's' }} without a payslip</h2>

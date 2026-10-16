@@ -164,7 +164,7 @@ async def apply(
             _diff(db, user, parsed),
             remove_missing=form.get('remove_missing') == 'on',
         )
-    except (ImportError_, svc.BillImportError) as exc:
+    except ImportError_ as exc:
         db.rollback()
         return redirect(f'/bills/import/{name}', flash=str(exc), request=request)
     (c.settings.upload_dir / name).unlink(missing_ok=True)

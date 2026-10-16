@@ -17,23 +17,6 @@
       <input class="input" id="username" name="username" autocomplete="username webauthn" autocapitalize="none" spellcheck="false">
     </div>
     <button class="btn" type="button" data-passkey-go data-with-username>Continue with passkey</button>
-    <details class="text-sm mt" {{ "open" if show_password else "" }}>
-      <summary>Use a password instead</summary>
-      <p class="muted text-xs mt-sm">Only if your admin has turned password sign-in on for you.</p>
-      <form method="post" action="/auth/password" hx-boost="false">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <input type="hidden" name="next" value="{{ next }}">
-        <div class="field">
-          <label class="label" for="pw-username">Username</label>
-          <input class="input" id="pw-username" name="username" autocomplete="username" autocapitalize="none" required>
-        </div>
-        <div class="field">
-          <label class="label" for="password">Password</label>
-          <input class="input" id="password" name="password" type="password" autocomplete="current-password" required>
-        </div>
-        <button class="btn" type="submit">Sign in</button>
-      </form>
-    </details>
   </div>
-  <p class="muted text-sm center mt">Lost your passkeys? Ask your Fiscus admin for a recovery link.</p>
+  <p class="muted text-sm center mt">Lost your passkeys? On the server, <code>python -m fiscus.cli recovery-link &lt;username&gt;</code> prints a recovery link.</p>
 {% endblock %}

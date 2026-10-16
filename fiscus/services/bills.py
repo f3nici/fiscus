@@ -1,9 +1,7 @@
-"""Bills: shares, occurrences, status and matching.
+"""Bills: occurrences, status and matching.
 
-Each participant (the owner included) sees a bill at their own share. Paying is
-per person: the owner's occurrence is paid by a transaction for the whole
-bill (they pay the biller), a participant's by a transaction for their share
-(they pay the owner), or either by marking it paid by hand.
+An occurrence is paid by a matched transaction for the bill, or by marking it
+paid by hand, which takes it off the bill's account (D42).
 """
 
 from __future__ import annotations
@@ -15,10 +13,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from fiscus.clock import Clock, utcnow_naive
-from fiscus.domain import recurrence, splits
+from fiscus.domain import recurrence
 from fiscus.domain.matching import Candidate, OpenOccurrence, assign
-from fiscus.models import Bill, BillPayment, BillShare, Transaction, User
+from fiscus.models import Bill, BillPayment, Transaction, User
 from fiscus.services import ledger
+from fiscus.services.access import owned
 
 DUE_SOON_DAYS = 7
 # Unpaid this far back is still owed: the forecast pays it tomorrow, and the
@@ -26,36 +25,16 @@ DUE_SOON_DAYS = 7
 OVERDUE_CARRY_DAYS = 62
 
 
-def share_amounts(bill: Bill) -> dict[int, int]:
-    specs = [splits.ShareSpec(s.user_id, s.split_value) for s in bill.shares]
-    return splits.compute(bill.amount_cents, bill.split_mode, specs, bill.owner_id)
-
-
-def expected_out(bill: Bill, user_id: int) -> int:
-    """What leaves this person's account for one occurrence."""
-    return bill.amount_cents if user_id == bill.owner_id else share_amounts(bill)[user_id]
-
-
 @dataclass
 class Occurrence:
     bill: Bill
-    share: BillShare
     due: date
-    share_cents: int
     status: str  # paid | overdue | due_soon | upcoming
     payment: BillPayment | None
 
-    @property
-    def shared(self) -> bool:
-        return len(self.bill.shares) > 1
 
-    @property
-    def is_owner(self) -> bool:
-        return self.share.user_id == self.bill.owner_id
-
-
-def user_shares(db: Session, user: User, *, active_only: bool = True) -> list[BillShare]:
-    q = select(BillShare).join(Bill).where(BillShare.user_id == user.id)
+def user_bills(db: Session, user: User, *, active_only: bool = True) -> list[Bill]:
+    q = owned(Bill, user)
     if active_only:
         q = q.where(Bill.active.is_(True))
     return list(db.execute(q.order_by(Bill.name)).scalars())
@@ -72,10 +51,10 @@ def _status(due: date, today: date, payment: BillPayment | None) -> str:
 
 
 def occurrences(db: Session, user: User, start: date, end: date, today: date) -> list[Occurrence]:
-    shares = user_shares(db, user)
-    if not shares:
+    found = user_bills(db, user)
+    if not found:
         return []
-    bill_ids = [s.bill_id for s in shares]
+    bill_ids = [b.id for b in found]
     payments = {
         (p.bill_id, p.due_date): p
         for p in db.execute(
@@ -88,16 +67,12 @@ def occurrences(db: Session, user: User, start: date, end: date, today: date) ->
         ).scalars()
     }
     out: list[Occurrence] = []
-    for share in shares:
-        bill = share.bill
-        amounts = share_amounts(bill)
+    for bill in found:
         for due in recurrence.occurrences(
             bill.next_due, bill.frequency, start, end, until=bill.end_date
         ):
             pay = payments.get((bill.id, due))
-            out.append(
-                Occurrence(bill, share, due, amounts[user.id], _status(due, today, pay), pay)
-            )
+            out.append(Occurrence(bill, due, _status(due, today, pay), pay))
     out.sort(key=lambda o: (o.due, o.bill.name))
     return out
 
@@ -119,8 +94,7 @@ def auto_match(db: Session, clock: Clock, user: User, txns: list[Transaction]) -
         return 0
     lo = min(t.date for t in outgoing)
     hi = max(t.date for t in outgoing)
-    shares = user_shares(db, user)
-    widest = max((s.bill.match_window_days for s in shares), default=0)
+    widest = max((b.match_window_days for b in user_bills(db, user)), default=0)
     open_occ: list[OpenOccurrence] = []
     for o in occurrences(
         db, user, lo - timedelta(days=widest), hi + timedelta(days=widest), clock.today()
@@ -131,8 +105,8 @@ def auto_match(db: Session, clock: Clock, user: User, txns: list[Transaction]) -
             OpenOccurrence(
                 bill_id=o.bill.id,
                 due_date=o.due,
-                expected_cents=expected_out(o.bill, user.id),
-                account_id=o.share.account_id,
+                expected_cents=o.bill.amount_cents,
+                account_id=o.bill.account_id,
                 tolerance_pct=o.bill.match_tolerance_pct,
                 window_days=o.bill.match_window_days,
                 hint=o.bill.description_hint,
@@ -168,8 +142,8 @@ def auto_match(db: Session, clock: Clock, user: User, txns: list[Transaction]) -
 
 
 def mark_paid(db: Session, clock: Clock, user: User, bill: Bill, due: date) -> BillPayment:
-    """Mark one of this person's occurrences paid by hand, today. Their share
-    comes off their account for it today (D42), as the forecast had it."""
+    """Mark an occurrence paid by hand, today. It comes off the bill's account
+    today (D42), as the forecast had it."""
     existing = db.execute(
         select(BillPayment).where(
             BillPayment.bill_id == bill.id,
@@ -188,17 +162,16 @@ def mark_paid(db: Session, clock: Clock, user: User, bill: Bill, due: date) -> B
     )
     db.add(pay)
     db.flush()
-    share = next(s for s in bill.shares if s.user_id == user.id)
     ledger.follow(
         db,
         clock,
         user,
         pay,
-        account_id=share.account_id,
+        account_id=bill.account_id,
         day=pay.paid_on,
-        cents=-share_amounts(bill)[user.id],
+        cents=-bill.amount_cents,
         description=bill.name,
-        category_id=share.category_id,
+        category_id=bill.category_id,
     )
     return pay
 

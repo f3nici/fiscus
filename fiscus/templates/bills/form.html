@@ -5,12 +5,11 @@
   {% macro val(key, fallback) %}{{ v.get(key, fallback) }}{% endmacro %}
   <h1>{{ 'Edit ' ~ bill.name if bill else 'New bill' }}</h1>
   {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
-  {% set my = shares.get(user.id) %}
   <form class="card" method="post" action="{{ '/bills/' ~ bill.id if bill else '/bills' }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <div class="form-grid">
       <div class="field"><label class="label" for="name">Name</label><input class="input" id="name" name="name" required maxlength="120" value="{{ val('name', bill.name if bill else '') }}"></div>
-      <div class="field"><label class="label" for="amount">Amount (whole bill)</label><input class="input" id="amount" name="amount" inputmode="decimal" required value="{{ val('amount', bill.amount_cents | money_plain if bill else '') }}"></div>
+      <div class="field"><label class="label" for="amount">Amount</label><input class="input" id="amount" name="amount" inputmode="decimal" required value="{{ val('amount', bill.amount_cents | money_plain if bill else '') }}"></div>
       <div class="field"><label class="label" for="frequency">How often</label>
         <select class="input" id="frequency" name="frequency">
           {% for k, label in freq.items() %}<option value="{{ k }}" {{ 'selected' if val('frequency', bill.frequency if bill else 'monthly') == k else '' }}>{{ label }}</option>{% endfor %}
@@ -20,41 +19,15 @@
       <div class="field"><label class="label" for="end_date">Ends (optional)</label><input class="input" type="date" id="end_date" name="end_date" value="{{ val('end_date', bill.end_date.isoformat() if bill and bill.end_date else '') }}"></div>
       <div class="field"><label class="label" for="account_id">Paid from</label>
         <select class="input" id="account_id" name="account_id"><option value="0">My spending account</option>
-          {% for a in accounts %}<option value="{{ a.id }}" {{ 'selected' if my and my.account_id == a.id else '' }}>{{ a.name }}</option>{% endfor %}
+          {% for a in accounts %}<option value="{{ a.id }}" {{ 'selected' if bill and bill.account_id == a.id else '' }}>{{ a.name }}</option>{% endfor %}
         </select>
       </div>
       <div class="field"><label class="label" for="category_id">Category</label>
         <select class="input" id="category_id" name="category_id"><option value="0">None</option>
-          {% for c in cats %}<option value="{{ c.id }}" {{ 'selected' if my and my.category_id == c.id else '' }}>{{ c.name }}</option>{% endfor %}
+          {% for c in cats %}<option value="{{ c.id }}" {{ 'selected' if bill and bill.category_id == c.id else '' }}>{{ c.name }}</option>{% endfor %}
         </select>
       </div>
     </div>
-
-    <fieldset>
-      <legend>Shared with</legend>
-      {% if not others %}<p class="muted text-sm">Nobody else uses this Fiscus yet.</p>{% endif %}
-      <div class="field">
-        <label class="label" for="split_mode">Split</label>
-        <select class="input" id="split_mode" name="split_mode" data-split-mode>
-          {% for m in modes %}<option value="{{ m }}" {{ 'selected' if val('split_mode', bill.split_mode if bill else 'equal') == m else '' }}>{{ {'equal': 'Equally', 'percent': 'By percentage', 'fixed': 'By fixed amounts'}[m] }}</option>{% endfor %}
-        </select>
-      </div>
-      {% macro share_value(uid) -%}
-        {%- set s = shares.get(uid) -%}
-        {%- if s and bill.split_mode == 'percent' -%}{{ '%g' % (s.split_value / 100) }}{%- elif s and bill.split_mode == 'fixed' -%}{{ s.split_value | money_plain }}{%- endif -%}
-      {%- endmacro %}
-      <div class="row">
-        <span class="grow">You ({{ user.display_name }})</span>
-        <span data-split-input><input class="input" name="split_{{ user.id }}" inputmode="decimal" value="{{ val('split_' ~ user.id, share_value(user.id)) }}" aria-label="Your share"></span>
-      </div>
-      {% for o in others %}
-        <div class="row mt-sm">
-          <label class="check grow"><input type="checkbox" name="participants" value="{{ o.id }}" {{ 'checked' if o.id in shares else '' }}> {{ o.display_name }}</label>
-          <span data-split-input><input class="input" name="split_{{ o.id }}" inputmode="decimal" value="{{ val('split_' ~ o.id, share_value(o.id)) }}" aria-label="{{ o.display_name }}'s share"></span>
-        </div>
-      {% endfor %}
-      <small>Each person sees the bill on their calendar, budget and forecast at their share only.</small>
-    </fieldset>
 
     {% if bill %}<label class="check mt"><input type="checkbox" name="active" {{ 'checked' if bill.active else '' }}> Active</label>{% endif %}
     <div class="row mt">

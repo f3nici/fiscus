@@ -1,4 +1,7 @@
-"""Splitting a shared bill.
+"""Splitting a shared bill, as bills were split before D52.
+
+Bills are not shared any more. Migrations 0003, 0009 and 0025 still work out
+each person's share of the bills they move, so this stays for them.
 
 Modes:
   equal    everyone pays the same; leftover cents go to the owner first

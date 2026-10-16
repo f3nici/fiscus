@@ -9,7 +9,7 @@ import httpx
 import pytest
 
 from fiscus.domain.uploads import MAX_BYTES, ImportError_, decode
-from fiscus.forms import FormError, int_or, pct_bp, rate
+from fiscus.forms import FormError, int_or, rate
 from fiscus.models import Goal, UserSettings
 from fiscus.money import MoneyError, parse_cents
 from fiscus.services import ntfy
@@ -27,18 +27,9 @@ def test_money_refuses_exponents() -> None:
 
 
 @pytest.mark.parametrize('value', ['NaN', 'sNaN', 'Infinity', '-inf', 'abc', ''])
-def test_rates_and_percentages_refuse_non_numbers(value: str) -> None:
+def test_rates_refuse_non_numbers(value: str) -> None:
     with pytest.raises(FormError):
         rate(value, 'Rate')
-    with pytest.raises(FormError):
-        pct_bp(value, 'Split')
-
-
-def test_percentages_are_exact() -> None:
-    assert pct_bp('12.345', 'Split') == 1235
-    assert pct_bp('33.33%', 'Split') == 3333
-    with pytest.raises(FormError):
-        pct_bp('101', 'Split')
 
 
 def test_int_or() -> None:
@@ -84,23 +75,13 @@ def test_mark_paid_never_redirects_off_site(env: Env) -> None:
 
 def test_bad_form_values_are_refused_politely(env: Env) -> None:
     alex = env.user('alex')
-    sam = env.user('sam')
     client = env.login(alex)
     acct = make_account(client)
     savings = make_account(client, name='Savings', type_='savings')
-    # A split of infinity percent.
+    # A bill of infinity dollars.
     resp = client.post(
         '/bills',
-        data={
-            'name': 'Power',
-            'amount': '100',
-            'frequency': 'monthly',
-            'next_due': '2026-11-01',
-            'split_mode': 'percent',
-            'participants': str(sam.id),
-            f'split_{alex.id}': 'inf',
-            f'split_{sam.id}': '0',
-        },
+        data={'name': 'Power', 'amount': 'inf', 'frequency': 'monthly', 'next_due': '2026-11-01'},
     )
     assert resp.status_code == 400
     # A loan rate that is not a number.

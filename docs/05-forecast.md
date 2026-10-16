@@ -42,7 +42,7 @@ today with real balances. Each later day applies:
 
 1. flows: pay (net, from `services/pay.items`: each schedule payday, or the
    payslip recording it on that payslip's date, and one-off payslips),
-   bills at this person's share, planned transfers (both
+   bills, planned transfers (both
    legs), scenario one-offs. Unpaid bills overdue within the last 62 days
    (`bills.OVERDUE_CARRY_DAYS`) are assumed to go out tomorrow; the agenda
    lists them above today;
@@ -90,5 +90,5 @@ draws both.
 `forecasting.base` caches results per user in `forecast_cache`, keyed by
 `data_version` and today's date, one per horizon asked for (the dashboard's
 three months beside the forecast page's twelve). `services/versioning.py` bumps
-`data_version` on any flush touching an owned row, and for every participant
-of a touched bill. Scenario runs are not cached.
+`data_version` on any flush touching an owned row. Scenario runs are not
+cached.

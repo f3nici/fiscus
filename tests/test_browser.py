@@ -192,13 +192,15 @@ def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any
     page.fill('#spend_note', 'Ampol')
     assert page.input_value('#spend_account') != '0'
     page.click('form[action="/budget/spend"] button[type=submit]')
-    page.wait_for_selector('text=Ampol')
+    # The entry is listed in its line's Edit panel, to remove a mistake.
+    page.wait_for_selector('[id^="spent-"] li:has-text("Ampol")', state='attached')
     assert '$134.50' in page.content()
     # It came off the account it was paid from (D49).
     page.wait_for_selector(
         '[data-flash]:has-text("$65.50 off Fuel. Everyday is now")', state='attached'
     )
-    assert '· Everyday' in page.inner_text('#spent')
+    assert '· Everyday' in (page.text_content('[id^="spent-"]') or '')
+    assert 'Taken off this budget month' not in page.content()
     # Something paid once a year is saved up a month at a time.
     page.fill('#new_category', 'Car rego')
     page.fill('#add_amount', '900')
@@ -270,7 +272,8 @@ def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any
     page.goto(f'{base}/budget')
     page.fill('.put-aside input[name=amount]', '50')
     page.click('.put-aside button[type=submit]')
-    page.wait_for_selector('main li:has-text("Into Japan trip")')
+    # Listed in the line's Edit panel, which is closed.
+    page.wait_for_selector('main [id^="spent-"] li:has-text("Into Japan trip")', state='attached')
     # A group with a line in it, then the line moved up within the budget.
     page.fill('#group_name', 'Bills')
     page.click('form[action="/budget/groups"] button[type=submit]')
@@ -362,9 +365,11 @@ def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any
         }""")
         assert not wide, (path, wide)
 
-    # Narrow screen: the calendar opens on the agenda.
+    # Narrow screen: the calendar opens on the month, as it does on a wide one.
     page.goto(f'{base}/calendar')
-    page.wait_for_selector('#cal[data-view="agenda"]')
+    page.wait_for_selector('#cal[data-view="month"]')
+    page.wait_for_timeout(300)
+    assert page.get_attribute('#cal', 'data-view') == 'month'
     # The forecast chart drew, with the trend and Free to spend (less the $150
     # the Japan trip goal keeps aside and what is still budgeted).
     page.goto(f'{base}/forecast')

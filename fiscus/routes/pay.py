@@ -13,6 +13,7 @@ from datetime import timedelta
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from fiscus.domain import payslip as payslip_pdf
@@ -38,6 +39,8 @@ from fiscus.web import ctx, current_user, get_db, redirect, render
 
 router = APIRouter()
 MAX_FILES = 40
+# The payslips list shows this many a page, newest first.
+SLIPS_PER_PAGE = 10
 # Paydays offered for a payslip run this far ahead (a payslip often comes first).
 AHEAD_DAYS = 14
 
@@ -155,8 +158,26 @@ def _page(
         if d is not None and s.end_date and d > s.end_date:
             nxt[s.id] = None
     fy_start, _ = fy_bounds(today)
-    slips = db.execute(owned(Payslip, user).order_by(Payslip.date.desc()).limit(60)).scalars().all()
-    ytd = [p for p in slips if p.date >= fy_start]
+    total = db.scalar(select(func.count()).select_from(owned(Payslip, user).subquery())) or 0
+    pages = max(1, -(-total // SLIPS_PER_PAGE))
+    page = min(max(int_or(request.query_params.get('page'), 1), 1), pages)
+    slips = (
+        db.execute(
+            owned(Payslip, user)
+            .order_by(Payslip.date.desc(), Payslip.id.desc())
+            .offset((page - 1) * SLIPS_PER_PAGE)
+            .limit(SLIPS_PER_PAGE)
+        )
+        .scalars()
+        .all()
+    )
+    ytd = db.execute(
+        select(
+            func.coalesce(func.sum(Payslip.gross_cents), 0),
+            func.coalesce(func.sum(Payslip.tax_withheld_cents), 0),
+            func.coalesce(func.sum(Payslip.net_cents), 0),
+        ).where(Payslip.user_id == user.id, Payslip.date >= fy_start)
+    ).one()
     options = _options(db, user, today, slip.id if slip else None)
     if form is not None and form.payday not in ('', 'auto'):
         found = _parse_payday(db, user, form.payday)
@@ -170,14 +191,12 @@ def _page(
             'expected': {ps.id: net for ps, net in expected},
             'next': nxt,
             'slips': slips,
+            'page': page,
+            'pages': pages,
             'names': {s.id: s.name for s in schedules},
             'freqs': PAY_FREQUENCIES,
             'accounts': ledger.accounts(db, user),
-            'ytd': {
-                'gross': sum(p.gross_cents for p in ytd),
-                'tax': sum(p.tax_withheld_cents for p in ytd),
-                'net': sum(p.net_cents for p in ytd),
-            },
+            'ytd': {'gross': ytd[0], 'tax': ytd[1], 'net': ytd[2]},
             'edit': maybe_owned(db, PaySchedule, int_or(request.query_params.get('edit')), user),
             'to_put_in': pay.to_put_in(db, user, today),
             'form': form or SlipForm(date=today.isoformat()),

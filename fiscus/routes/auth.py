@@ -4,13 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, Response
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from fiscus.models import User
-from fiscus.security import passwords
 from fiscus.services import audit
 from fiscus.services import auth as svc
 from fiscus.web import (
@@ -92,49 +90,6 @@ async def passkey_verify(request: Request, db: Session = Depends(get_db)) -> Res
         db, c.settings, c.clock, user, 'passkey', ip, request.headers.get('user-agent', '')
     )
     resp = JSONResponse({'ok': True, 'redirect': safe_next(str(body.get('next') or '/'))})
-    set_session_cookie(request, resp, token)
-    return resp
-
-
-@router.post('/auth/password')
-def password_login(
-    request: Request,
-    username: str = Form(...),
-    password: str = Form(...),
-    next: str = Form('/'),
-    db: Session = Depends(get_db),
-) -> Response:
-    ip = client_ip(request)
-    name = username.strip().lower()
-    limit(request, 'login_ip', ip)
-    limit(request, 'login_user', name)
-    c = ctx(request)
-    user = db.execute(select(User).where(User.username == name)).scalar_one_or_none()
-    ok = passwords.verify(user.password_hash if user else None, password)
-    if not (ok and user and user.is_active and user.password_enabled):
-        audit.record(
-            db,
-            c.clock,
-            'login.failed',
-            ip=ip,
-            method='password',
-            subject_id=user.id if user else None,
-        )
-        return render(
-            request,
-            'login.html',
-            {
-                'next': safe_next(next),
-                'error': 'That username and password did not work.',
-                'show_password': True,
-                'passkeys_allowed': c.settings.passkeys_allowed,
-            },
-            status_code=400,
-        )
-    token = svc.start_session(
-        db, c.settings, c.clock, user, 'password', ip, request.headers.get('user-agent', '')
-    )
-    resp = redirect(safe_next(next))
     set_session_cookie(request, resp, token)
     return resp
 

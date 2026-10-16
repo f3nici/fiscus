@@ -1,12 +1,12 @@
 """The budget: what is set aside for each category in a budget month, and what is left.
 
 A category's budget is what the person allocates to it, and nothing else.
-Their bills in it (each share at its monthly equivalent, a one-off in the
-period it falls due) are shown beside it but never add to it: a bill is paid
+Their bills in it (each at its monthly equivalent, a one-off in the period
+it falls due) are shown beside it but never add to it: a bill is paid
 out of the allocation.
 
 Spending is not read from bank transactions. It is what the person takes off a
-budget by hand (`BudgetSpend`) plus their share of every bill they mark paid
+budget by hand (`BudgetSpend`) plus every bill they mark paid
 that falls due in the period. The budget month starts on the day they choose.
 What is taken off by hand also comes off the account it was paid from (D49).
 
@@ -145,43 +145,41 @@ def bills_by_category(
 ) -> dict[int, int]:
     """This person's bills per category for the period, smoothed to a monthly amount."""
     out: dict[int, int] = {}
-    for share in bills.user_shares(db, user):
-        bill = share.bill
+    for bill in bills.user_bills(db, user):
         # A recurring bill's next due date is not when it starts: it is running.
-        if share.category_id is None:
+        if bill.category_id is None:
             continue
         if bill.end_date is not None and bill.end_date < start:
             continue
-        mine = bills.share_amounts(bill)[user.id]
         if bill.frequency == 'one_off':
-            monthly = mine if one_offs and start <= bill.next_due <= end else 0
+            monthly = bill.amount_cents if one_offs and start <= bill.next_due <= end else 0
         else:
-            monthly = recurrence.monthly_equivalent(mine, bill.frequency)
+            monthly = recurrence.monthly_equivalent(bill.amount_cents, bill.frequency)
         if monthly:
-            out[share.category_id] = out.get(share.category_id, 0) + monthly
+            out[bill.category_id] = out.get(bill.category_id, 0) + monthly
     return out
 
 
 def bill_cycles(db: Session, user: User) -> dict[int, int]:
     """The longest cycle, in months, of this person's running bills per category."""
     out: dict[int, int] = {}
-    for share in bills.user_shares(db, user):
-        months = BILL_CYCLES.get(share.bill.frequency, 1)
-        if share.category_id is not None and months > 1:
-            out[share.category_id] = max(out.get(share.category_id, 1), months)
+    for bill in bills.user_bills(db, user):
+        months = BILL_CYCLES.get(bill.frequency, 1)
+        if bill.category_id is not None and months > 1:
+            out[bill.category_id] = max(out.get(bill.category_id, 1), months)
     return out
 
 
 def bills_paid_by_category(
     db: Session, user: User, start: date, end: date, today: date
 ) -> dict[int, int]:
-    """This person's share of bills due in the period and marked paid."""
+    """This person's bills due in the period and marked paid."""
     out: dict[int, int] = {}
     for occ in bills.occurrences(db, user, start, end, today):
-        if occ.payment is None or occ.share.category_id is None:
+        cid = occ.bill.category_id
+        if occ.payment is None or cid is None:
             continue
-        cid = occ.share.category_id
-        out[cid] = out.get(cid, 0) + occ.share_cents
+        out[cid] = out.get(cid, 0) + occ.bill.amount_cents
     return out
 
 
@@ -385,11 +383,11 @@ def due_checks(
     occs = [
         o
         for o in bills.occurrences(db, user, start - DUE_LOOKBACK, horizon, today)
-        if o.share.category_id in lines
+        if o.bill.category_id in lines
     ]
     out: dict[int, saving.Outlook] = {}
     for cid, r in lines.items():
-        mine = [o for o in occs if o.share.category_id == cid]
+        mine = [o for o in occs if o.bill.category_id == cid]
         unpaid = [o for o in mine if o.payment is None and o.due >= owed_from]
         if not unpaid or r.budget is None or r.saved_cents is None:
             continue
@@ -399,8 +397,8 @@ def due_checks(
         found = saving.outlook(
             period_start=start,
             start_day=first,
-            bills=[saving.Due(o.due, o.share_cents) for o in unpaid]
-            + [saving.Due(o.due, o.share_cents, paid=True) for o in ahead],
+            bills=[saving.Due(o.due, o.bill.amount_cents) for o in unpaid]
+            + [saving.Due(o.due, o.bill.amount_cents, paid=True) for o in ahead],
             saved_cents=r.saved_cents,
             monthly_cents=r.budget.monthly_cents,
             put_aside_cents=put_aside(db, user, cid, since, today),

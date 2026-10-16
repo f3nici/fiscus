@@ -29,7 +29,7 @@ def calendar_page(
         focus = date.fromisoformat(raw) if raw else c.clock.today()
     except ValueError:
         focus = c.clock.today()
-    # No view in the URL: the page script picks agenda on a narrow screen.
+    # No view in the URL: the month, on a phone too.
     chosen = view if view in calendar_events.VIEWS else 'month'
     grid = calendar_events.grid(db, c.clock, user, chosen, focus)
     upcoming = calendar_events.grid(db, c.clock, user, 'agenda', c.clock.today())
@@ -41,7 +41,6 @@ def calendar_page(
         template,
         {
             'grid': grid,
-            'view_given': bool(view),
             'upcoming': upcoming.days[:14],
             'views': calendar_events.VIEWS,
         },

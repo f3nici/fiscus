@@ -1,4 +1,4 @@
-"""Bills: list, create and edit (owner), mark paid, match and unmatch (each participant)."""
+"""Bills: list, create and edit, mark paid and unpaid."""
 
 from __future__ import annotations
 
@@ -6,35 +6,15 @@ from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from fiscus.clock import utcnow_naive
-from fiscus.domain import recurrence, splits
-from fiscus.forms import (
-    FormError,
-    choice,
-    ends_after,
-    int_or,
-    money,
-    opt_date,
-    pct_bp,
-    req_date,
-    text,
-)
-from fiscus.models import (
-    FREQUENCIES,
-    SPLIT_MODES,
-    Account,
-    Bill,
-    BillShare,
-    Category,
-    Transaction,
-    User,
-)
+from fiscus.domain import recurrence
+from fiscus.forms import FormError, choice, ends_after, int_or, money, opt_date, req_date, text
+from fiscus.models import FREQUENCIES, Account, Bill, Category, Transaction, User
 from fiscus.services import bills as svc
 from fiscus.services import ledger
-from fiscus.services.access import maybe_owned, owned_bill, visible_bill
+from fiscus.services.access import get_owned, maybe_owned
 from fiscus.web import ctx, current_user, get_db, local_path, redirect, render
 
 router = APIRouter()
@@ -59,10 +39,10 @@ def list_bills(
 ) -> Response:
     c = ctx(request)
     today = c.clock.today()
-    shares = svc.user_shares(db, user, active_only=False)
+    found = svc.user_bills(db, user, active_only=False)
     cats = {cat.id: cat.name for cat in ledger.categories(db, user)}
     if category in cats:
-        shares = [s for s in shares if s.category_id == category]
+        found = [b for b in found if b.category_id == category]
     upcoming = svc.occurrences(db, user, today, today + timedelta(days=45), today)
     overdue = svc.overdue(db, user, today)
     nxt: dict[int, svc.Occurrence] = {}
@@ -70,33 +50,25 @@ def list_bills(
         nxt.setdefault(o.bill.id, o)
     # Due further out than the list looks: just the date.
     later: dict[int, date] = {}
-    for s in shares:
-        b = s.bill
+    for b in found:
         if b.active and b.id not in nxt:
             due = recurrence.next_on_or_after(b.next_due, b.frequency, today)
             if due is not None and (b.end_date is None or due <= b.end_date):
                 later[b.id] = due
-    amounts = {s.bill_id: svc.share_amounts(s.bill)[user.id] for s in shares}
-    monthly = {
-        s.bill_id: recurrence.monthly_equivalent(amounts[s.bill_id], s.bill.frequency)
-        for s in shares
-    }
-    owners = {u.id: u for u in db.execute(select(User)).scalars()}
+    monthly = {b.id: recurrence.monthly_equivalent(b.amount_cents, b.frequency) for b in found}
     return render(
         request,
         'bills/list.html',
         {
-            'shares': shares,
+            'bills': found,
             'next': nxt,
             'later': later,
             'overdue': overdue,
-            'amounts': amounts,
             'monthly': monthly,
-            'monthly_total': sum(monthly[s.bill_id] for s in shares if s.bill.active),
+            'monthly_total': sum(monthly[b.id] for b in found if b.active),
             'cats': cats,
             'category': cats.get(category),
             'freq': FREQ_LABELS,
-            'owners': owners,
         },
     )
 
@@ -109,25 +81,12 @@ def _form(
     error: str = '',
     values: dict[str, object] | None = None,
 ) -> Response:
-    others = (
-        db.execute(
-            select(User)
-            .where(User.is_active.is_(True), User.id != user.id)
-            .order_by(User.display_name)
-        )
-        .scalars()
-        .all()
-    )
-    shares = {s.user_id: s for s in bill.shares} if bill else {}
     return render(
         request,
         'bills/form.html',
         {
             'bill': bill,
-            'shares': shares,
-            'others': others,
             'freq': FREQ_LABELS,
-            'modes': SPLIT_MODES,
             'accounts': ledger.accounts(db, user),
             'cats': ledger.categories(db, user),
             'error': error,
@@ -152,7 +111,7 @@ def edit_bill(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> Response:
-    return _form(request, db, user, owned_bill(db, bill_id, user))
+    return _form(request, db, user, get_owned(db, Bill, bill_id, user))
 
 
 @router.post('/bills')
@@ -164,7 +123,7 @@ async def save_bill(
     db: Session = Depends(get_db),
 ) -> Response:
     c = ctx(request)
-    bill = owned_bill(db, bill_id, user) if bill_id else None
+    bill = get_owned(db, Bill, bill_id, user) if bill_id else None
     form = await request.form()
 
     def f(key: str, default: str = '') -> str:
@@ -179,35 +138,13 @@ async def save_bill(
         frequency = choice(f('frequency'), FREQUENCIES, 'Frequency')
         next_due = req_date(f('next_due'), 'Next due')
         end_date = ends_after(next_due, opt_date(f('end_date'), 'End date'))
-        mode = choice(f('split_mode', 'equal'), SPLIT_MODES, 'Split')
-        participants = [int_or(v) for v in form.getlist('participants') if int_or(v) > 0]
-        valid_others = {
-            u.id for u in db.execute(select(User).where(User.is_active.is_(True))).scalars()
-        }
-        participants = [
-            p for p in dict.fromkeys(participants) if p in valid_others and p != user.id
-        ]
-        everyone = [user.id, *participants]
-
-        def share_value(uid: int) -> int:
-            raw = f(f'split_{uid}')
-            if mode == 'percent':
-                return pct_bp(raw or '0', 'Split percentage')
-            if mode == 'fixed':
-                return money(raw or '0', 'Split amount', allow_negative=False)
-            return 0
-
-        values = {uid: share_value(uid) for uid in everyone}
-        if mode != 'equal' and len(everyone) == 1:
-            mode = 'equal'
-        splits.compute(amount, mode, [splits.ShareSpec(u, v) for u, v in values.items()], user.id)
-    except (FormError, splits.SplitError, ValueError) as exc:
+    except (FormError, ValueError) as exc:
         return _form(request, db, user, bill, str(exc), dict(form))
     acct = maybe_owned(db, Account, int_or(f('account_id')), user)
     cat = maybe_owned(db, Category, int_or(f('category_id')), user)
     if bill is None:
         bill = Bill(
-            owner_id=user.id,
+            user_id=user.id,
             created_at=utcnow_naive(c.clock),
             name=name,
             amount_cents=amount,
@@ -220,22 +157,9 @@ async def save_bill(
     bill.frequency = frequency
     bill.next_due = next_due
     bill.end_date = end_date
-    bill.split_mode = mode
+    bill.account_id = acct.id if acct else None
+    bill.category_id = cat.id if cat else None
     bill.active = ('active' in form) if bill_id else True
-    db.flush()
-    existing = {s.user_id: s for s in bill.shares}
-    for uid, s in existing.items():
-        if uid not in values:
-            bill.shares.remove(s)
-    for uid, value in values.items():
-        share = existing.get(uid)
-        if share is None:
-            share = BillShare(user_id=uid)
-            bill.shares.append(share)
-        share.split_value = value
-        if uid == user.id:
-            share.account_id = acct.id if acct else None
-            share.category_id = cat.id if cat else None
     db.flush()
     return redirect(f'/bills/{bill.id}', flash='Bill saved', request=request)
 
@@ -249,7 +173,7 @@ def show_bill(
 ) -> Response:
     c = ctx(request)
     today = c.clock.today()
-    bill, share = visible_bill(db, bill_id, user)
+    bill = get_owned(db, Bill, bill_id, user)
     occ = [
         o
         for o in svc.occurrences(
@@ -257,41 +181,17 @@ def show_bill(
         )
         if o.bill.id == bill.id
     ]
-    people = {u.id: u for u in db.execute(select(User)).scalars()}
     return render(
         request,
         'bills/show.html',
         {
             'bill': bill,
-            'share': share,
             'occ': occ,
-            'amounts': svc.share_amounts(bill),
-            'people': people,
             'freq': FREQ_LABELS,
-            'is_owner': bill.owner_id == user.id,
-            'accounts': ledger.accounts(db, user),
-            'cats': ledger.categories(db, user),
+            'account': maybe_owned(db, Account, bill.account_id, user),
+            'category': maybe_owned(db, Category, bill.category_id, user),
         },
     )
-
-
-@router.post('/bills/{bill_id}/my-share')
-async def my_share(
-    bill_id: int,
-    request: Request,
-    user: User = Depends(current_user),
-    db: Session = Depends(get_db),
-) -> Response:
-    """A participant picks which of their own accounts and categories the share uses."""
-    _bill, share = visible_bill(db, bill_id, user)
-    form = await request.form()
-    a = form.get('account_id')
-    k = form.get('category_id')
-    acct = maybe_owned(db, Account, int_or(a), user)
-    cat = maybe_owned(db, Category, int_or(k), user)
-    share.account_id = acct.id if acct else None
-    share.category_id = cat.id if cat else None
-    return redirect(f'/bills/{bill_id}', flash='Saved', request=request)
 
 
 def _occ(db: Session, user: User, bill: Bill, due_raw: str) -> date:
@@ -314,7 +214,7 @@ def occurrence(
 ) -> Response:
     """The calendar's event panel: details and quick actions."""
     c = ctx(request)
-    bill, _share = visible_bill(db, bill_id, user)
+    bill = get_owned(db, Bill, bill_id, user)
     when = _occ(db, user, bill, due)
     today = c.clock.today()
     occs = [o for o in svc.occurrences(db, user, when, when, today) if o.bill.id == bill.id]
@@ -326,16 +226,7 @@ def occurrence(
         if o.payment and o.payment.transaction_id
         else None
     )
-    return render(
-        request,
-        'bills/_occurrence.html',
-        {
-            'o': o,
-            'txn': txn,
-            'is_owner': bill.owner_id == user.id,
-            'expected': svc.expected_out(bill, user.id),
-        },
-    )
+    return render(request, 'bills/_occurrence.html', {'o': o, 'txn': txn})
 
 
 @router.post('/bills/{bill_id}/occurrence/{due}/paid')
@@ -347,7 +238,7 @@ async def mark_paid(
     db: Session = Depends(get_db),
 ) -> Response:
     c = ctx(request)
-    bill, _share = visible_bill(db, bill_id, user)
+    bill = get_owned(db, Bill, bill_id, user)
     when = _occ(db, user, bill, due)
     form = await request.form()
     today = c.clock.today()
@@ -368,7 +259,7 @@ async def mark_unpaid(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> Response:
-    bill, _share = visible_bill(db, bill_id, user)
+    bill = get_owned(db, Bill, bill_id, user)
     when = _occ(db, user, bill, due)
     today = ctx(request).clock.today()
     before = ledger.balances(db, user, today)
@@ -388,6 +279,6 @@ def delete_bill(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> Response:
-    bill = owned_bill(db, bill_id, user)
+    bill = get_owned(db, Bill, bill_id, user)
     db.delete(bill)
     return redirect('/bills', flash='Bill deleted', request=request)

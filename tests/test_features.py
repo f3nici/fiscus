@@ -92,8 +92,8 @@ def test_calendar_week_day_and_agenda(env: Env) -> None:
     assert 'Monday 5 October 2026' in day and 'Rent' in day
     agenda = a.get('/calendar?view=agenda&date=2026-10-01').text
     assert 'Rent' in agenda and 'Acme wages' in agenda
-    assert 'data-view-given="1"' in agenda
-    assert 'data-view-given="0"' in a.get('/calendar').text
+    # No view asked for: the month, whatever the screen.
+    assert 'data-view="month"' in a.get('/calendar').text
 
 
 def test_calendar_states_and_quick_actions(env: Env) -> None:
@@ -105,14 +105,6 @@ def test_calendar_states_and_quick_actions(env: Env) -> None:
     assert 'Mark paid' in sheet.text
     a.post(f'/bills/{bill}/occurrence/2026-09-25/paid', data={'back': '/calendar'})
     assert 'ev-bill ev-paid' in a.get('/calendar?view=month&date=2026-09-01').text
-
-
-def test_shared_bill_on_participants_calendar_at_their_share(env: Env) -> None:
-    a, _alex, _acct = setup_household(env)
-    sam = env.user('sam')
-    create_bill(a, name='Internet', amount='90', next_due='2026-10-12', participants=[str(sam.id)])
-    page = env.login(sam).get('/calendar?view=agenda&date=2026-10-01').text
-    assert 'ev-shared' in page and '-$45.00' in page and 'Rent' not in page
 
 
 # --------------------------------------------------------------------- loans
@@ -347,20 +339,33 @@ def test_the_dashboard_and_forecast_horizons_share_the_cache(env: Env) -> None:
         assert db.get(ForecastCache, alex.id).created_at == stamp  # type: ignore[union-attr]
 
 
-def test_shared_bill_change_invalidates_participants_forecast(env: Env) -> None:
-    a, _alex, _ = setup_household(env)
-    sam = env.user('sam')
-    s = env.login(sam)
-    make_account(s, 'Sam everyday', opening='100')
-    s.get('/forecast')
+def test_a_bill_change_invalidates_its_owners_forecast_only(env: Env) -> None:
+    alex, sam = env.user('alex'), env.user('sam')
+    a, s = env.login(alex), env.login(sam)
+    make_account(a, opening='100')
+    a.get('/forecast')
     with env.db() as db:
-        before = db.get(User, sam.id).data_version  # type: ignore[union-attr]
-    create_bill(a, name='Internet', amount='90', next_due='2026-10-12', participants=[str(sam.id)])
+        before = {u: db.get(User, u).data_version for u in (alex.id, sam.id)}  # type: ignore[union-attr]
+    bill = create_bill(a, name='Internet', amount='90', next_due='2026-10-12')
     with env.db() as db:
-        assert db.get(User, sam.id).data_version > before  # type: ignore[union-attr]
-    page = s.get('/forecast?months=1').text
-    data = chart_data(page)
-    assert data['combined'][data['dates'].index('2026-10-12')] == 100_00 - 45_00
+        assert db.get(User, alex.id).data_version > before[alex.id]  # type: ignore[union-attr]
+        assert db.get(User, sam.id).data_version == before[sam.id]  # type: ignore[union-attr]
+    data = chart_data(a.get('/forecast?months=1').text)
+    assert data['combined'][data['dates'].index('2026-10-12')] == 100_00 - 90_00
+    # Changing it moves the forecast at once.
+    a.post(
+        f'/bills/{bill}',
+        data={
+            'name': 'Internet',
+            'amount': '60',
+            'frequency': 'monthly',
+            'next_due': '2026-10-12',
+            'active': 'on',
+        },
+    )
+    data = chart_data(a.get('/forecast?months=1').text)
+    assert data['combined'][data['dates'].index('2026-10-12')] == 100_00 - 60_00
+    assert 'Internet' not in s.get('/calendar?view=agenda&date=2026-10-01').text
 
 
 def test_low_balance_warning_on_forecast_and_dashboard(env: Env) -> None:
@@ -452,7 +457,9 @@ def test_spending_is_taken_off_the_budget_by_hand(env: Env) -> None:
     a.post(f'/budget/spend/{sid}/delete')
     assert '$130.00' in a.get('/budget?month=2026-10').text
     nov = a.get('/budget?month=2026-11').text
-    assert '1 Nov to 30 Nov 2026' in nov and 'Nothing taken off yet' in nov
+    assert '1 Nov to 30 Nov 2026' in nov and 'Taken off this month' not in nov
+    # This month's entries are listed in their line's Edit panel.
+    assert f'id="spent-{groceries}"' in a.get('/budget?month=2026-10').text
     assert (
         a.post('/budget/spend', data={'category_id': str(groceries), 'amount': '0'}).status_code
         == 303
@@ -669,28 +676,24 @@ def cat_id(env: Env, user: User, name: str) -> int:
 
 def test_bills_are_paid_out_of_their_category_budget(env: Env) -> None:
     alex = env.user('alex')
-    sam = env.user('sam')
     a = env.login(alex)
     housing = cat_id(env, alex, 'Housing')
     a.post('/budget', data={'category_id': str(housing), 'amount': '150'})
     create_bill(
         a,
         name='Council rates',
-        amount='520',
+        amount='260',
         frequency='quarterly',
         next_due='2026-11-15',
         category_id=str(housing),
-        split_mode='percent',
-        participants=[str(sam.id)],
-        **{f'split_{alex.id}': '50', f'split_{sam.id}': '50'},
     )
-    # My half of 520 a quarter is 86.67 a month. It does not add to the 150.
+    # 260 a quarter is 86.67 a month. It does not add to the 150.
     page = a.get('/budget?month=2026-10').text
     assert '$150.00' in page and '$236.67' not in page
     assert 'Bills here come to $86.67 a month' in page
     with env.db() as db:
         assert db.execute(select(Budget.monthly_cents)).scalar_one() == 150_00
-    assert '-$260.00' in env.login(sam).get('/calendar?view=agenda&date=2026-11-01').text
+    assert '-$260.00' in a.get('/calendar?view=agenda&date=2026-11-01').text
     # Below the bills is allowed, with a note.
     resp = a.post(
         '/budget', data={'category_id': str(housing), 'amount': '50'}, follow_redirects=True
@@ -972,7 +975,7 @@ def test_old_housing_address_lands_on_bills(env: Env) -> None:
 
 # --------------------------------------------------------------- bill import
 
-FIELDS = ['name', 'amount', 'frequency', 'category', 'due_date', 'shared_with', 'split_percent']
+FIELDS = ['name', 'amount', 'frequency', 'category', 'due_date']
 MAP = {f'map_{f}': str(i) for i, f in enumerate(FIELDS)}
 
 
@@ -994,7 +997,6 @@ def test_bill_templates_download(env: Env) -> None:
 
 
 def test_bill_csv_import_preview_and_reimport_diff(env: Env) -> None:
-    partner = env.user('partner')
     alex = env.user('alex')
     a = env.login(alex)
     # A bill made by hand earlier, under a name the file also uses.
@@ -1013,12 +1015,11 @@ def test_bill_csv_import_preview_and_reimport_diff(env: Env) -> None:
         # Matched by name: updated, not duplicated, and the file's due date taken
         # only when it gives one (the template's Water has none).
         assert water.amount_cents == 310_00 and water.next_due == date(2026, 10, 10)
-        assert {s.user_id for s in water.shares} == {alex.id, partner.id}
+        assert all(b.user_id == alex.id for b in bills.values())
         rates = bills['Council rates']
-        assert rates.next_due == date(2026, 11, 15) and len(rates.shares) == 1
-        mine = next(s for s in bills['Home insurance'].shares if s.user_id == alex.id)
-        insurance = db.execute(select(Category).where(Category.id == mine.category_id)).scalar_one()
-        assert insurance.name == 'Insurance'
+        assert rates.next_due == date(2026, 11, 15)
+        insurance = db.get(Category, bills['Home insurance'].category_id)
+        assert insurance is not None and insurance.name == 'Insurance'
     # Re-import with one changed and one left out, which is stopped on request.
     second = '\n'.join(first.splitlines()[:3]).replace('520.00', '560.00') + '\n'
     name = upload_bills(a, 'h2.csv', second.encode())
@@ -1031,32 +1032,39 @@ def test_bill_csv_import_preview_and_reimport_diff(env: Env) -> None:
         assert bills['Water'].active is False and bills['Home insurance'].active is True
 
 
-def test_bill_import_keeps_a_split_the_file_cannot_describe(env: Env) -> None:
+def test_bill_import_of_an_old_file_leaves_sharing_out(env: Env) -> None:
+    """A file from when bills were shared still imports, at the full amount."""
     alex = env.user('alex')
-    sam = env.user('sam')
-    kim = env.user('kim')
+    env.user('sam')
     a = env.login(alex)
-    create_bill(
-        a,
-        name='Internet',
-        amount='90',
-        next_due='2026-10-12',
-        participants=[str(sam.id), str(kim.id)],
+    old = (
+        b'name,amount,frequency,category,due_date,shared_with,split_percent\n'
+        b'Internet,90,monthly,Utilities,2026-10-12,sam,40\n'
     )
-    name = upload_bills(a, 'i.csv', b'name,amount,frequency\nInternet,99,monthly\n')
-    assert 'shared (kept as it is)' in a.get(f'/bills/import/{name}').text
-    a.post(
-        f'/bills/import/{name}/apply',
-        data={'map_name': '0', 'map_amount': '1', 'map_frequency': '2'},
-    )
+    name = upload_bills(a, 'old.csv', old)
+    preview = a.get(f'/bills/import/{name}').text
+    assert 'Added (1)' in preview and 'shared' not in preview.lower()
+    a.post(f'/bills/import/{name}/apply', data=MAP)
     with env.db() as db:
         bill = db.execute(select(Bill)).scalar_one()
-        assert bill.amount_cents == 99_00 and len(bill.shares) == 3
+        assert (bill.user_id, bill.amount_cents) == (alex.id, 90_00)
+    row = {
+        'name': 'Water',
+        'amount': '310',
+        'frequency': 'quarterly',
+        'shared_with': 'sam',
+        'split_percent': 50,
+    }
+    js = json.dumps({'bills': [row]}).encode()
+    name = upload_bills(a, 'old.json', js, 'application/json')
+    a.post(f'/bills/import/{name}/apply')
+    with env.db() as db:
+        water = db.execute(select(Bill).where(Bill.name == 'Water')).scalar_one()
+        assert (water.user_id, water.amount_cents) == (alex.id, 310_00)
 
 
 def test_bill_import_leaves_what_the_file_does_not_mention(env: Env) -> None:
     alex = env.user('alex')
-    sam = env.user('sam')
     a = env.login(alex)
     utilities = cat_id(env, alex, 'Utilities')
     create_bill(
@@ -1065,9 +1073,8 @@ def test_bill_import_leaves_what_the_file_does_not_mention(env: Env) -> None:
         amount='200',
         next_due='2026-10-20',
         category_id=str(utilities),
-        participants=[str(sam.id)],
     )
-    # No category or sharing columns: only the amount moves.
+    # No category column: only the amount moves.
     name = upload_bills(a, 'p.csv', b'name,amount,frequency\nPower,240,monthly\n')
     preview = a.get(f'/bills/import/{name}').text
     assert 'Changed (1)' in preview
@@ -1078,9 +1085,7 @@ def test_bill_import_leaves_what_the_file_does_not_mention(env: Env) -> None:
     with env.db() as db:
         bill = db.execute(select(Bill)).scalar_one()
         assert bill.amount_cents == 240_00 and bill.next_due == date(2026, 10, 20)
-        assert {s.user_id for s in bill.shares} == {alex.id, sam.id}
-        mine = next(s for s in bill.shares if s.user_id == alex.id)
-        assert mine.category_id == utilities
+        assert bill.category_id == utilities
     # The same file again changes nothing.
     name = upload_bills(a, 'p.csv', b'name,amount,frequency\nPower,240,monthly\n')
     assert 'Nothing would change' in a.get(f'/bills/import/{name}').text
@@ -1179,7 +1184,8 @@ def test_tax_page_estimates_and_set_aside(env: Env) -> None:
         data={'date': '2026-07-15', 'gross': '20000', 'tax_withheld': '4000', 'net': '16000'},
     )
     page = a.get('/tax').text
-    assert 'Tax 2026-27' in page and 'Estimate' in page and 'not tax advice' in page
+    # Each figure is labelled an estimate; the paragraph saying so is gone.
+    assert 'Tax 2026-27' in page and 'Estimate' in page and 'not tax advice' not in page
     assert 'Income (gross)' in page and 'Sole trader' not in page and 'Business' not in page
     assert 'Low income tax offset' not in page
     # Taxable 20,000: (20,000 - 18,200) x 15 % = 270, no Medicare, no LITO:
@@ -1269,6 +1275,9 @@ def test_every_page_renders(env: Env) -> None:
         assert resp.status_code == 200, f'{page}: {resp.status_code}'
         assert 'style="' not in resp.text, f'{page} has an inline style the CSP would block'
         assert resp.headers['cache-control'] == 'no-store'
+        # The tab shows the title as text: a block left open puts markup there.
+        title = re.search(r'<title>(.*?)</title>', resp.text, re.S)
+        assert title and '<' not in title[1] and '\n' not in title[1], (page, title)
 
 
 def test_dashboard_contents(env: Env) -> None:
@@ -1296,11 +1305,27 @@ def test_loan_list_cards_and_a_loan_not_yet_settled(env: Env) -> None:
         },
     )
     loan = int(resp.headers['location'].rsplit('/', 1)[1])
+    # The only loan: the list opens straight into it, which can add another.
+    resp = a.get('/loans')
+    assert resp.status_code == 303 and resp.headers['location'] == f'/loans/{loan}'
+    shown = a.get(f'/loans/{loan}').text
+    assert 'Savings count from then' in shown and 'href="/loans/new"' in shown
+    assert 'Loan starts 4 Jan 2027' in a.get('/').text
+    a.post(
+        '/loans',
+        data={
+            'name': 'Investment',
+            'principal': '300000',
+            'start_date': '2020-01-04',
+            'term_years': '30',
+            'initial_rate': '6.10',
+            'balance': '280000',
+            'balance_date': '2026-10-01',
+        },
+    )
     page = a.get('/loans').text
     assert '<a class="card"' not in page  # an inline link wrapping a card broke the layout
-    assert '$3,772.88' in page and 'Loan starts 4 Jan 2027' in page
-    assert 'Savings count from then' in a.get(f'/loans/{loan}').text
-    assert 'Loan starts 4 Jan 2027' in a.get('/').text
+    assert '$3,772.88' in page and 'Loan starts 4 Jan 2027' in page and 'Investment' in page
 
 
 def test_a_bimonthly_bill_in_bills_and_budget(env: Env) -> None:

@@ -15,7 +15,7 @@
   {%- if e.bill_id %}</button>{% else %}</div>{% endif -%}
 {%- endmacro %}
 <div id="cal" hx-boost="false" class="vuecal__flex vuecal fiscus-cal vuecal--{{ g.view if g.view in ('month', 'week', 'day') else 'day' }}-view vuecal--no-time vuecal--events-on-month-view vuecal--short-events vuecal--click-to-navigate"
-     data-view="{{ g.view }}" data-focus="{{ g.focus.isoformat() }}" data-view-given="{{ '1' if view_given else '0' }}" column>
+     data-view="{{ g.view }}" data-focus="{{ g.focus.isoformat() }}" column>
   <div class="vuecal__header">
     <ul class="vuecal__flex vuecal__menu" role="tablist" aria-label="Calendar views">
       {% for v in views %}

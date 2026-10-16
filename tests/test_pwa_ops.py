@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import socket
 import sqlite3
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -132,9 +133,39 @@ def test_ntfy_private_lan_allowed() -> None:
     ntfy.validate_target('https://10.0.0.5', 'x', resolve=False)
     with pytest.raises(ntfy.NtfyError):
         ntfy.validate_target('https://10.0.0.5', 'bad topic!', resolve=False)
+    with pytest.raises(ntfy.NtfyError, match='port'):
+        ntfy.validate_target('http://10.0.0.5:abc', 'x', resolve=False)
 
 
-def test_ntfy_off_by_default_and_settings_validate(env: Env) -> None:
+def test_ntfy_public_servers_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
+    ntfy.validate_target('https://159.203.148.75', 'fiscus-alex', resolve=False)
+    monkeypatch.setattr(
+        socket, 'getaddrinfo', lambda *a, **k: [(2, 1, 6, '', ('159.203.148.75', 443))]
+    )
+    assert [str(ip) for ip in ntfy.validate_target('https://ntfy.sh', 'x')] == ['159.203.148.75']
+
+
+@pytest.mark.parametrize(
+    ('url', 'topic', 'expected'),
+    [
+        ('ntfy.sh', 'fiscus-alex', ('https://ntfy.sh', 'fiscus-alex')),
+        ('https://ntfy.sh/', 'fiscus-alex', ('https://ntfy.sh', 'fiscus-alex')),
+        # As ntfy shows a topic: it moves into the topic.
+        ('https://ntfy.sh/fiscus-alex', '', ('https://ntfy.sh', 'fiscus-alex')),
+        ('ntfy.sh/fiscus-alex', 'fiscus-alex', ('https://ntfy.sh', 'fiscus-alex')),
+        ('http://192.168.1.20:8080', 'f', ('http://192.168.1.20:8080', 'f')),
+        # A different topic typed: left for validation to refuse.
+        ('https://ntfy.sh/one', 'two', ('https://ntfy.sh/one', 'two')),
+        ('', '', ('', '')),
+    ],
+)
+def test_ntfy_address_made_whole(url: str, topic: str, expected: tuple[str, str]) -> None:
+    assert ntfy.normalise(url, topic) == expected
+
+
+def test_ntfy_off_by_default_and_settings_validate(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
     alex = env.user('alex')
     with env.db() as db:
         assert db.get(UserSettings, alex.id).ntfy_enabled is False  # type: ignore[union-attr]
@@ -155,6 +186,18 @@ def test_ntfy_off_by_default_and_settings_validate(env: Env) -> None:
         },
     )
     assert ok.status_code == 303
+    # ntfy.sh, typed the way its pages show a topic.
+    monkeypatch.setattr(
+        socket, 'getaddrinfo', lambda *a, **k: [(2, 1, 6, '', ('159.203.148.75', 443))]
+    )
+    public = client.post(
+        '/settings/ntfy', data={'enabled': 'true', 'url': 'ntfy.sh/fiscus-alex', 'topic': ''}
+    )
+    assert public.status_code == 303
+    with env.db() as db:
+        prefs = db.get(UserSettings, alex.id)
+        assert prefs is not None
+        assert (prefs.ntfy_url, prefs.ntfy_topic) == ('https://ntfy.sh', 'fiscus-alex')
 
 
 def test_reminders_sent_once_each(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -282,14 +325,25 @@ def test_backup_job_runs_at_the_backup_hour(env: Env) -> None:
     assert len(backup.list_backups(env.ctx.settings)) == 1
 
 
-def test_admin_downloads_backup(env: Env) -> None:
+def test_admin_downloads_backup_from_settings(env: Env) -> None:
     admin = env.login(env.user('alex', admin=True))
-    resp = admin.post('/admin/backups/download')
+    assert 'Download a backup now' in admin.get('/settings').text
+    resp = admin.post('/settings/backups/download')
     assert resp.status_code == 200
     assert resp.content.startswith(b'SQLite format 3')
     assert 'attachment' in resp.headers['content-disposition']
+    written = admin.post('/settings/backups/run')
+    assert written.status_code == 303 and written.headers['location'] == '/settings#backups'
+    assert len(backup.list_backups(env.ctx.settings)) == 1
+    assert '.db' in admin.get('/settings').text.split('id="backups"')[1]
+    # Anyone else: no card, and the routes are not there.
     sam = env.login(env.user('sam'))
-    assert sam.post('/admin/backups/download').status_code == 404
+    assert 'id="backups"' not in sam.get('/settings').text
+    assert sam.post('/settings/backups/download').status_code == 404
+    assert sam.post('/settings/backups/run').status_code == 404
+    # The admin page is gone.
+    assert admin.get('/admin/users').status_code == 404
+    assert admin.get('/admin/backups').status_code == 404
 
 
 def test_restore_round_trip(env: Env, tmp_path: Any) -> None:

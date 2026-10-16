@@ -2,9 +2,7 @@
 <h2>{{ o.bill.name }}</h2>
 <p class="muted">{{ o.due | d('long') }} · {{ status_pill(o.status) }}</p>
 <ul class="list">
-  <li><span>Your share</span><span class="num">{{ o.share_cents | money }}</span></li>
-  {% if o.shared %}<li><span>Whole bill</span><span class="num">{{ o.bill.amount_cents | money }}</span></li>{% endif %}
-  {% if o.shared %}<li><span>Leaves your account</span><span class="num">{{ expected | money }}</span></li>{% endif %}
+  <li><span>Amount</span><span class="num">{{ o.bill.amount_cents | money }}</span></li>
 </ul>
 {% set back = request.headers.get('hx-current-url', '/calendar') %}
 {% if o.payment %}
@@ -21,7 +19,7 @@
       <input type="hidden" name="back" value="/calendar">
       <button class="btn btn-primary" type="submit">Mark paid</button>
     </form>
-    {% if is_owner %}<a class="btn" href="/bills/{{ o.bill.id }}/edit">Edit bill</a>{% endif %}
+    <a class="btn" href="/bills/{{ o.bill.id }}/edit">Edit bill</a>
     <a class="btn" href="/bills/{{ o.bill.id }}">Open bill</a>
   </div>
 {% endif %}

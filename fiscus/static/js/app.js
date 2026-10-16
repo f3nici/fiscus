@@ -234,26 +234,8 @@
     });
   }
 
-  // ------------------------------------------------- bill split switcher
-  function splitFields(root) {
-    root.querySelectorAll('select[data-split-mode]').forEach((sel) => {
-      const form = sel.closest('form');
-      const apply = () => {
-        const mode = sel.value;
-        form.querySelectorAll('[data-split-input]').forEach((el) => {
-          el.classList.toggle('hidden', mode === 'equal');
-          const input = el.querySelector('input');
-          if (input) input.placeholder = mode === 'percent' ? '%' : '$';
-        });
-      };
-      sel.addEventListener('change', apply);
-      apply();
-    });
-  }
-
   function init(root) {
     showKind(root);
-    splitFields(root);
     const flash = root.querySelector && root.querySelector('[data-flash]');
     if (flash && flash.textContent.trim()) toast(flash.textContent.trim());
   }

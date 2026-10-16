@@ -88,22 +88,6 @@ def passkey_count(db: Session, user: User) -> int:
     )
 
 
-def has_other_login(user: User) -> bool:
-    """A password counts only when the admin enabled it and the user set one."""
-    return bool(user.password_enabled and user.password_hash)
-
-
-def active_admin_count(db: Session) -> int:
-    return int(
-        db.scalar(
-            select(func.count())
-            .select_from(User)
-            .where(User.is_admin.is_(True), User.is_active.is_(True))
-        )
-        or 0
-    )
-
-
 def settings_for(db: Session, user: User) -> UserSettings:
     s = db.get(UserSettings, user.id)
     if s is None:
