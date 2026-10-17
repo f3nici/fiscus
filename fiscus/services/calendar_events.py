@@ -37,19 +37,6 @@ class Event:
         return f'ev-{self.kind} ev-{self.status}'
 
 
-@dataclass(frozen=True)
-class Tag:
-    """A day's events of one kind and state, as a count: what a month too
-    narrow for the events shows, in their colours."""
-
-    css: str
-    titles: tuple[str, ...]
-
-    @property
-    def count(self) -> int:
-        return len(self.titles)
-
-
 @dataclass
 class Day:
     date: date
@@ -59,13 +46,15 @@ class Day:
     balance: int | None = None
 
     @property
-    def tags(self) -> list[Tag]:
-        """One count for each kind and state among the events, in their order
-        (pay, bills, loans), so a pay is green and an overdue bill red."""
-        groups: dict[str, list[str]] = {}
-        for e in self.events:
-            groups.setdefault(e.css, []).append(e.title)
-        return [Tag(css, tuple(titles)) for css, titles in groups.items()]
+    def parts(self) -> list[str]:
+        """Each kind and state among the events once, in their order (pay,
+        bills, loans): the colours a narrow month splits the day's count into,
+        half green and half blue for a pay and a bill."""
+        return list(dict.fromkeys(e.css for e in self.events))
+
+    @property
+    def due_soon(self) -> bool:
+        return any(e.status == 'due_soon' for e in self.events)
 
 
 @dataclass

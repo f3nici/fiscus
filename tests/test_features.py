@@ -68,22 +68,31 @@ def test_calendar_month_view_matches_carelane_structure(env: Env) -> None:
     assert 'cell-balance' in page
 
 
-def test_a_narrow_month_counts_each_kind_in_its_colour(env: Env) -> None:
-    """A phone's month shows counts, not events: one for each kind and state,
-    with the events' own classes for their colours, not one blue total."""
+def test_a_narrow_month_splits_a_days_count_into_its_colours(env: Env) -> None:
+    """A phone's month shows a count, not the events: one pill a day, split
+    evenly into its events' colours (half green and half blue for a pay and
+    bills), ringed when a bill is due soon."""
     a, *_ = setup_household(env)
     create_bill(a, name='Water', amount='80', next_due='2026-10-02')
     create_bill(a, name='Gas', amount='60', next_due='2026-10-02')
     page = a.get('/calendar?view=month&date=2026-10-01').text
-    cell = page[page.index('data-new-date="2026-10-02"') : page.index('data-new-date="2026-10-03"')]
-    tags = re.findall(
-        r'<span class="vuecal__cell-events-count ([^"]+)" title="([^"]*)">(\d+)</span>', cell
-    )
-    assert tags == [
-        ('ev-pay ev-scheduled', 'Acme wages', '1'),
-        ('ev-bill ev-due_soon', 'Gas, Water', '2'),
+
+    def cell(day: str, after: str) -> str:
+        return page[page.index(f'data-new-date="{day}"') : page.index(f'data-new-date="{after}"')]
+
+    both = cell('2026-10-02', '2026-10-03')
+    assert re.findall(r'<span class="cell-tag ([^"]+)"></span>', both) == [
+        'ev-pay ev-scheduled',
+        'ev-bill ev-due_soon',
     ]
-    assert re.search(r'class="cell-tags" href="/calendar\?view=day&(amp;)?date=2026-10-02"', cell)
+    assert '<span class="cell-tag-count">3</span>' in both
+    assert 'vuecal__cell-events-count due-soon" title="Acme wages, Gas, Water"' in both
+    assert re.search(r'class="cell-tags" href="/calendar\?view=day&(amp;)?date=2026-10-02"', both)
+    pay_only = cell('2026-10-16', '2026-10-17')
+    assert re.findall(r'<span class="cell-tag ([^"]+)"></span>', pay_only) == [
+        'ev-pay ev-scheduled'
+    ]
+    assert 'due-soon' not in pay_only
 
 
 def test_calendar_navigates_into_future_months(env: Env) -> None:
