@@ -126,6 +126,34 @@ def test_stopping_or_moving_a_paid_bill_keeps_its_payment(env: Env) -> None:
     assert paid_in_utilities(env, alex) == 30000
 
 
+def test_a_bill_paid_ahead_counts_what_was_paid_in_the_outlook(env: Env) -> None:
+    """A saved-up line's outlook counts a bill paid before its budget month at
+    what was paid, as the budget will take it off, not at the bill's new amount."""
+    alex = env.user('alex')
+    a = env.login(alex)
+    utilities = category_id(env, alex, 'Utilities')
+    fields = {
+        'name': 'Power',
+        'frequency': 'quarterly',
+        'next_due': '2026-11-01',
+        'account_id': str(make_account(a)),
+        'category_id': str(utilities),
+        'active': 'on',
+    }
+    bill = create_bill(a, amount='300', **fields)
+    a.post('/budget', data={'category_id': str(utilities), 'amount': '900', 'cycle_months': '3'})
+    assert a.post(f'/bills/{bill}/occurrence/2026-11-01/paid').status_code == 303
+    a.post(f'/bills/{bill}', data={**fields, 'amount': '350'})
+    with env.db() as db:
+        fresh = db.get(User, alex.id)
+        assert fresh is not None
+        s, e = budgeting.period(db, fresh, env.clock.today())
+        rows = budgeting.rows(db, fresh, s, e)
+        outlook = budgeting.due_checks(db, fresh, rows, s, env.clock.today())[utilities]
+    # February's bill needs November's $300 as paid, then its own $350.
+    assert outlook.next.need_cents == 65000
+
+
 # ------------------------------------------------- deleting a category (D58)
 
 

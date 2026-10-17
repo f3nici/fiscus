@@ -413,8 +413,9 @@ def due_checks(
         found = saving.outlook(
             period_start=start,
             start_day=first,
-            bills=[saving.Due(o.due, o.bill.amount_cents) for o in unpaid]
-            + [saving.Due(o.due, o.bill.amount_cents, paid=True) for o in ahead],
+            # Paid ahead: what was paid comes off the line (D57), not the bill's amount now.
+            bills=[saving.Due(o.due, o.amount_cents) for o in unpaid]
+            + [saving.Due(o.due, o.amount_cents, paid=True) for o in ahead],
             saved_cents=r.saved_cents,
             monthly_cents=r.budget.monthly_cents,
             put_aside_cents=put_aside(db, user, cid, since, today),

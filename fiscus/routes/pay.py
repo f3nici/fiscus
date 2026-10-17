@@ -472,6 +472,8 @@ async def read_payslips(
         return redirect(
             '/pay', flash=f'Upload up to {MAX_FILES} payslips at a time', request=request
         )
+    # Writes nothing: let go of the write lock (D59) while the PDFs are read.
+    db.commit()
     read = await _read_files(file)
     today = ctx(request).clock.today()
     good = [r for _n, r in read if not isinstance(r, str)]

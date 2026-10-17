@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from starlette.background import BackgroundTask
 
+from fiscus.clock import utcnow_naive
 from fiscus.models import Account, AuthSession, User, WebAuthnCredential
 from fiscus.money import MoneyError, parse_cents
 from fiscus.routes.auth import _json, limit
@@ -75,16 +76,17 @@ def _page(
         .all()
     )
     accounts = db.execute(owned(Account, user).order_by(Account.name)).scalars().all()
+    c = ctx(request)
     here = getattr(request.state, 'auth_session', None)
+    # Expired ones wait for the hourly housekeeping, signed in nowhere.
     sessions = [
         SignedIn(s, device(s.user_agent), here is not None and s.id == here.id)
         for s in db.execute(
             select(AuthSession)
-            .where(AuthSession.user_id == user.id)
+            .where(AuthSession.user_id == user.id, AuthSession.expires_at > utcnow_naive(c.clock))
             .order_by(AuthSession.last_seen_at.desc())
         ).scalars()
     ]
-    c = ctx(request)
     return render(
         request,
         'settings.html',

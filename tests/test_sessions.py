@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-import pytest
-from sqlalchemy import select
+from datetime import datetime
 
-from fiscus.models import WebAuthnCredential
+import pytest
+from sqlalchemy import select, update
+
+from fiscus.models import AuthSession, WebAuthnCredential
 from fiscus.routes.settings_routes import device
+from fiscus.security.tokens import token_hash
 from tests.authenticator import SoftAuthenticator
 from tests.conftest import CsrfClient, Env
 from tests.test_auth import bootstrap_admin, issue, passkey_login, register_via_link
@@ -62,6 +65,22 @@ def test_sign_out_everywhere_else(env: Env) -> None:
     assert not signed_in(there)
     assert signed_in(here)
     assert 'Sign out everywhere else' not in here.get('/settings').text
+
+
+def test_a_session_expired_is_signed_in_nowhere(env: Env) -> None:
+    alex = env.user('alex')
+    here, there = env.login(alex), env.login(alex)
+    mine = token_hash(here.cookies.get(env.ctx.settings.session_cookie) or '')
+    with env.db() as db:
+        db.execute(
+            update(AuthSession)
+            .where(AuthSession.token_hash != mine)
+            .values(expires_at=datetime(2026, 9, 1))
+        )
+        db.commit()
+    page = here.get('/settings').text
+    assert 'This device' in page and 'Sign out everywhere else' not in page
+    assert not signed_in(there)
 
 
 def test_the_cli_signs_a_person_out(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:

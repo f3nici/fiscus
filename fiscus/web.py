@@ -118,7 +118,21 @@ def ctx(request: Request) -> AppContext:
     return c
 
 
-def get_db(request: Request) -> Iterator[Session]:
+async def read_body(request: Request) -> None:
+    """The whole body of an unsafe request, read before `get_db` takes the
+    write lock: one still arriving (a slow phone, or a stranger trickling it to
+    the sign-in routes) would otherwise hold the lock and every write waits.
+    Cached on the request, so the route reads it again for free."""
+    if request.method not in UNSAFE:
+        return
+    ctype = request.headers.get('content-type', '')
+    if ctype.startswith(('application/x-www-form-urlencoded', 'multipart/form-data')):
+        await request.form()
+    else:
+        await request.body()
+
+
+def get_db(request: Request, _body: None = Depends(read_body)) -> Iterator[Session]:
     db = ctx(request).sessions()
     try:
         if request.method in UNSAFE:

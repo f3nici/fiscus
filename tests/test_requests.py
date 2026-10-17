@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
+import sqlite3
 import threading
 import time
+from collections.abc import MutableMapping
 from typing import Any
 
 import pytest
@@ -11,6 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from fiscus.clock import utcnow_naive
+from fiscus.domain.uploads import ImportError_
 from fiscus.models import Category, User, WebAuthnCredential
 from fiscus.services.users import passkey_count
 from tests.conftest import ORIGIN, CsrfClient, Env
@@ -131,6 +135,85 @@ def test_two_revokes_at_once_leave_a_passkey(env: Env, monkeypatch: pytest.Monke
             .where(WebAuthnCredential.user_id == alex.id)
         )
     assert left == 1
+
+
+def test_a_slow_body_does_not_hold_the_write_lock(env: Env) -> None:
+    """The body is read before the lock is taken: a stranger trickling one to
+    the sign-in routes would otherwise lock every write out."""
+    token = 'c' * 43
+    scope = {
+        'type': 'http',
+        'asgi': {'version': '3.0'},
+        'http_version': '1.1',
+        'method': 'POST',
+        'scheme': 'https',
+        'path': '/auth/passkey/options',
+        'raw_path': b'/auth/passkey/options',
+        'query_string': b'',
+        'root_path': '',
+        'headers': [
+            (b'host', b'fiscus.test'),
+            (b'content-type', b'application/json'),
+            (b'content-length', b'2'),
+            (b'x-csrf-token', token.encode()),
+            (b'cookie', f'__Host-fiscus-csrf={token}'.encode()),
+        ],
+        'client': ('127.0.0.1', 50000),
+        'server': ('fiscus.test', 443),
+    }
+    reading, go = threading.Event(), threading.Event()
+    sent: list[dict[str, Any]] = []
+
+    async def receive() -> dict[str, Any]:
+        reading.set()
+        while not go.is_set():
+            await asyncio.sleep(0.01)
+        return {'type': 'http.request', 'body': b'{}', 'more_body': False}
+
+    async def send(message: MutableMapping[str, Any]) -> None:
+        sent.append(dict(message))
+
+    t = threading.Thread(target=lambda: asyncio.run(env.app(scope, receive, send)))
+    t.start()
+    try:
+        assert reading.wait(5)
+        time.sleep(0.2)  # as far as the request gets before its body arrives
+        other = sqlite3.connect(env.ctx.settings.db_path, timeout=0.2)
+        try:
+            other.execute('BEGIN IMMEDIATE')  # 'database is locked' while one holds it
+            other.rollback()
+        finally:
+            other.close()
+    finally:
+        go.set()
+        t.join(10)
+    assert sent[0]['status'] == 200
+
+
+def test_reading_payslips_does_not_hold_the_write_lock(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Reading PDFs saves nothing, and forty can take a while: other writes
+    (the hourly jobs, another device) go on meanwhile."""
+    a = env.login(env.user('alex'))
+    held: list[bool] = []
+
+    def read(_data: bytes) -> Any:
+        other = sqlite3.connect(env.ctx.settings.db_path, timeout=0.2)
+        try:
+            other.execute('BEGIN IMMEDIATE')
+            other.rollback()
+            held.append(False)
+        except sqlite3.OperationalError:
+            held.append(True)
+        finally:
+            other.close()
+        raise ImportError_('That file is not a payslip')
+
+    monkeypatch.setattr('fiscus.routes.pay.payslip_pdf.read', read)
+    resp = a.post('/payslips/read', files={'file': ('a.pdf', b'%PDF-1.4', 'application/pdf')})
+    assert resp.status_code == 303
+    assert held == [False]
 
 
 # ---------------------------------------------------------- cookies, redirects
