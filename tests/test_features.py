@@ -68,6 +68,24 @@ def test_calendar_month_view_matches_carelane_structure(env: Env) -> None:
     assert 'cell-balance' in page
 
 
+def test_a_narrow_month_counts_each_kind_in_its_colour(env: Env) -> None:
+    """A phone's month shows counts, not events: one for each kind and state,
+    with the events' own classes for their colours, not one blue total."""
+    a, *_ = setup_household(env)
+    create_bill(a, name='Water', amount='80', next_due='2026-10-02')
+    create_bill(a, name='Gas', amount='60', next_due='2026-10-02')
+    page = a.get('/calendar?view=month&date=2026-10-01').text
+    cell = page[page.index('data-new-date="2026-10-02"') : page.index('data-new-date="2026-10-03"')]
+    tags = re.findall(
+        r'<span class="vuecal__cell-events-count ([^"]+)" title="([^"]*)">(\d+)</span>', cell
+    )
+    assert tags == [
+        ('ev-pay ev-scheduled', 'Acme wages', '1'),
+        ('ev-bill ev-due_soon', 'Gas, Water', '2'),
+    ]
+    assert re.search(r'class="cell-tags" href="/calendar\?view=day&(amp;)?date=2026-10-02"', cell)
+
+
 def test_calendar_navigates_into_future_months(env: Env) -> None:
     a, *_ = setup_household(env)
     page = a.get('/calendar?view=month&date=2027-03-01').text

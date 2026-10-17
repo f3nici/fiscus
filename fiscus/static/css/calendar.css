@@ -54,24 +54,23 @@
   .fiscus-cal .cell-balance .narrow { display: inline; }
 }
 .fiscus-cal a.vuecal__cell-content { color: inherit; text-decoration: none; }
-.fiscus-cal .vuecal__cell-events-count { position: static; transform: none; display: inline-block; margin: 2px 6px; background: var(--primary); }
+.fiscus-cal .cell-tags { display: none; flex-wrap: wrap; gap: 2px; padding: 2px 4px; text-decoration: none; }
+/* A count per kind and state, coloured by the ev-* rules above as its events are. */
+.fiscus-cal .cell-tags .vuecal__cell-events-count { position: static; transform: none; display: inline-block; min-width: 18px; height: 18px; line-height: 18px; padding: 0 5px; border-radius: 9px; font-size: 11px; color: #fff; text-align: center; box-shadow: none; }
+/* No room on a pill for the edge an event has: due soon is an amber ring. */
+.fiscus-cal .cell-tags .ev-due_soon { box-shadow: inset 0 0 0 2px var(--warning); }
 
-/* Narrow month: vue-cal's xsmall treatment, events collapse to a count. */
+/* Narrow month: vue-cal's xsmall treatment, events collapse to their counts. */
 @media (max-width: 560px) {
   .fiscus-cal.vuecal--month-view .vuecal__cell { min-height: 64px; }
   .fiscus-cal.vuecal--month-view .vuecal__event { display: none; }
-  .fiscus-cal.vuecal--month-view .vuecal__cell-events-count { display: inline-block; }
+  .fiscus-cal.vuecal--month-view .cell-tags { display: flex; }
   .fiscus-cal .cell-balance { font-size: 11px; left: 2px; right: 2px; }
-  .fiscus-cal.vuecal--month-view .vuecal__cell-events-count { min-width: 22px; height: 18px; line-height: 18px; border-radius: 9px; font-size: 12px; }
-}
-@media (min-width: 561px) {
-  .fiscus-cal.vuecal--month-view .vuecal__cell-events-count { display: none; }
 }
 
 /* Week view (no time grid: Fiscus events are all-day). */
 .fiscus-cal.vuecal--week-view .vuecal__cell { min-height: 280px; display: block; }
 .fiscus-cal.vuecal--week-view .vuecal__event { min-height: 28px; padding: 4px; margin-bottom: 3px; }
-.fiscus-cal.vuecal--week-view .vuecal__cell-events-count { display: none; }
 .fiscus-cal.vuecal--week-view .vuecal__cell-content { padding-bottom: 18px; }
 
 /* Day and agenda: a list. */
