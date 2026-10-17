@@ -18,7 +18,7 @@ from fiscus.money import fmt
 from fiscus.services import budgeting, ledger, taxes
 from fiscus.services import goals as service
 from fiscus.services.access import get_owned, maybe_owned
-from fiscus.web import ctx, current_user, get_db, redirect, render
+from fiscus.web import DB, ctx, current_user, redirect, render
 
 router = APIRouter()
 
@@ -36,9 +36,7 @@ def _back(back: str, goal: Goal | None = None) -> str:
 
 
 @router.get('/goals')
-def list_goals(
-    request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
-) -> Response:
+def list_goals(request: Request, user: User = Depends(current_user), db: Session = DB) -> Response:
     today = ctx(request).clock.today()
     accts = ledger.accounts(db, user)
     return render(
@@ -61,7 +59,7 @@ def show_goal(
     goal_id: int,
     request: Request,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     goal = get_owned(db, Goal, goal_id, user)
     c = ctx(request)
@@ -129,7 +127,7 @@ def create_goal(
     is_tax: bool = Form(False),
     category_id: Annotated[list[int], Form()] = [],  # noqa: B006
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     c = ctx(request)
     try:
@@ -173,7 +171,7 @@ def save_goal(
     is_tax: bool = Form(False),
     category_id: Annotated[list[int], Form()] = [],  # noqa: B006
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     goal = get_owned(db, Goal, goal_id, user)
     c = ctx(request)
@@ -207,7 +205,7 @@ def add_move(
     as_spent: bool = Form(False),
     category_id: int = Form(0),
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     goal = get_owned(db, Goal, goal_id, user)
     # The line it is spent from: the one named, else the goal's only line.
@@ -249,7 +247,7 @@ def delete_move(
     move_id: int,
     request: Request,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     goal = get_owned(db, Goal, goal_id, user)
     row = get_owned(db, GoalMove, move_id, user)
@@ -264,7 +262,7 @@ def toggle_done(
     goal_id: int,
     request: Request,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     goal = get_owned(db, Goal, goal_id, user)
     goal.archived = not goal.archived
@@ -282,7 +280,7 @@ def delete_goal(
     goal_id: int,
     request: Request,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     goal = get_owned(db, Goal, goal_id, user)
     service.delete_goal(db, user, goal)

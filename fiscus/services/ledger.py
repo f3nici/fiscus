@@ -324,6 +324,28 @@ class _Running:
         return self.totals[bisect_right(self.dates, day)]
 
 
+# The dedup key of a spend's transaction kept when its category was deleted
+# (D58). Like the spend's own, it stays out of the spending average.
+KEPT = 'kept-spend:'
+
+
+def keep_spent(db: Session, user: User, cat: Category) -> int:
+    """Unlink the transactions of `cat`'s spends, so deleting the category
+    (and its spends with it) leaves the money they took off accounts off
+    (D58). Each gets a key of its own: a deleted spend's id can come back."""
+    spends = select(BudgetSpend.id).where(BudgetSpend.category_id == cat.id)
+    kept = list(
+        db.execute(
+            owned(Transaction, user).where(Transaction.budget_spend_id.in_(spends))
+        ).scalars()
+    )
+    for txn in kept:
+        txn.budget_spend_id = None
+        txn.dedup_hash = f'{KEPT}{txn.id}'
+    db.flush()
+    return len(kept)
+
+
 def categories(db: Session, user: User) -> list[Category]:
     return list(db.execute(owned(Category, user).order_by(Category.name)).scalars())
 
@@ -331,9 +353,16 @@ def categories(db: Session, user: User) -> list[Category]:
 def category_named(db: Session, user: User, name: str) -> Category:
     """This person's category by name, ignoring case; made if missing."""
     name = name.strip()
-    cat = db.execute(
-        owned(Category, user).where(func.lower(Category.name) == name.lower())
-    ).scalar_one_or_none()
+    # Older data can hold names differing only in case: the exact one, else the first.
+    cat = (
+        db.execute(
+            owned(Category, user)
+            .where(func.lower(Category.name) == name.lower())
+            .order_by(Category.name != name, Category.id)
+        )
+        .scalars()
+        .first()
+    )
     if cat is None:
         cat = Category(user_id=user.id, name=name[:80])
         db.add(cat)
@@ -353,19 +382,21 @@ def move_aside(db: Session, user: User, name: str, besides: Category) -> Categor
     """Free `name` for `besides` when another category has it but is no longer
     in the budget: that one is renamed "<name> (old)", keeping its history.
     Returns the category in the way when it is still a budget line."""
-    other = db.execute(
-        owned(Category, user).where(
-            func.lower(Category.name) == name.strip().lower(), Category.id != besides.id
-        )
-    ).scalar_one_or_none()
-    if other is None:
-        return None
-    if db.execute(owned(Budget, user).where(Budget.category_id == other.id)).first():
-        return other
-    base = other.name[:70]
-    aside, n = f'{base} (old)', 2
-    while category_exists(db, user, aside):
-        aside, n = f'{base} (old {n})', n + 1
-    other.name = aside
-    db.flush()
+    others = list(
+        db.execute(
+            owned(Category, user).where(
+                func.lower(Category.name) == name.strip().lower(), Category.id != besides.id
+            )
+        ).scalars()
+    )
+    for other in others:
+        if db.execute(owned(Budget, user).where(Budget.category_id == other.id)).first():
+            return other
+    for other in others:
+        base = other.name[:70]
+        aside, n = f'{base} (old)', 2
+        while category_exists(db, user, aside):
+            aside, n = f'{base} (old {n})', n + 1
+        other.name = aside
+        db.flush()
     return None

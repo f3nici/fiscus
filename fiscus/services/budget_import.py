@@ -135,7 +135,6 @@ def apply(
             use_in_forecast=use_in_forecast,
             add=not replace,
             cycle_months=cycle,
-            today=today,
         )
         monthly_total += sum(c.monthly_cents for c in picked)
     db.flush()

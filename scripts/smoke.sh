@@ -17,7 +17,6 @@ cleanup() {
 trap cleanup EXIT
 
 docker run -d --name "$NAME" -p "127.0.0.1:${PORT}:8000" \
-  -e FISCUS_SECRET_KEY="$(openssl rand -hex 32)" \
   -e FISCUS_BASE_URL="http://localhost:${PORT}" \
   "$IMAGE" > /dev/null
 

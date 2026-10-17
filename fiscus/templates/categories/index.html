@@ -31,7 +31,7 @@
                       <label class="check"><input type="checkbox" name="is_transfer" value="true" {{ 'checked' if c.is_transfer }}> Transfer between my accounts</label>
                       <button class="btn btn-sm btn-primary" type="submit">Save</button>
                     </form>
-                    <form method="post" action="/categories/{{ c.id }}/delete" class="mt-sm" data-confirm="Delete {{ c.name }}? Its budget line and what was taken off it go too.">
+                    <form method="post" action="/categories/{{ c.id }}/delete" class="mt-sm" data-confirm="Delete {{ c.name }}? Its budget line and what was taken off it go too. What that took off your accounts stays off.">
                       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                       <button class="btn btn-sm btn-danger" type="submit">Delete</button>
                     </form>

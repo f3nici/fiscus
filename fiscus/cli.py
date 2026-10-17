@@ -1,6 +1,7 @@
 """Command line for the operator. Run inside the container.
 
     python -m fiscus.cli recovery-link <username>   break-glass: a recovery link
+    python -m fiscus.cli sign-out <username>        end every session (a lost device)
     python -m fiscus.cli bootstrap                  print a fresh bootstrap link
     python -m fiscus.cli backup                     write a backup now
     python -m fiscus.cli restore <file>             replace the database (app stopped)
@@ -31,6 +32,8 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest='cmd', required=True)
     rec = sub.add_parser('recovery-link', help='issue a one-time recovery link for a user')
     rec.add_argument('username')
+    out = sub.add_parser('sign-out', help='end every session of a user, for a lost device')
+    out.add_argument('username')
     sub.add_parser('bootstrap', help='print a bootstrap link (only while there are no users)')
     sub.add_parser('backup', help='write a backup to /data/backups now')
     res = sub.add_parser('restore', help='replace the database with a backup (stop the app first)')
@@ -98,13 +101,22 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.cmd == 'remove-user':
             return _remove_user(db, clock, args.username, confirmed=args.yes)
-        if args.cmd == 'recovery-link':
+        if args.cmd in ('recovery-link', 'sign-out'):
             user = db.execute(
                 select(User).where(User.username == args.username.strip().lower())
             ).scalar_one_or_none()
             if user is None:
                 print(f'No user called {args.username}', file=sys.stderr)
                 return 1
+        if args.cmd == 'sign-out':
+            assert user is not None
+            ended = auth.end_sessions(db, user)
+            audit.record(db, clock, 'cli.sign_out', subject_id=user.id, count=ended)
+            db.commit()
+            print(f'Signed {user.username} out of {ended} session{"" if ended == 1 else "s"}.')
+            return 0
+        if args.cmd == 'recovery-link':
+            assert user is not None
             if not user.is_active:
                 user.is_active = True
                 audit.record(db, clock, 'user.enabled', subject_id=user.id, via='cli')

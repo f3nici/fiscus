@@ -12,10 +12,10 @@ from fiscus.models import User
 from fiscus.services import audit
 from fiscus.services import auth as svc
 from fiscus.web import (
+    DB,
     RateLimited,
     client_ip,
     ctx,
-    get_db,
     local_path,
     optional_user,
     redirect,
@@ -62,7 +62,7 @@ def login_page(
 
 
 @router.post('/auth/passkey/options')
-async def passkey_options(request: Request, db: Session = Depends(get_db)) -> JSONResponse:
+async def passkey_options(request: Request, db: Session = DB) -> JSONResponse:
     body: dict[str, Any] = await _json(request)
     limit(request, 'login_ip', client_ip(request))
     username = str(body.get('username') or '').strip().lower() or None
@@ -73,7 +73,7 @@ async def passkey_options(request: Request, db: Session = Depends(get_db)) -> JS
 
 
 @router.post('/auth/passkey/verify')
-async def passkey_verify(request: Request, db: Session = Depends(get_db)) -> Response:
+async def passkey_verify(request: Request, db: Session = DB) -> Response:
     body = await _json(request)
     ip = client_ip(request)
     limit(request, 'login_ip', ip)
@@ -95,7 +95,7 @@ async def passkey_verify(request: Request, db: Session = Depends(get_db)) -> Res
 
 
 @router.post('/auth/logout')
-def logout(request: Request, db: Session = Depends(get_db)) -> Response:
+def logout(request: Request, db: Session = DB) -> Response:
     c = ctx(request)
     found = getattr(request.state, 'auth_session', None)
     if found is None:
@@ -107,7 +107,15 @@ def logout(request: Request, db: Session = Depends(get_db)) -> Response:
         audit.record(db, c.clock, 'logout', actor_id=found.user_id, ip=client_ip(request))
         db.delete(found)
     resp = redirect('/login')
-    resp.delete_cookie(c.settings.session_cookie, path='/')
+    # With the attributes it was set with: a __Host- cookie deleted without
+    # Secure is ignored by the browser.
+    resp.delete_cookie(
+        c.settings.session_cookie,
+        path='/',
+        secure=c.settings.cookie_secure,
+        httponly=True,
+        samesite='lax',
+    )
     return resp
 
 

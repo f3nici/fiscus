@@ -7,6 +7,7 @@ import contextlib
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -23,6 +24,7 @@ from fiscus.services import auth as auth_service
 from fiscus.services import versioning
 from fiscus.web import (
     AppContext,
+    LimitBody,
     LoginRequired,
     RateLimited,
     csrf_guard,
@@ -134,6 +136,8 @@ def create_app(
         dependencies=[Depends(csrf_guard)],
     )
     app.state.ctx = context
+    # Innermost: its 413 still gets the headers below.
+    app.add_middleware(LimitBody)
 
     @app.middleware('http')
     async def head_as_get(
@@ -192,7 +196,8 @@ def create_app(
         target = request.url.path
         if request.url.query:
             target += '?' + request.url.query
-        nxt = f'?next={target}' if target not in ('/', '/login') else ''
+        # Encoded, so the page's own query string comes back whole.
+        nxt = f'?next={quote(target, safe="/")}' if target not in ('/', '/login') else ''
         return RedirectResponse(f'/login{nxt}', status_code=303)
 
     @app.exception_handler(RateLimited)

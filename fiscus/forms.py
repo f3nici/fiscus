@@ -12,11 +12,27 @@ class FormError(ValueError):
     pass
 
 
-def req_date(value: str, label: str) -> date:
+# Any real date, and far from date.min and date.max, which recurring dates,
+# the calendar and the forecast step past.
+EARLIEST = date(1900, 1, 1)
+LATEST = date(2199, 12, 31)
+
+
+def iso_date(value: str | None) -> date | None:
+    """A YYYY-MM-DD date from EARLIEST to LATEST, else None: for dates in a
+    URL, where a bad one means the default."""
     try:
-        return date.fromisoformat(value.strip())
-    except ValueError as exc:
-        raise FormError(f'{label}: enter a date') from exc
+        day = date.fromisoformat((value or '').strip())
+    except ValueError:
+        return None
+    return day if EARLIEST <= day <= LATEST else None
+
+
+def req_date(value: str, label: str) -> date:
+    day = iso_date(value)
+    if day is None:
+        raise FormError(f'{label}: enter a date from {EARLIEST.year} to {LATEST.year}')
+    return day
 
 
 def opt_date(value: str | None, label: str) -> date | None:
@@ -49,12 +65,6 @@ def money(value: str, label: str, *, allow_negative: bool = True) -> int:
         return parse_cents(value, allow_negative=allow_negative)
     except MoneyError as exc:
         raise FormError(f'{label}: {exc}') from exc
-
-
-def opt_money(value: str | None, label: str) -> int | None:
-    if value is None or not value.strip():
-        return None
-    return money(value, label)
 
 
 def choice(value: str, options: tuple[str, ...], label: str) -> str:

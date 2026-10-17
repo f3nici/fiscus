@@ -76,6 +76,18 @@ def start_session(
     return token
 
 
+def end_sessions(db: Session, user: User, *, keep: AuthSession | None = None) -> int:
+    """Sign `user` out everywhere but the session `keep` (D56). Returns how many ended."""
+    q = select(AuthSession).where(AuthSession.user_id == user.id)
+    if keep is not None:
+        q = q.where(AuthSession.id != keep.id)
+    rows = list(db.execute(q).scalars())
+    for row in rows:
+        db.delete(row)
+    db.flush()
+    return len(rows)
+
+
 # --------------------------------------------------------------- setup links
 
 
@@ -246,7 +258,8 @@ def registration_options(
         user_display_name=display_name,
         authenticator_selection=AuthenticatorSelectionCriteria(
             resident_key=ResidentKeyRequirement.REQUIRED,
-            user_verification=UserVerificationRequirement.PREFERRED,
+            # The passkey is the only factor (D52): it must check who holds it (D60).
+            user_verification=UserVerificationRequirement.REQUIRED,
         ),
         exclude_credentials=exclude,
         timeout=120000,
@@ -281,6 +294,7 @@ def finish_registration(
             expected_challenge=challenge.challenge,
             expected_rp_id=settings.rp_id,
             expected_origin=settings.origin,
+            require_user_verification=True,
         )
     except (InvalidRegistrationResponse, ValueError, KeyError, TypeError) as exc:
         log.info('passkey registration refused: %s', exc)
@@ -337,7 +351,7 @@ def authentication_options(
     opts = generate_authentication_options(
         rp_id=settings.rp_id,
         allow_credentials=allow,
-        user_verification=UserVerificationRequirement.PREFERRED,
+        user_verification=UserVerificationRequirement.REQUIRED,
         timeout=120000,
     )
     handle = _store_challenge(db, clock, 'login', opts.challenge)
@@ -372,6 +386,7 @@ def finish_authentication(
             expected_origin=settings.origin,
             credential_public_key=cred.public_key,
             credential_current_sign_count=cred.sign_count,
+            require_user_verification=True,
         )
     except (InvalidAuthenticationResponse, ValueError) as exc:
         log.info('passkey sign-in refused for user %s: %s', user.id, exc)
@@ -420,6 +435,12 @@ def complete_setup(
         if found is None:
             raise AuthError('This setup link has expired or was already used.')
         user = found
+        # A recovery link is for a lost device, which may still be signed in.
+        ended = end_sessions(db, user)
+        if ended:
+            audit.record(
+                db, clock, 'sessions.ended', actor_id=user.id, ip=ip, via=link.purpose, count=ended
+            )
     cred = save_credential(db, clock, user, verified, name, transports)
     link.used_at = utcnow_naive(clock)
     db.flush()

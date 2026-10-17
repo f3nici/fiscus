@@ -34,7 +34,7 @@ user's `data_version` (the forecast cache key).
 | Table | Notes |
 | --- | --- |
 | bills (owned) | amount, frequency, next due (the recurrence anchor), end date, the account it is paid from and its category (both optional). Not shared since D52: migration 0025 gave each person their share of a shared bill as a bill of their own, and dropped `bill_shares` |
-| bill_payments (owned) | an occurrence marked paid by hand (or, before D55, matched to a synced transaction); unique per bill, user and due date, and per transaction |
+| bill_payments (owned) | an occurrence marked paid by hand (or, before D55, matched to a synced transaction), with what was paid (`amount_cents`, D57); unique per bill, user and due date, and per transaction |
 
 ## Income, loans, planning
 

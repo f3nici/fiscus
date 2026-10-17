@@ -11,7 +11,7 @@ from fiscus.forms import FormError, choice, money, text
 from fiscus.models import ACCOUNT_TYPES, Account, Loan, User
 from fiscus.services import goals, ledger
 from fiscus.services.access import get_owned, maybe_owned, owned
-from fiscus.web import ctx, current_user, get_db, redirect, render
+from fiscus.web import DB, ctx, current_user, redirect, render
 
 router = APIRouter()
 
@@ -25,7 +25,7 @@ TYPE_LABELS = {
 
 @router.get('/accounts')
 def list_accounts(
-    request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
+    request: Request, user: User = Depends(current_user), db: Session = DB
 ) -> Response:
     today = ctx(request).clock.today()
     accts = ledger.accounts(db, user, include_archived=True)
@@ -47,7 +47,7 @@ def list_accounts(
 
 @router.post('/accounts/balances')
 async def update_balances(
-    request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
+    request: Request, user: User = Depends(current_user), db: Session = DB
 ) -> Response:
     """Type in what every account is at today. Blank fields, and those left at
     the balance they showed, are left alone: one not typed in keeps moving
@@ -55,7 +55,8 @@ async def update_balances(
     form = await request.form()
     clock = ctx(request).clock
     now = ledger.balances(db, user, clock.today())
-    changed = 0
+    # Every field is read before any is saved: one mistyped saves none.
+    typed: list[tuple[Account, int]] = []
     for acct in ledger.accounts(db, user):
         raw = form.get(f'balance_{acct.id}')
         if not isinstance(raw, str) or not raw.strip():
@@ -63,11 +64,12 @@ async def update_balances(
         try:
             cents = money(raw, acct.name)
         except FormError as exc:
-            return redirect('/accounts', flash=str(exc), request=request)
-        if cents == now.get(acct.id):
-            continue
+            return redirect('/accounts', flash=f'{exc}. Nothing was saved', request=request)
+        if cents != now.get(acct.id):
+            typed.append((acct, cents))
+    for acct, cents in typed:
         ledger.set_balance(db, clock, user, acct, cents)
-        changed += 1
+    changed = len(typed)
     msg = (
         f'Updated {changed} balance{"" if changed == 1 else "s"}'
         if changed
@@ -82,7 +84,7 @@ def update_balance(
     request: Request,
     balance: str = Form(...),
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     acct = get_owned(db, Account, account_id, user)
     try:
@@ -115,9 +117,7 @@ def _form(
 
 
 @router.get('/accounts/new')
-def new_account(
-    request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
-) -> Response:
+def new_account(request: Request, user: User = Depends(current_user), db: Session = DB) -> Response:
     return _form(request, db, user, None)
 
 
@@ -126,7 +126,7 @@ def edit_account(
     account_id: int,
     request: Request,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     return _form(request, db, user, get_owned(db, Account, account_id, user))
 
@@ -144,7 +144,7 @@ def save_account(
     loan_id: int = Form(0),
     archived: bool = Form(False),
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     acct = get_owned(db, Account, account_id, user) if account_id else None
     try:
@@ -180,7 +180,7 @@ def show_account(
     account_id: int,
     request: Request,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     acct = get_owned(db, Account, account_id, user)
     today = ctx(request).clock.today()
@@ -203,7 +203,7 @@ def delete_account(
     account_id: int,
     request: Request,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     acct = get_owned(db, Account, account_id, user)
     db.delete(acct)

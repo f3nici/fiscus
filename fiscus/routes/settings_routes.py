@@ -1,8 +1,10 @@
-"""Personal settings: passkeys, forecast preferences, ntfy and, for the admin, backups."""
+"""Personal settings: passkeys, where you are signed in, forecast preferences,
+ntfy and, for the admin, backups."""
 
 from __future__ import annotations
 
 import shutil
+from dataclasses import dataclass
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
@@ -10,16 +12,51 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from starlette.background import BackgroundTask
 
-from fiscus.models import Account, User, WebAuthnCredential
+from fiscus.clock import utcnow_naive
+from fiscus.models import Account, AuthSession, User, WebAuthnCredential
 from fiscus.money import MoneyError, parse_cents
 from fiscus.routes.auth import _json, limit
 from fiscus.services import audit, backup, ntfy
 from fiscus.services import auth as svc
 from fiscus.services.access import in_range, owned
 from fiscus.services.users import passkey_count, settings_for
-from fiscus.web import admin_user, client_ip, ctx, current_user, get_db, redirect, render
+from fiscus.web import DB, admin_user, client_ip, ctx, current_user, redirect, render
 
 router = APIRouter()
+
+# What a user agent says, first match wins: Android says Linux too, and
+# Chrome says Safari.
+_SYSTEMS = (
+    ('iPhone', 'iPhone'),
+    ('iPad', 'iPad'),
+    ('Android', 'Android'),
+    ('Macintosh', 'Mac'),
+    ('Windows', 'Windows'),
+    ('CrOS', 'ChromeOS'),
+    ('Linux', 'Linux'),
+)
+_BROWSERS = (
+    ('Edg', 'Edge'),
+    ('Firefox/', 'Firefox'),
+    ('FxiOS', 'Firefox'),
+    ('CriOS', 'Chrome'),
+    ('Chrome/', 'Chrome'),
+    ('Safari/', 'Safari'),
+)
+
+
+def device(user_agent: str) -> str:
+    """'Safari on iPhone', from a user agent, for the list of sessions."""
+    system = next((name for key, name in _SYSTEMS if key in user_agent), 'a device')
+    browser = next((name for key, name in _BROWSERS if key in user_agent), 'A browser')
+    return f'{browser} on {system}'
+
+
+@dataclass(frozen=True)
+class SignedIn:
+    session: AuthSession
+    device: str
+    current: bool
 
 
 def _page(
@@ -40,11 +77,22 @@ def _page(
     )
     accounts = db.execute(owned(Account, user).order_by(Account.name)).scalars().all()
     c = ctx(request)
+    here = getattr(request.state, 'auth_session', None)
+    # Expired ones wait for the hourly housekeeping, signed in nowhere.
+    sessions = [
+        SignedIn(s, device(s.user_agent), here is not None and s.id == here.id)
+        for s in db.execute(
+            select(AuthSession)
+            .where(AuthSession.user_id == user.id, AuthSession.expires_at > utcnow_naive(c.clock))
+            .order_by(AuthSession.last_seen_at.desc())
+        ).scalars()
+    ]
     return render(
         request,
         'settings.html',
         {
             'creds': creds,
+            'sessions': sessions,
             'backups': backup.list_backups(c.settings) if user.is_admin else [],
             'retention': c.settings.backup_retention_days,
             'prefs': settings_for(db, user),
@@ -59,14 +107,14 @@ def _page(
 
 @router.get('/settings')
 def settings_page(
-    request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
+    request: Request, user: User = Depends(current_user), db: Session = DB
 ) -> Response:
     return _page(request, db, user)
 
 
 @router.post('/settings/passkeys/options')
 async def add_passkey_options(
-    request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
+    request: Request, user: User = Depends(current_user), db: Session = DB
 ) -> Response:
     limit(request, 'register_ip', client_ip(request))
     c = ctx(request)
@@ -86,7 +134,7 @@ async def add_passkey_options(
 
 @router.post('/settings/passkeys/verify')
 async def add_passkey_verify(
-    request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
+    request: Request, user: User = Depends(current_user), db: Session = DB
 ) -> Response:
     body = await _json(request)
     c = ctx(request)
@@ -128,7 +176,7 @@ def rename_passkey(
     request: Request,
     name: str = Form(...),
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     c = ctx(request)
     cred = _own_cred(db, user, cred_id)
@@ -152,7 +200,7 @@ def revoke_passkey(
     cred_id: int,
     request: Request,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     c = ctx(request)
     cred = _own_cred(db, user, cred_id)
@@ -170,10 +218,38 @@ def revoke_passkey(
             400,
         )
     db.delete(cred)
+    # Whatever it signed in elsewhere goes with it; this session stays (D56).
+    ended = svc.end_sessions(db, user, keep=getattr(request.state, 'auth_session', None))
     audit.record(
-        db, c.clock, 'passkey.revoked', actor_id=user.id, ip=client_ip(request), name=cred.name
+        db,
+        c.clock,
+        'passkey.revoked',
+        actor_id=user.id,
+        ip=client_ip(request),
+        name=cred.name,
+        sessions_ended=ended,
     )
-    return redirect('/settings', flash='Passkey revoked', request=request)
+    return redirect('/settings', flash='Passkey revoked' + _signed_out(ended), request=request)
+
+
+def _signed_out(ended: int) -> str:
+    if not ended:
+        return ''
+    return f'. Signed out {ended} other session{"" if ended == 1 else "s"}'
+
+
+@router.post('/settings/sessions/end-others')
+def end_other_sessions(
+    request: Request, user: User = Depends(current_user), db: Session = DB
+) -> Response:
+    """Sign out everywhere but here, for a device lost while signed in (D56)."""
+    c = ctx(request)
+    ended = svc.end_sessions(db, user, keep=getattr(request.state, 'auth_session', None))
+    audit.record(
+        db, c.clock, 'sessions.ended', actor_id=user.id, ip=client_ip(request), count=ended
+    )
+    flash = 'Signed out everywhere else' if ended else 'No other sessions to sign out'
+    return redirect('/settings#sessions', flash=flash, request=request)
 
 
 @router.post('/settings/forecast')
@@ -183,7 +259,7 @@ def forecast_prefs(
     forecast_months: int = Form(12),
     spending_account_id: int = Form(0),
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     prefs = settings_for(db, user)
     try:
@@ -213,7 +289,7 @@ def ntfy_prefs(
     low_balance: bool = Form(False),
     payslips: bool = Form(False),
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     prefs = settings_for(db, user)
     url, topic = ntfy.normalise(url, topic)
@@ -238,16 +314,14 @@ def ntfy_prefs(
 
 @router.post('/settings/ntfy/clear-token')
 def ntfy_clear_token(
-    request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
+    request: Request, user: User = Depends(current_user), db: Session = DB
 ) -> Response:
     settings_for(db, user).ntfy_token = ''
     return redirect('/settings', flash='ntfy token removed', request=request)
 
 
 @router.post('/settings/ntfy/test')
-def ntfy_test(
-    request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
-) -> Response:
+def ntfy_test(request: Request, user: User = Depends(current_user), db: Session = DB) -> Response:
     prefs = settings_for(db, user)
     try:
         ntfy.send(prefs, 'Fiscus test', 'Reminders from Fiscus will arrive here.')
@@ -260,9 +334,7 @@ def ntfy_test(
 
 
 @router.post('/settings/backups/run')
-def run_backup(
-    request: Request, admin: User = Depends(admin_user), db: Session = Depends(get_db)
-) -> Response:
+def run_backup(request: Request, admin: User = Depends(admin_user), db: Session = DB) -> Response:
     c = ctx(request)
     path = backup.nightly(c.settings, c.engine, c.clock)
     audit.record(
@@ -273,7 +345,7 @@ def run_backup(
 
 @router.post('/settings/backups/download')
 def download_backup(
-    request: Request, admin: User = Depends(admin_user), db: Session = Depends(get_db)
+    request: Request, admin: User = Depends(admin_user), db: Session = DB
 ) -> Response:
     c = ctx(request)
     path = backup.snapshot_to_temp(c.settings, c.engine, c.clock)

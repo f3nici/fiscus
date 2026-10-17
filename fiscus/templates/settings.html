@@ -45,6 +45,27 @@
       <p class="muted text-xs mt">To add another phone or computer, sign in on it with a passkey you already have (most browsers offer a QR code to scan with your phone), then add one there. Lost every passkey? On the server, <code>python -m fiscus.cli recovery-link {{ user.username }}</code> prints a recovery link.</p>
     </div>
 
+    <div class="card" id="sessions">
+      <h2>Signed in</h2>
+      <ul class="list">
+        {% for s in sessions %}
+          <li>
+            <span class="grow">
+              <span class="title">{{ s.device }}{% if s.current %} <span class="pill">This device</span>{% endif %}</span>
+              <span class="text-xs muted">Signed in {{ s.session.created_at.strftime('%d %b %Y') }} · last seen {{ s.session.last_seen_at.strftime('%d %b %Y') }}</span>
+            </span>
+          </li>
+        {% endfor %}
+      </ul>
+      {% if sessions | length > 1 %}
+        <form class="mt" method="post" action="/settings/sessions/end-others" data-confirm="Sign out every other device? Each needs a passkey to sign in again.">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn btn-danger" type="submit">Sign out everywhere else</button>
+        </form>
+      {% endif %}
+      <p class="muted text-xs mt">Revoking a passkey signs out every other device too. A recovery link signs out everywhere before it signs you in.</p>
+    </div>
+
     <div class="card">
       <h2>Forecast and warnings</h2>
       <form method="post" action="/settings/forecast">

@@ -35,7 +35,7 @@ from fiscus.models import (
 from fiscus.services import forecasting, goals, ledger
 from fiscus.services.access import get_owned, maybe_owned, owned
 from fiscus.services.users import settings_for
-from fiscus.web import ctx, current_user, get_db, redirect, render
+from fiscus.web import DB, ctx, current_user, redirect, render
 
 router = APIRouter()
 
@@ -88,7 +88,7 @@ def forecast_page(
     months: int = 0,
     scenario_id: int = 0,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     c = ctx(request)
     prefs = settings_for(db, user)
@@ -149,7 +149,7 @@ def save_chart_line(
     key: str = Form(...),
     shown: bool = Form(...),
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     """A line turned off or on in the chart's legend (D50). The chart's script
     sends it as the person clicks, so it answers with nothing."""
@@ -174,7 +174,7 @@ def add_transfer(
     end_date: str = Form(''),
     is_tax_set_aside: bool = Form(False),
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     src = get_owned(db, Account, from_account_id, user)
     dst = get_owned(db, Account, to_account_id, user)
@@ -205,16 +205,14 @@ def delete_transfer(
     transfer_id: int,
     request: Request,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     db.delete(get_owned(db, RecurringTransfer, transfer_id, user))
     return redirect('/forecast', flash='Planned transfer removed', request=request)
 
 
 @router.get('/scenarios')
-def scenarios(
-    request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
-) -> Response:
+def scenarios(request: Request, user: User = Depends(current_user), db: Session = DB) -> Response:
     return render(
         request,
         'forecast/scenarios.html',
@@ -229,7 +227,7 @@ def create_scenario(
     request: Request,
     name: str = Form(...),
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     try:
         sc = Scenario(
@@ -249,7 +247,7 @@ def show_scenario(
     scenario_id: int,
     request: Request,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     sc = get_owned(db, Scenario, scenario_id, user)
     return render(
@@ -272,7 +270,7 @@ def delete_scenario(
     scenario_id: int,
     request: Request,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     db.delete(get_owned(db, Scenario, scenario_id, user))
     return redirect('/scenarios', flash='Scenario deleted', request=request)
@@ -283,7 +281,7 @@ async def add_adjustment(
     scenario_id: int,
     request: Request,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     sc = get_owned(db, Scenario, scenario_id, user)
     form = await request.form()
@@ -359,7 +357,7 @@ def delete_adjustment(
     adj_id: int,
     request: Request,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     sc = get_owned(db, Scenario, scenario_id, user)
     adj = get_owned(db, ScenarioAdjustment, adj_id, user)

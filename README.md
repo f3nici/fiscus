@@ -73,7 +73,7 @@ Passkeys and the installable app only work over HTTPS.
 mkdir fiscus && cd fiscus
 curl -O https://raw.githubusercontent.com/f3nici/fiscus/main/docker-compose.yml
 curl -o .env https://raw.githubusercontent.com/f3nici/fiscus/main/.env.example
-# In .env, set FISCUS_SECRET_KEY (openssl rand -hex 32) and FISCUS_BASE_URL
+# In .env, set FISCUS_BASE_URL
 docker compose up -d
 docker compose logs fiscus   # prints a one-time setup link
 ```

@@ -150,7 +150,7 @@
       if (el.dataset.bound) return;
       el.dataset.bound = '1';
       if (!supported()) {
-        say(el, 'This browser does not support passkeys. Use another browser, or a password if your admin has enabled one.');
+        say(el, 'This browser does not support passkeys. Open Fiscus in another browser, or on your phone.');
         return;
       }
       el.querySelectorAll('[data-passkey-go]').forEach((btn) => {

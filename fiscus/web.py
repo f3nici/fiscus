@@ -15,6 +15,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session, sessionmaker
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from fiscus import __version__
 from fiscus.clock import Clock, utcnow_naive
@@ -63,6 +64,49 @@ class LoginRequired(Exception):
     pass
 
 
+# The most a request may send. Uploads are 10 MB a file; forty payslips at
+# once are rarely more than a few. A form is read before the route checks who
+# is signed in, so this is what keeps a stranger from filling memory or disk.
+MAX_BODY = 64 * 1024 * 1024
+
+
+class BodyTooLarge(HTTPException):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=413, detail=f'That is more than {MAX_BODY // 2**20} MB to send at once.'
+        )
+
+
+class LimitBody:
+    """Refuses a request body over MAX_BODY: at the first read when its
+    Content-Length says so, else once that much has streamed in. Raised as
+    the body is read, so the answer is the usual error page."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope['type'] != 'http':
+            await self.app(scope, receive, send)
+            return
+        declared = dict(scope['headers']).get(b'content-length', b'')
+        limit = MAX_BODY
+        seen = 0
+
+        async def limited() -> Message:
+            nonlocal seen
+            if declared.isdigit() and int(declared) > limit:
+                raise BodyTooLarge
+            message = await receive()
+            if message['type'] == 'http.request':
+                seen += len(message.get('body', b''))
+                if seen > limit:
+                    raise BodyTooLarge
+            return message
+
+        await self.app(scope, limited, send)
+
+
 class RateLimited(Exception):
     def __init__(self, retry_after: int) -> None:
         super().__init__(retry_after)
@@ -74,9 +118,28 @@ def ctx(request: Request) -> AppContext:
     return c
 
 
-def get_db(request: Request) -> Iterator[Session]:
+async def read_body(request: Request) -> None:
+    """The whole body of an unsafe request, read before `get_db` takes the
+    write lock: one still arriving (a slow phone, or a stranger trickling it to
+    the sign-in routes) would otherwise hold the lock and every write waits.
+    Cached on the request, so the route reads it again for free."""
+    if request.method not in UNSAFE:
+        return
+    ctype = request.headers.get('content-type', '')
+    if ctype.startswith(('application/x-www-form-urlencoded', 'multipart/form-data')):
+        await request.form()
+    else:
+        await request.body()
+
+
+def get_db(request: Request, _body: None = Depends(read_body)) -> Iterator[Session]:
     db = ctx(request).sessions()
     try:
+        if request.method in UNSAFE:
+            # Take the write lock before reading, so what a request checks
+            # (the last passkey, a payment already marked) still holds when it
+            # writes. pysqlite would only begin at the first write (D59).
+            db.connection().exec_driver_sql('BEGIN IMMEDIATE')
         yield db
         db.commit()
     except Exception:
@@ -84,6 +147,12 @@ def get_db(request: Request) -> Iterator[Session]:
         raise
     finally:
         db.close()
+
+
+# Every route takes the database through this. Scoped to the function, so the
+# commit runs before the response goes out and a failed commit is the error
+# page, not a success redirect over nothing saved (D59).
+DB = Depends(get_db, scope='function')
 
 
 def client_ip(request: Request) -> str:
@@ -118,7 +187,7 @@ def load_session(request: Request, db: Session) -> tuple[AuthSession, User] | No
     return row, user
 
 
-def optional_user(request: Request, db: Session = Depends(get_db)) -> User | None:
+def optional_user(request: Request, db: Session = DB) -> User | None:
     cached: User | None = getattr(request.state, 'user', None)
     if cached is not None:
         return cached

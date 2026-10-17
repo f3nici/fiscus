@@ -357,6 +357,9 @@ class BillPayment(Base, Owned):
     user_id: Mapped[int] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'), index=True)
     due_date: Mapped[date] = mapped_column(Date)
     paid_on: Mapped[date] = mapped_column(Date)
+    # What was paid, as the bill said when it was marked paid. The budget
+    # counts this, whatever the bill says later (D57).
+    amount_cents: Mapped[int] = mapped_column(Integer)
     transaction_id: Mapped[int | None] = mapped_column(
         ForeignKey('transactions.id', ondelete='CASCADE'), nullable=True, unique=True
     )

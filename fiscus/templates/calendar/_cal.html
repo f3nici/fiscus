@@ -60,7 +60,16 @@
                 <div class="vuecal__cell-events">
                   {% for e in day.events %}{{ event_button(e) }}{% endfor %}
                 </div>
-                {% if day.events %}<a class="vuecal__cell-events-count" href="{{ url('day', day.date) }}" data-cal-nav>{{ day.events | length }}</a>{% endif %}
+                {% if day.events %}
+                  {% set titles = day.events | map(attribute='title') | join(', ') %}
+                  {# A narrow month shows this instead of the events: their count, on a pill split evenly into their colours. #}
+                  <a class="cell-tags" href="{{ url('day', day.date) }}" data-cal-nav aria-label="{{ day.date | d('long') }}: {{ titles }}">
+                    <span class="vuecal__cell-events-count {{ 'due-soon' if day.due_soon else '' }}" title="{{ titles }}">
+                      {%- for css in day.parts %}<span class="cell-tag {{ css }}"></span>{% endfor -%}
+                      <span class="cell-tag-count">{{ day.events | length }}</span>
+                    </span>
+                  </a>
+                {% endif %}
               </div>
               {% if day.balance is not none %}<span class="cell-balance {{ 'low' if low else '' }}" title="{{ day.balance | money }}"><span class="wide">{{ day.balance | money_short }}</span><span class="narrow">{{ day.balance | money_short(false) }}</span></span>{% endif %}
             </div>

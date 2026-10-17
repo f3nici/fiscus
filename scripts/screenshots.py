@@ -244,7 +244,6 @@ def main() -> None:
         {
             'FISCUS_DATA_DIR': str(data),
             'FISCUS_BASE_URL': base,
-            'FISCUS_SECRET_KEY': 'demo' * 16,
             'FISCUS_TIMEZONE': 'Australia/Perth',
             'FISCUS_RUN_JOBS': 'false',
         }

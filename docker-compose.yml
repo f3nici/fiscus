@@ -7,9 +7,11 @@ services:
     container_name: fiscus
     restart: unless-stopped
     ports:
-      - '${FISCUS_HOST_PORT:-8000}:8000'
+      # This host only, by default: the reverse proxy reaches it, the network
+      # does not, and nothing gets around the proxy's HTTPS. Set
+      # FISCUS_HOST_BIND=0.0.0.0 when the proxy is on another machine.
+      - '${FISCUS_HOST_BIND:-127.0.0.1}:${FISCUS_HOST_PORT:-8000}:8000'
     environment:
-      FISCUS_SECRET_KEY: '${FISCUS_SECRET_KEY:?set FISCUS_SECRET_KEY in .env (openssl rand -hex 32)}'
       FISCUS_BASE_URL: ${FISCUS_BASE_URL:?set FISCUS_BASE_URL in .env, e.g. https://fiscus.example.com}
       FISCUS_ORIGIN: ${FISCUS_ORIGIN:-}
       FISCUS_RP_ID: ${FISCUS_RP_ID:-}

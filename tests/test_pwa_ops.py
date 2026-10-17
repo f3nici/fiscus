@@ -390,6 +390,21 @@ def test_housekeeping_removes_stale_uploads(env: Env) -> None:
     assert not any(env.ctx.settings.upload_dir.iterdir())
 
 
+def test_housekeeping_removes_a_download_cut_short(env: Env) -> None:
+    """A backup download removes its copy once sent; one that ended early
+    left a whole database in /data until now."""
+    left = env.data_dir / 'fiscus-download-abc'
+    left.mkdir()
+    (left / 'fiscus-20261001-020000.db').write_bytes(b'SQLite')
+    jobs.housekeeping(env.ctx)
+    assert left.exists()  # may still be on its way
+    old = (env.clock.now() - timedelta(hours=2)).timestamp()
+    os.utime(left, (old, old))
+    jobs.housekeeping(env.ctx)
+    assert not left.exists()
+    assert (env.data_dir / 'fiscus.db').exists()
+
+
 def test_head_is_answered_like_get(env: Env) -> None:
     c = env.client()
     assert c.head('/healthz').status_code == 200
@@ -402,12 +417,12 @@ def test_config_refuses_bad_values(tmp_path: Any) -> None:
     from fiscus.config import ConfigError, load_settings
 
     base = {'FISCUS_DATA_DIR': str(tmp_path), 'FISCUS_BASE_URL': 'https://fiscus.example.com'}
-    with pytest.raises(ConfigError, match='SECRET_KEY'):
-        load_settings(base)
-    ok = load_settings({**base, 'FISCUS_SECRET_KEY': 's' * 64})
+    # No secret key is needed, and one left in an old .env is ignored.
+    ok = load_settings(base)
+    assert load_settings({**base, 'FISCUS_SECRET_KEY': 'short'}) == ok
     assert ok.rp_id == 'fiscus.example.com' and ok.origin == 'https://fiscus.example.com'
     assert ok.session_cookie == '__Host-fiscus'
     with pytest.raises(ConfigError, match='RP_ID'):
-        load_settings({**base, 'FISCUS_SECRET_KEY': 's' * 64, 'FISCUS_RP_ID': 'evil.com'})
+        load_settings({**base, 'FISCUS_RP_ID': 'evil.com'})
     with pytest.raises(ConfigError, match='TIMEZONE'):
-        load_settings({**base, 'FISCUS_SECRET_KEY': 's' * 64, 'FISCUS_TIMEZONE': 'Mars/Olympus'})
+        load_settings({**base, 'FISCUS_TIMEZONE': 'Mars/Olympus'})

@@ -19,15 +19,20 @@
 browser ─HTTPS─ NPMplus ─HTTP─ uvicorn (proxy headers from trusted IPs only)
                                   │
                          middleware: HEAD→GET, CSRF cookie, security headers,
-                                     Cache-Control: no-store on everything not /static
+                                     Cache-Control: no-store on everything not /static,
+                                     request body at most 64 MB
                                   │
                          dependency: csrf_guard (every unsafe method)
+                                  │
+                         dependency: DB (a session; BEGIN IMMEDIATE on unsafe methods)
                                   │
                          route ─ current_user (session cookie → sessions table)
                            │
                            ├─ services/* (fetch, always through access.owned)
                            │     └─ domain/* (pure calculation)
                            └─ render(template) or redirect
+                                  │
+                         commit, then the response goes out (D59)
 ```
 
 ## Layers

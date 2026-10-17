@@ -68,6 +68,33 @@ def test_calendar_month_view_matches_carelane_structure(env: Env) -> None:
     assert 'cell-balance' in page
 
 
+def test_a_narrow_month_splits_a_days_count_into_its_colours(env: Env) -> None:
+    """A phone's month shows a count, not the events: one pill a day, split
+    evenly into its events' colours (half green and half blue for a pay and
+    bills), ringed when a bill is due soon."""
+    a, *_ = setup_household(env)
+    create_bill(a, name='Water', amount='80', next_due='2026-10-02')
+    create_bill(a, name='Gas', amount='60', next_due='2026-10-02')
+    page = a.get('/calendar?view=month&date=2026-10-01').text
+
+    def cell(day: str, after: str) -> str:
+        return page[page.index(f'data-new-date="{day}"') : page.index(f'data-new-date="{after}"')]
+
+    both = cell('2026-10-02', '2026-10-03')
+    assert re.findall(r'<span class="cell-tag ([^"]+)"></span>', both) == [
+        'ev-pay ev-scheduled',
+        'ev-bill ev-due_soon',
+    ]
+    assert '<span class="cell-tag-count">3</span>' in both
+    assert 'vuecal__cell-events-count due-soon" title="Acme wages, Gas, Water"' in both
+    assert re.search(r'class="cell-tags" href="/calendar\?view=day&(amp;)?date=2026-10-02"', both)
+    pay_only = cell('2026-10-16', '2026-10-17')
+    assert re.findall(r'<span class="cell-tag ([^"]+)"></span>', pay_only) == [
+        'ev-pay ev-scheduled'
+    ]
+    assert 'due-soon' not in pay_only
+
+
 def test_calendar_navigates_into_future_months(env: Env) -> None:
     a, *_ = setup_household(env)
     page = a.get('/calendar?view=month&date=2027-03-01').text
@@ -562,7 +589,7 @@ def test_budget_shows_expected_earnings_against_budgeted(env: Env) -> None:
         user = db.get(User, alex.id)
         assert user is not None
         start, end = budgeting.period(db, user, date(2026, 10, 1))
-        rows = budgeting.rows(db, user, start, end, date(2026, 10, 1))
+        rows = budgeting.rows(db, user, start, end)
         s = budgeting.summary(rows, budgeting.expected_pay(db, user, start, end, date(2026, 10, 1)))
     # Paid on 2, 16 and 30 October.
     assert s.expected_cents == 7500_00
@@ -722,7 +749,7 @@ def test_a_bill_without_a_budget_adds_nothing_to_the_budget(env: Env) -> None:
         user = db.get(User, alex.id)
         assert user is not None
         start, end = budgeting.period(db, user, date(2026, 10, 1))
-        rows = budgeting.rows(db, user, start, end, date(2026, 10, 1))
+        rows = budgeting.rows(db, user, start, end)
         s = budgeting.summary(rows, 0)
     assert s.budget_cents == 0 and s.spent_cents == 200_00
 
@@ -732,7 +759,7 @@ def _saved(env: Env, user: User, month: date) -> dict[str, tuple[int | None, str
         u = db.get(User, user.id)
         assert u is not None
         start, end = budgeting.period_starting_in(db, u, month)
-        rows = budgeting.rows(db, u, start, end, date(2026, 10, 1))
+        rows = budgeting.rows(db, u, start, end)
         return {r.category.name: (r.saved_cents, r.state) for r in rows}
 
 

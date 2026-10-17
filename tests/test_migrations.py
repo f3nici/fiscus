@@ -656,3 +656,72 @@ def test_square_goes_and_its_transactions_stay(tmp_path: Path) -> None:
         assert c.execute(text('SELECT count(*) FROM bill_payments')).scalar_one() == 1
     command.upgrade(cfg, 'head')
     engine.dispose()
+
+
+def test_a_bill_payment_keeps_what_was_paid(tmp_path: Path) -> None:
+    """0029 (D57) gives each payment its amount: its own transaction, else the
+    synced one it was matched to, else what its bill says."""
+    url = f'sqlite:///{tmp_path / "fiscus.db"}'
+    cfg = alembic_config(url)
+    command.upgrade(cfg, '0028')
+    engine = create_engine(url)
+    with engine.begin() as c:
+        c.execute(
+            text(
+                'INSERT INTO users (id, username, display_name, is_admin, is_active,'
+                " user_handle, data_version, created_at) VALUES (1, 'alex', 'Alex', 1, 1, :h,"
+                " 0, '2026-01-01')"
+            ),
+            {'h': bytes([1]) * 64},
+        )
+        c.execute(
+            text(
+                'INSERT INTO accounts (id, user_id, name, type, opening_balance_cents,'
+                " is_set_aside, archived, created_at) VALUES (1, 1, 'Everyday', 'transaction',"
+                " 0, 0, 0, '2026-01-01')"
+            )
+        )
+        c.execute(
+            text(
+                'INSERT INTO bills (id, user_id, name, amount_cents, frequency, next_due,'
+                " active, created_at, account_id) VALUES (1, 1, 'Power', 35000, 'monthly',"
+                " '2026-07-01', 1, '2026-01-01', 1)"
+            )
+        )
+        for pid, due in ((1, '2026-07-01'), (2, '2026-08-01'), (3, '2026-09-01')):
+            c.execute(
+                text(
+                    'INSERT INTO bill_payments (id, bill_id, user_id, due_date, paid_on,'
+                    " created_at) VALUES (:id, 1, 1, :due, :due, '2026-01-01')"
+                ),
+                {'id': pid, 'due': due},
+            )
+        # Marked paid by hand (D42), and matched to a synced payment.
+        c.execute(
+            text(
+                'INSERT INTO transactions (id, user_id, account_id, date, amount_cents,'
+                ' description, dedup_hash, created_at, bill_payment_id) VALUES (1, 1, 1,'
+                " '2026-07-01', -30000, 'Power', 'bill-payment:1', '2026-07-01', 1)"
+            )
+        )
+        c.execute(
+            text(
+                'INSERT INTO transactions (id, user_id, account_id, date, amount_cents,'
+                " description, dedup_hash, created_at) VALUES (2, 1, 1, '2026-08-02', -31250,"
+                " 'ORIGIN ENERGY', 'sq:2', '2026-08-02')"
+            )
+        )
+        c.execute(text('UPDATE bill_payments SET transaction_id = 2 WHERE id = 2'))
+
+    command.upgrade(cfg, '0029')
+    with engine.connect() as c:
+        paid: dict[int, int] = dict(
+            c.execute(text('SELECT id, amount_cents FROM bill_payments')).all()
+        )
+    assert paid == {1: 30000, 2: 31250, 3: 35000}
+    command.downgrade(cfg, '0028')
+    cols = {col['name'] for col in inspect(engine).get_columns('bill_payments')}
+    assert 'amount_cents' not in cols
+    with engine.connect() as c:
+        assert c.execute(text('SELECT count(*) FROM transactions')).scalar_one() == 2
+    engine.dispose()

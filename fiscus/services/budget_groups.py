@@ -18,9 +18,11 @@ def groups(db: Session, user: User) -> list[BudgetGroup]:
     return list(db.execute(q).scalars())
 
 
-def _key(cat: Category, monthly: int) -> tuple[int, bool, int, str]:
-    """Moved by hand first, then income last, bigger budgets first, by name."""
-    return (cat.budget_position, cat.is_income, -monthly, cat.name.lower())
+def _key(cat: Category, monthly: int) -> tuple[bool, int, bool, int, str]:
+    """Moved by hand first, in their order; then the lines never moved
+    (position 0), income last, bigger budgets first, by name (D35)."""
+    unmoved = cat.budget_position == 0
+    return (unmoved, cat.budget_position, cat.is_income, -monthly, cat.name.lower())
 
 
 @dataclass(frozen=True)

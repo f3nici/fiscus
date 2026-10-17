@@ -10,12 +10,22 @@ from sqlalchemy.orm import Session
 
 from fiscus.clock import utcnow_naive
 from fiscus.domain import recurrence
-from fiscus.forms import FormError, choice, ends_after, int_or, money, opt_date, req_date, text
+from fiscus.forms import (
+    FormError,
+    choice,
+    ends_after,
+    int_or,
+    iso_date,
+    money,
+    opt_date,
+    req_date,
+    text,
+)
 from fiscus.models import FREQUENCIES, Account, Bill, Category, Transaction, User
 from fiscus.services import bills as svc
 from fiscus.services import ledger
 from fiscus.services.access import get_owned, maybe_owned
-from fiscus.web import ctx, current_user, get_db, local_path, redirect, render
+from fiscus.web import DB, ctx, current_user, local_path, redirect, render
 
 router = APIRouter()
 
@@ -35,7 +45,7 @@ def list_bills(
     request: Request,
     category: int = 0,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     c = ctx(request)
     today = c.clock.today()
@@ -98,9 +108,7 @@ def _form(
 
 
 @router.get('/bills/new')
-def new_bill(
-    request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
-) -> Response:
+def new_bill(request: Request, user: User = Depends(current_user), db: Session = DB) -> Response:
     return _form(request, db, user, None)
 
 
@@ -109,7 +117,7 @@ def edit_bill(
     bill_id: int,
     request: Request,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     return _form(request, db, user, get_owned(db, Bill, bill_id, user))
 
@@ -120,7 +128,7 @@ async def save_bill(
     request: Request,
     bill_id: int | None = None,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     c = ctx(request)
     bill = get_owned(db, Bill, bill_id, user) if bill_id else None
@@ -169,7 +177,7 @@ def show_bill(
     bill_id: int,
     request: Request,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     c = ctx(request)
     today = c.clock.today()
@@ -195,11 +203,8 @@ def show_bill(
 
 
 def _occ(db: Session, user: User, bill: Bill, due_raw: str) -> date:
-    try:
-        due = date.fromisoformat(due_raw)
-    except ValueError:
-        raise HTTPException(status_code=404) from None
-    if not svc.is_occurrence(bill, due):
+    due = iso_date(due_raw)
+    if due is None or not svc.is_occurrence(bill, due):
         raise HTTPException(status_code=404)
     return due
 
@@ -210,7 +215,7 @@ def occurrence(
     due: str,
     request: Request,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     """The calendar's event panel: details and quick actions."""
     c = ctx(request)
@@ -235,7 +240,7 @@ async def mark_paid(
     due: str,
     request: Request,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     c = ctx(request)
     bill = get_owned(db, Bill, bill_id, user)
@@ -257,7 +262,7 @@ async def mark_unpaid(
     due: str,
     request: Request,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     bill = get_owned(db, Bill, bill_id, user)
     when = _occ(db, user, bill, due)
@@ -277,7 +282,7 @@ def delete_bill(
     bill_id: int,
     request: Request,
     user: User = Depends(current_user),
-    db: Session = Depends(get_db),
+    db: Session = DB,
 ) -> Response:
     bill = get_owned(db, Bill, bill_id, user)
     db.delete(bill)

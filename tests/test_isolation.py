@@ -544,7 +544,6 @@ def test_removing_a_person_takes_only_their_rows(
         'FISCUS_DATA_DIR': str(env.data_dir),
         'FISCUS_ORIGIN': 'https://fiscus.test',
         'FISCUS_BASE_URL': 'https://fiscus.test',
-        'FISCUS_SECRET_KEY': 'x' * 64,
     }.items():
         monkeypatch.setenv(k, v)
     # The only admin, an unknown name and a wrong confirmation remove nothing.

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import secrets
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm import Session
 
@@ -12,13 +12,13 @@ from fiscus.models import User
 from fiscus.routes.auth import _json, limit, set_session_cookie
 from fiscus.services import auth as svc
 from fiscus.services.users import UserError, normalise_username
-from fiscus.web import client_ip, ctx, get_db, render
+from fiscus.web import DB, client_ip, ctx, render
 
 router = APIRouter()
 
 
 @router.get('/setup/{token}')
-def setup_page(token: str, request: Request, db: Session = Depends(get_db)) -> Response:
+def setup_page(token: str, request: Request, db: Session = DB) -> Response:
     limit(request, 'setup_ip', client_ip(request))
     c = ctx(request)
     link = svc.find_link(db, c.clock, token)
@@ -28,8 +28,8 @@ def setup_page(token: str, request: Request, db: Session = Depends(get_db)) -> R
             'error.html',
             {
                 'title': 'Link expired',
-                'message': 'This setup link has expired or was already used. '
-                'Ask your Fiscus admin for a new one.',
+                'message': 'This setup link has expired or was already used. On the server, '
+                'python -m fiscus.cli recovery-link <username> prints a new one.',
             },
             status_code=410,
         )
@@ -47,7 +47,7 @@ def setup_page(token: str, request: Request, db: Session = Depends(get_db)) -> R
 
 
 @router.post('/setup/{token}/options')
-async def setup_options(token: str, request: Request, db: Session = Depends(get_db)) -> Response:
+async def setup_options(token: str, request: Request, db: Session = DB) -> Response:
     body = await _json(request)
     limit(request, 'register_ip', client_ip(request))
     c = ctx(request)
@@ -89,7 +89,7 @@ async def setup_options(token: str, request: Request, db: Session = Depends(get_
 
 
 @router.post('/setup/{token}/verify')
-async def setup_verify(token: str, request: Request, db: Session = Depends(get_db)) -> Response:
+async def setup_verify(token: str, request: Request, db: Session = DB) -> Response:
     body = await _json(request)
     ip = client_ip(request)
     limit(request, 'register_ip', ip)

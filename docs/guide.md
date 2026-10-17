@@ -29,7 +29,6 @@ Fiscus refuses to start a passkey ceremony otherwise.
 3. In the stack's `.env`, set at least:
 
    ```env
-   FISCUS_SECRET_KEY=<output of: openssl rand -hex 32>
    FISCUS_BASE_URL=https://fiscus.home.example.com
    ```
 
@@ -42,7 +41,7 @@ Fiscus refuses to start a passkey ceremony otherwise.
 mkdir fiscus && cd fiscus
 curl -O https://raw.githubusercontent.com/f3nici/fiscus/main/docker-compose.yml
 curl -o .env https://raw.githubusercontent.com/f3nici/fiscus/main/.env.example
-# edit .env: FISCUS_SECRET_KEY and FISCUS_BASE_URL
+# edit .env: FISCUS_BASE_URL
 docker compose up -d
 ```
 
@@ -58,6 +57,13 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 
 Add a proxy host for your domain pointing at the Fiscus container on port
 8000, with an SSL certificate and "Force SSL" on. Websockets are not needed.
+
+Compose publishes the port on `127.0.0.1` only (`FISCUS_HOST_BIND`), so the
+proxy reaches Fiscus and nothing else on the network can, over plain HTTP,
+around it. NPMplus on the same host (it runs with host networking) forwards
+to `127.0.0.1:8000`. A proxy on another machine needs `FISCUS_HOST_BIND=0.0.0.0`;
+a proxy container on a shared Docker network reaches `fiscus:8000` without a
+published port at all.
 
 Fiscus only believes `X-Forwarded-For` from addresses in
 `FISCUS_TRUSTED_PROXIES` (default `172.16.0.0/12`, the usual Docker
@@ -108,13 +114,24 @@ on the device you are signed in on. Name each one (phone, laptop, security
 key) so you can tell them apart; Settings shows when each was last used. To
 add a device you are not holding, sign in on it with a passkey you already
 have (most browsers offer a QR code to scan with your phone), then add one
-there.
+there. A passkey has to check who is holding it (a face, fingerprint, PIN or
+screen lock, D60), so a security key needs a PIN set.
 
 **Revoke a passkey**: Settings, Passkeys, Manage, Revoke. You cannot revoke
-your last one.
+your last one. Revoking signs out every other device, so a lost phone that
+was still signed in is signed out too (D56).
+
+**Where you are signed in**: Settings, Signed in, lists each device with when
+it was last seen. "Sign out everywhere else" ends all but the one you are
+using. From the server, this ends every one:
+
+```bash
+docker compose exec fiscus python -m fiscus.cli sign-out <username>
+```
 
 **Lost every passkey**: get a recovery link on the server, open it on your
-new device, create a passkey, then revoke the lost ones in Settings.
+new device, create a passkey, then revoke the lost ones in Settings. Using
+the link signs you out everywhere else first.
 
 ```bash
 docker compose exec fiscus python -m fiscus.cli recovery-link <username>
@@ -291,7 +308,6 @@ All configuration is environment variables (set in `.env`):
 
 | Variable | Default | |
 | --- | --- | --- |
-| `FISCUS_SECRET_KEY` | required | `openssl rand -hex 32` |
 | `FISCUS_BASE_URL` | required | Your HTTPS address. Setup links use it. |
 | `FISCUS_ORIGIN` | from base URL | The origin browsers see, for WebAuthn |
 | `FISCUS_RP_ID` | origin's host | WebAuthn relying party ID (your domain) |
@@ -304,6 +320,7 @@ All configuration is environment variables (set in `.env`):
 | `FISCUS_SESSION_IDLE_DAYS` | `30` | Sliding |
 | `FISCUS_SESSION_ABSOLUTE_DAYS` | `90` | |
 | `FISCUS_LOG_LEVEL` | `info` | |
+| `FISCUS_HOST_BIND` | `127.0.0.1` | Host address in compose; `0.0.0.0` for a proxy elsewhere |
 | `FISCUS_HOST_PORT` | `8000` | Host port in compose |
 
 Health: `/healthz` (liveness, used by the container healthcheck) and

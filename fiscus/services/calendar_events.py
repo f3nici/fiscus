@@ -45,6 +45,17 @@ class Day:
     events: list[Event] = field(default_factory=list)
     balance: int | None = None
 
+    @property
+    def parts(self) -> list[str]:
+        """Each kind and state among the events once, in their order (pay,
+        bills, loans): the colours a narrow month splits the day's count into,
+        half green and half blue for a pay and a bill."""
+        return list(dict.fromkeys(e.css for e in self.events))
+
+    @property
+    def due_soon(self) -> bool:
+        return any(e.status == 'due_soon' for e in self.events)
+
 
 @dataclass
 class Grid:
@@ -68,7 +79,7 @@ def events(db: Session, user: User, start: date, end: date, today: date) -> list
                 occ.due,
                 'bill',
                 occ.bill.name,
-                -occ.bill.amount_cents,
+                -occ.amount_cents,
                 occ.status,
                 occ.bill.id,
             )
