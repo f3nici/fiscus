@@ -10,6 +10,7 @@ from fiscus.clock import Clock, utcnow_naive
 from fiscus.domain import recurrence
 from fiscus.domain.bill_import import BillSpec, Diff
 from fiscus.models import Bill, Category, User
+from fiscus.services import budgeting
 from fiscus.services.bills import user_bills
 from fiscus.services.ledger import category_named
 
@@ -75,4 +76,5 @@ def apply_diff(
             by_name[spec.key()].active = False
             removed += 1
     db.flush()
+    budgeting.start_saving(db, user, clock.today())
     return ApplyResult(len(diff.added), len(diff.changed), removed)

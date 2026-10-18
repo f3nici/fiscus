@@ -13,6 +13,8 @@ What is taken off by hand also comes off the account it was paid from (D49).
 A line spent every few months (rego, insurance, a yearly subscription) is
 saved up: its monthly share builds up from when it was set, and what is spent
 comes out of that, so paying it is not one month far over and the rest under.
+A monthly line holding a bill paid less often (a phone plan and its yearly
+device cover) is saved up too, so what it does not spend waits for that bill.
 """
 
 from __future__ import annotations
@@ -170,14 +172,51 @@ def bills_by_category(
     return out
 
 
-def bill_cycles(db: Session, user: User) -> dict[int, int]:
-    """The longest cycle, in months, of this person's running bills per category."""
+def bill_cycles(db: Session, user: User, start: date | None = None) -> dict[int, int]:
+    """The longest cycle, in months, of this person's running bills per
+    category, for those with a bill paid less often than monthly. With
+    `start`, a bill that ended before it is left out."""
     out: dict[int, int] = {}
     for bill in bills.user_bills(db, user):
         months = BILL_CYCLES.get(bill.frequency, 1)
-        if bill.category_id is not None and months > 1:
-            out[bill.category_id] = max(out.get(bill.category_id, 1), months)
+        if bill.category_id is None or months == 1:
+            continue
+        if start is not None and bill.end_date is not None and bill.end_date < start:
+            continue
+        out[bill.category_id] = max(out.get(bill.category_id, 1), months)
     return out
+
+
+def saves_up(row: Budget, category: Category, cycles: dict[int, int]) -> bool:
+    """Whether a line is saved up: spent every few months, or a monthly
+    spending line holding a bill paid less often (`bill_cycles`), so the
+    bill's share builds up rather than going each month (D63)."""
+    if category.is_income:
+        return False
+    return row.cycle_months > 1 or category.id in cycles
+
+
+def start_saving(db: Session, user: User, day: date) -> None:
+    """A monthly line that has come to hold a bill paid less often saves up
+    from the budget month holding `day`, from what it has left then (D63).
+    One already saving carries on as it is."""
+    start, _end = period(db, user, day)
+    cycles = bill_cycles(db, user, start)
+    if not cycles:
+        return
+    for row in db.execute(
+        owned(Budget, user)
+        .join(Category, Category.id == Budget.category_id)
+        .where(
+            Budget.category_id.in_(cycles),
+            Budget.cycle_months == 1,
+            Budget.saved_since.is_(None),
+            Category.is_income.is_(False),
+        )
+    ).scalars():
+        row.saved_since = start
+        row.saved_opening_cents = 0
+    db.flush()
 
 
 def bills_paid_by_category(db: Session, user: User, start: date, end: date) -> dict[int, int]:
@@ -253,7 +292,7 @@ def set_total(
 
     The total is for `cycle_months` (the line's own cycle when None): kept as
     typed, and as a monthly amount. With `add`, it goes on top of what is
-    allocated already. A line spent every few months keeps what it has saved
+    allocated already. A saved-up line (`saves_up`) keeps what it has saved
     when it changes, or holds `saved_cents` this budget month (`hold`).
     """
     start, end = period(db, user, day)
@@ -273,7 +312,8 @@ def set_total(
         if row is not None:
             db.delete(row)
         return 0, from_bills
-    if cycle > 1:
+    saves = cycle > 1 or (not category.is_income and category.id in bill_cycles(db, user, start))
+    if saves:
         if row is not None and row.saved_since is not None and row.saved_since < start:
             # Carry on from what is saved up to this month, at the old amount.
             before = start - timedelta(days=1)
@@ -295,7 +335,7 @@ def set_total(
     row.saved_since = since
     row.saved_opening_cents = opening
     db.flush()
-    if cycle > 1 and saved_cents is not None:
+    if saves and saved_cents is not None:
         hold(db, user, row, saved_cents, day)
     return monthly, from_bills
 
@@ -336,6 +376,7 @@ def rows(db: Session, user: User, start: date, end: date) -> list[BudgetRow]:
     paid = bills_paid_by_category(db, user, start, end)
     budgets = {b.category_id: b for b in db.execute(owned(Budget, user)).scalars()}
     from_bills = bills_by_category(db, user, start, end)
+    cycles = bill_cycles(db, user, start)
     out = []
     for cat in ledger.categories(db, user):
         if cat.is_transfer:
@@ -348,8 +389,7 @@ def rows(db: Session, user: User, start: date, end: date) -> list[BudgetRow]:
             saved = None
             if (
                 b is not None
-                and b.cycle_months > 1
-                and not cat.is_income
+                and saves_up(b, cat, cycles)
                 and b.saved_since is not None
                 and b.saved_since <= end
             ):

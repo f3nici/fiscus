@@ -974,12 +974,95 @@ def test_what_a_saved_up_line_holds_is_set_by_hand(env: Env) -> None:
     resp = a.post(f'/budget/{car}/saved', data={'saved': 'lots'}, follow_redirects=True)
     assert 'Saved now:' in resp.text
     assert _saved(env, alex, date(2026, 11, 1))['Transport'] == (575_00, 'ok')
-    # A monthly line holds nothing, and a category with no budget is not found.
+    # Set to every month, it still saves for its yearly rego (D63).
     a.post('/budget', data={'category_id': str(car), 'amount': '75', 'cycle_months': '1'})
+    assert _saved(env, alex, date(2026, 11, 1))['Transport'] == (575_00, 'ok')
     resp = a.post(f'/budget/{car}/saved', data={'saved': '10'}, follow_redirects=True)
+    assert 'Transport now holds $10.00' in resp.text
+    # A monthly line with no such bill holds nothing, and one with no budget is not found.
+    groceries = cat_id(env, alex, 'Groceries')
+    a.post('/budget', data={'category_id': str(groceries), 'amount': '600'})
+    resp = a.post(f'/budget/{groceries}/saved', data={'saved': '10'}, follow_redirects=True)
     assert 'spent every month, so nothing is saved up' in resp.text
-    resp = a.post(f'/budget/{cat_id(env, alex, "Groceries")}/saved', data={'saved': '10'})
+    resp = a.post(f'/budget/{cat_id(env, alex, "Utilities")}/saved', data={'saved': '10'})
     assert resp.status_code == 404
+
+
+def test_a_monthly_line_saves_for_its_yearly_bill(env: Env) -> None:
+    """A phone plan paid monthly and its yearly device cover in one monthly
+    line: the cover's share carries over rather than going each month (D63)."""
+    alex = env.user('alex')
+    a = env.login(alex)
+    a.post('/budget', data={'new_category': 'Mobile phone', 'amount': '53.17'})
+    phone = cat_id(env, alex, 'Mobile phone')
+    plan = create_bill(
+        a, name='Phone plan', amount='39', next_due='2026-10-20', category_id=str(phone)
+    )
+    # Monthly bills alone: an ordinary monthly line.
+    assert _saved(env, alex, date(2026, 10, 1))['Mobile phone'] == (None, 'ok')
+    cover = create_bill(
+        a,
+        name='Device cover',
+        amount='170',
+        frequency='yearly',
+        next_due='2027-03-15',
+        category_id=str(phone),
+    )
+    # From October, what it does not spend carries on.
+    assert _saved(env, alex, date(2026, 10, 1))['Mobile phone'] == (53_17, 'ok')
+    assert _saved(env, alex, date(2026, 11, 1))['Mobile phone'] == (106_34, 'ok')
+    page = a.get('/budget').text
+    assert 'Carries what is left into next month, for its bills paid every year' in page
+    assert '$39.00 due 20 Oct 2026: on track' in page
+    # Six months of 14.17 by March: short, and it says how much to hold now.
+    assert '$209.00 due 15 Mar 2027: $84.98 short by then, after the bills before it' in page
+    assert 'Set saved to $138.15' in page
+    a.post(f'/bills/{plan}/occurrence/2026-10-20/paid')
+    assert _saved(env, alex, date(2026, 10, 1))['Mobile phone'] == (14_17, 'ok')
+    assert 'Set saved to $99.15' in a.get('/budget').text
+    resp = a.post(f'/budget/{phone}/saved', data={'saved': '99.15'}, follow_redirects=True)
+    assert 'Mobile phone now holds $99.15' in resp.text
+    assert '$39.00 due 20 Nov 2026: on track' in resp.text and 'Then $209.00' not in resp.text
+    # The forecast's Free to spend keeps it into November too.
+    with env.db() as db:
+        u = db.get(User, alex.id)
+        assert u is not None
+        held = forecasting.still_to_spend(db, u, date(2026, 10, 1), 31)
+        assert (held[0], held[31]) == (99_15, 152_32)
+    # An edit a month on carries it forward, and says why.
+    env.clock.set(datetime(2026, 11, 3, 2, tzinfo=UTC))
+    a = env.login(alex)
+    resp = a.post(
+        '/budget',
+        data={'category_id': str(phone), 'amount': '53.17', 'cycle_months': '1'},
+        follow_redirects=True,
+    )
+    assert 'What it does not spend carries into next month, for its bills paid every year' in (
+        html.unescape(resp.text)
+    )
+    with env.db() as db:
+        row = db.execute(select(Budget).where(Budget.category_id == phone)).scalar_one()
+        assert (row.cycle_months, row.saved_since, row.saved_opening_cents) == (
+            1,
+            date(2026, 11, 1),
+            99_15,
+        )
+    assert _saved(env, alex, date(2026, 11, 1))['Mobile phone'] == (152_32, 'ok')
+    # Without the yearly bill it is a monthly line again.
+    a.post(f'/bills/{cover}/delete')
+    assert _saved(env, alex, date(2026, 11, 1))['Mobile phone'] == (None, 'ok')
+    assert 'Carries what is left' not in a.get('/budget').text
+
+
+def test_bills_imported_into_a_monthly_line_start_it_saving(env: Env) -> None:
+    alex = env.user('alex')
+    a = env.login(alex)
+    a.post('/budget', data={'new_category': 'Insurance', 'amount': '160'})
+    assert _saved(env, alex, date(2026, 10, 1))['Insurance'] == (None, 'ok')
+    name = upload_bills(a, 'b.csv', a.get('/bills/template.csv').text.encode())
+    a.post(f'/bills/import/{name}/apply', data=MAP)
+    assert _saved(env, alex, date(2026, 10, 1))['Insurance'] == (160_00, 'ok')
+    assert _saved(env, alex, date(2026, 12, 1))['Insurance'] == (480_00, 'ok')
 
 
 def test_budget_in_forecast_is_only_the_part_beyond_bills(env: Env) -> None:

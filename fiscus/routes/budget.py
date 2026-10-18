@@ -94,7 +94,7 @@ def budget_page(
             'has_accounts': bool(accts),
             'unbudgeted': [cat for cat in cats if cat.id not in budgeted and not cat.is_transfer],
             'cycles': budgeting.CYCLES,
-            'bill_cycles': budgeting.bill_cycles(db, user),
+            'bill_cycles': budgeting.bill_cycles(db, user, start),
             'spread_pay': budgeting.spread_pay(db, user, start, end, today),
         },
     )
@@ -158,9 +158,10 @@ def save_budget(
         today,
         use_in_forecast=False,
         cycle_months=cycle_months,
-        saved_cents=saved_cents if cycle_months > 1 else None,
+        saved_cents=saved_cents,
     )
     every = 'a month' if cycle_months == 1 else budgeting.CYCLES[cycle_months].lower()
+    longer = budgeting.bill_cycles(db, user, budgeting.period(db, user, today)[0])
     if total == 0 and cycle_months == 1:
         target = _back(back, 'lines')
         msg = f'Budget for {cat.name} removed'
@@ -171,6 +172,11 @@ def save_budget(
         )
     elif cycle_months > 1:
         msg = f'Saving up {fmt(total)} a month for {cat.name}, spent {every}'
+    elif cat.id in longer and not cat.is_income:
+        msg = (
+            f'Budget for {cat.name} saved. What it does not spend carries into next'
+            f' month, for its bills paid {budgeting.CYCLES[longer[cat.id]].lower()}'
+        )
     else:
         msg = f'Budget for {cat.name} saved'
     return redirect(target, flash=renamed + msg, request=request)
@@ -323,7 +329,9 @@ def set_saved(
     if row is None:
         raise HTTPException(status_code=404)
     target = _back(back, f'line-{cat.id}')
-    if row.cycle_months == 1 or cat.is_income:
+    today = ctx(request).clock.today()
+    start, _end = budgeting.period(db, user, today)
+    if not budgeting.saves_up(row, cat, budgeting.bill_cycles(db, user, start)):
         return redirect(
             target,
             flash=f'{cat.name} is spent every month, so nothing is saved up',
@@ -333,7 +341,6 @@ def set_saved(
         cents = money(saved, 'Saved now')
     except FormError as exc:
         return redirect(target, flash=str(exc), request=request)
-    today = ctx(request).clock.today()
     budgeting.hold(db, user, row, cents, today)
     return redirect(target, flash=f'{cat.name} now holds {fmt(cents)}', request=request)
 

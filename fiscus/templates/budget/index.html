@@ -180,7 +180,8 @@
               <td>
                 {{ r.category.name }}{% if r.category.is_income %} <span class="pill pill-ok">Income</span>{% endif %}
                 {% if r.has_budget and not r.saving %}<meter min="0" max="{{ r.budget_cents }}" low="{{ r.budget_cents * 9 // 10 }}" high="{{ r.budget_cents - 1 if r.state == 'over' else r.budget_cents }}" optimum="0" value="{{ [r.actual_cents, r.budget_cents] | min }}">{{ r.pct }}%</meter>{% endif %}
-                {% if r.saving %}<div class="text-xs muted">Saving up {{ r.cycle_total_cents | money }} {{ cycles[r.cycle_months] | lower }}</div>{% endif %}
+                {% if r.saving and r.cycle_months > 1 %}<div class="text-xs muted">Saving up {{ r.cycle_total_cents | money }} {{ cycles[r.cycle_months] | lower }}</div>
+                {% elif r.saving and r.category.id in bill_cycles %}<div class="text-xs muted">Carries what is left into next month, for its bills paid {{ cycles[bill_cycles[r.category.id]] | lower }}</div>{% endif %}
                 {% if r.bills_cents %}<div class="text-xs muted"><a href="/bills?category={{ r.category.id }}">{{ r.bills_cents | money }} a month of bills</a></div>{% endif %}
                 {% set ol = due.get(r.category.id) %}
                 {% set dc = ol.next if ol else none %}
@@ -255,7 +256,7 @@
                       <label class="label mt-sm" for="saved-{{ r.category.id }}">Saved now (optional)</label>
                       <input class="input" id="saved-{{ r.category.id }}" name="saved" inputmode="decimal" value="{{ r.saved_cents | money_plain if r.saving and current else '' }}" aria-label="Saved now for {{ r.category.name }}">
                       {% if r.saving and current %}<p class="text-xs muted mt-sm">What it holds now, as Left shows. It saves on from what you type.</p>{% endif %}
-                      {% if bill_cycles.get(r.category.id, 1) > 1 and r.cycle_months == 1 %}<p class="text-xs muted mt-sm">Some of its bills are not monthly. Choose how often, and their monthly share is saved up so paying one does not put a month over.</p>{% endif %}
+                      {% if bill_cycles.get(r.category.id, 1) > 1 and r.cycle_months == 1 %}<p class="text-xs muted mt-sm">Some of its bills are not monthly, so it saves up even set to every month: what it does not spend carries into the next, so paying one does not put a month over.</p>{% endif %}
                     {% endif %}
                     {% if groups %}
                       <label class="label mt-sm" for="group-{{ r.category.id }}">Group</label>

@@ -24,7 +24,8 @@ savings goals inside accounts, out of the budget, one of them
 the tax money, any of them saved from budget lines, one goal from several
 (D32 to D34, D36); saved-up lines say if they will cover their bills in the
 year ahead, overdue ones first, and what they hold is typed in or lined up
-with them (D36, D40, D43, D44); budget lines in groups and in an order set by
+with them (D36, D40, D43, D44), a monthly line holding a yearly bill among
+them (D63); budget lines in groups and in an order set by
 hand (D35). Since D25 the budget is kept by hand (spending taken off,
 balances typed in); the transactions, statement import, rules and matching
 screens went in D37 and Square sync in D55. Bills marked paid, payslips and

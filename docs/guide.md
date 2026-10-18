@@ -188,7 +188,9 @@ last calculated, so save the file in Excel before uploading. Rows of their own
 like `HOME & PROPERTY` are treated as section headings, rows starting with
 "Total" are skipped, and each line keeps its amount and how often it is
 spent. A line spent every few months (quarterly, yearly) is saved up a month
-at a time, so the month you pay it is not over budget.
+at a time, so the month you pay it is not over budget. So is a monthly line
+with a bill in it paid less often (a phone plan and its yearly device cover):
+what it does not spend carries into the next month until the bill is due.
 
 The preview lists every line. Untick any you do not want, change the category
 a line goes to (lines sharing a category are added together), or adjust its

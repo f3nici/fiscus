@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import importlib.util
+import os
+from datetime import datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pytest
 from alembic import command
@@ -13,6 +16,7 @@ from alembic.operations import Operations
 from sqlalchemy import create_engine, event, inspect, text
 
 from fiscus.db import MIGRATIONS_DIR, alembic_config
+from fiscus.domain import recurrence
 
 
 def test_housing_items_become_plain_bills_and_budgets_keep_their_totals(tmp_path: Path) -> None:
@@ -724,4 +728,84 @@ def test_a_bill_payment_keeps_what_was_paid(tmp_path: Path) -> None:
     assert 'amount_cents' not in cols
     with engine.connect() as c:
         assert c.execute(text('SELECT count(*) FROM transactions')).scalar_one() == 2
+    engine.dispose()
+
+
+def test_a_monthly_line_holding_a_yearly_bill_starts_saving(tmp_path: Path) -> None:
+    """0030 (D63) starts a monthly line saving from this budget month when it
+    holds a running bill paid less often, by its person's start day."""
+    url = f'sqlite:///{tmp_path / "fiscus.db"}'
+    cfg = alembic_config(url)
+    command.upgrade(cfg, '0029')
+    engine = create_engine(url)
+    with engine.begin() as c:
+        for uid, name in ((1, 'alex'), (2, 'sam')):
+            c.execute(
+                text(
+                    'INSERT INTO users (id, username, display_name, is_admin, is_active,'
+                    ' user_handle, data_version, created_at) VALUES (:id, :n, :n, 1, 1, :h,'
+                    " 0, '2026-01-01')"
+                ),
+                {'id': uid, 'n': name, 'h': bytes([uid]) * 64},
+            )
+        # Alex's budget month starts on the 15th; Sam has no settings (the 1st).
+        c.execute(
+            text(
+                'INSERT INTO user_settings (user_id, low_balance_cents, forecast_months,'
+                ' ntfy_enabled, ntfy_url, ntfy_topic, ntfy_token, ntfy_bill_days,'
+                ' ntfy_bills_due, ntfy_overdue, ntfy_low_balance, ntfy_hour,'
+                " budget_start_day) VALUES (1, 0, 6, 0, '', '', '', 3, 1, 1, 1, 8, 15)"
+            )
+        )
+        # id, user, name, income, cycle, saved since, bill frequency, active, end
+        lines: list[tuple[Any, ...]] = [
+            (1, 1, 'Phone', 0, 1, None, 'yearly', 1, None),
+            (2, 1, 'Groceries', 0, 1, None, 'monthly', 1, None),
+            (3, 1, 'Rego', 0, 12, '2026-09-15', 'yearly', 1, None),
+            (4, 1, 'Gym', 0, 1, None, 'yearly', 0, None),
+            (5, 1, 'Old cover', 0, 1, None, 'yearly', 1, '2020-01-01'),
+            (6, 1, 'Bonus', 1, 1, None, 'yearly', 1, None),
+            (7, 2, 'Water', 0, 1, None, 'quarterly', 1, None),
+        ]
+        for cid, uid, name, income, cycle, since, freq, active, end in lines:
+            c.execute(
+                text(
+                    'INSERT INTO categories (id, user_id, name, is_business, is_deductible,'
+                    ' is_income, is_transfer) VALUES (:id, :u, :n, 0, 0, :inc, 0)'
+                ),
+                {'id': cid, 'u': uid, 'n': name, 'inc': income},
+            )
+            c.execute(
+                text(
+                    'INSERT INTO budgets (id, user_id, category_id, monthly_cents,'
+                    ' use_in_forecast, cycle_months, saved_since, saved_opening_cents)'
+                    ' VALUES (:id, :u, :id, 5000, 0, :cy, :since, 0)'
+                ),
+                {'id': cid, 'u': uid, 'cy': cycle, 'since': since},
+            )
+            c.execute(
+                text(
+                    'INSERT INTO bills (id, user_id, name, amount_cents, frequency, next_due,'
+                    ' end_date, active, created_at, category_id) VALUES (:id, :u, :n, 17000,'
+                    " :f, '2027-03-15', :end, :a, '2026-01-01', :id)"
+                ),
+                {'id': cid, 'u': uid, 'n': name, 'f': freq, 'end': end, 'a': active},
+            )
+
+    def starts(day: int) -> str:
+        tz = ZoneInfo(os.environ.get('FISCUS_TIMEZONE') or 'Australia/Perth')
+        return recurrence.month_period(datetime.now(tz).date(), day)[0].isoformat()
+
+    before = (starts(15), starts(1))
+    command.upgrade(cfg, '0030')
+    after = (starts(15), starts(1))
+    with engine.connect() as c:
+        since = dict(c.execute(text('SELECT id, saved_since FROM budgets')).all())
+    assert (since[1], since[7]) in (before, after)
+    assert since[3] == '2026-09-15'
+    assert [since[i] for i in (2, 4, 5, 6)] == [None] * 4
+    command.downgrade(cfg, '0029')
+    with engine.connect() as c:
+        since = dict(c.execute(text('SELECT id, saved_since FROM budgets')).all())
+    assert since == {1: None, 2: None, 3: '2026-09-15', 4: None, 5: None, 6: None, 7: None}
     engine.dispose()

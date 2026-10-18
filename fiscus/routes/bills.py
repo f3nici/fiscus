@@ -23,7 +23,7 @@ from fiscus.forms import (
 )
 from fiscus.models import FREQUENCIES, Account, Bill, Category, Transaction, User
 from fiscus.services import bills as svc
-from fiscus.services import ledger
+from fiscus.services import budgeting, ledger
 from fiscus.services.access import get_owned, maybe_owned
 from fiscus.web import DB, ctx, current_user, local_path, redirect, render
 
@@ -169,6 +169,7 @@ async def save_bill(
     bill.category_id = cat.id if cat else None
     bill.active = ('active' in form) if bill_id else True
     db.flush()
+    budgeting.start_saving(db, user, c.clock.today())
     return redirect(f'/bills/{bill.id}', flash='Bill saved', request=request)
 
 
