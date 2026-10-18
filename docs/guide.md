@@ -75,7 +75,7 @@ Check it is up:
 
 ```bash
 curl https://fiscus.home.example.com/readyz
-# {"status":"ready","version":"0.1.0","build":"...","checks":{"database":true,"migrations":true,"data_dir_writable":true}}
+# {"status":"ready","version":"1.0.0","build":"...","checks":{"database":true,"migrations":true,"data_dir_writable":true}}
 ```
 
 ## First run: the bootstrap link
@@ -374,7 +374,19 @@ service worker cache) are tested.
 ### CI and releases
 
 Every push runs the checks, builds the image and smoke tests it. With
-`DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` set as repository secrets, branch
-builds are also pushed as `f3nici/fiscus:<branch>` and `:sha-<commit>`, and
-`main` as `:latest`. The **Release** workflow publishes a named tag (for
-example `v1.0.0`) to pin in `.env`.
+`DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` set as repository secrets, each
+build is also pushed as `f3nici/fiscus:sha-<commit>`, a branch's as
+`:<branch>`, and every merge to `main` as `:beta`.
+
+Publishing a GitHub release runs the **Release** workflow: the checks again,
+then the image as the release's version, without a leading `v` (release
+`v1.0.0` is `f3nici/fiscus:1.0.0`), and `:latest` moved to it. A pre-release
+gets its version only. The version has to be the one in `fiscus/__init__.py`
+and `pyproject.toml`, so bump both before releasing. Running Release by hand
+from the Actions tab rebuilds a version, for example from its tag.
+
+| Tag | What it is |
+| --- | --- |
+| `latest` | The newest release; what `docker-compose.yml` pulls |
+| `1.0.0` | A release, to pin in `.env` |
+| `beta` | The newest merge to `main`, not yet released |

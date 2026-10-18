@@ -1,15 +1,19 @@
 name: Release
 
-# Build and publish the image under a tag you type.
+# Publish the image under a release's version, and move `latest` to it.
 #
-# CI publishes every branch build under its branch name and commit sha. This
-# is the other half: naming a build you intend to deploy, so the homelab can
-# be pointed at TAG=v1.2.0 rather than at a 40-character sha.
+# CI publishes every merge to main as `beta`. This is the other half: a GitHub
+# release (tag v1.2.0 or 1.2.0) publishes the image as 1.2.0 and moves
+# `latest`, so the homelab can be pointed at TAG=1.2.0 or follow releases. A
+# pre-release publishes its version only. Running it by hand rebuilds a
+# version, for a release made before this workflow or one that failed.
 on:
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Image tag to publish, e.g. v1.0.0'
+        description: 'Image tag to publish, e.g. 1.0.0 (a leading v is dropped)'
         required: true
         type: string
       latest:
@@ -23,39 +27,82 @@ on:
         default: false
         type: boolean
 
+permissions:
+  contents: read
+
 concurrency:
-  group: release-${{ inputs.tag }}
+  group: release-${{ inputs.tag || github.event.release.tag_name }}
   cancel-in-progress: false
 
 env:
   REGISTRY_IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/fiscus
 
 jobs:
-  # The tag is typed by a human into a box, so it is checked before it reaches
-  # a shell, a registry or a tag list.
+  # The tag is typed by a human, into a box or a release, so it is checked
+  # before it reaches a shell, a registry or a tag list.
   validate:
     name: Check the tag
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      latest: ${{ steps.tag.outputs.latest }}
+      skip_checks: ${{ steps.tag.outputs.skip_checks }}
     steps:
-      - name: The tag has to look like a tag
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: The tag has to look like a tag, and match the version
+        id: tag
         env:
-          TAG: ${{ inputs.tag }}
+          EVENT: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          PRERELEASE: ${{ github.event.release.prerelease }}
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_LATEST: ${{ inputs.latest }}
+          INPUT_SKIP_CHECKS: ${{ inputs.skip_checks }}
         run: |
+          if [ "$EVENT" = "release" ]; then
+            TAG="$RELEASE_TAG"
+            LATEST=$([ "$PRERELEASE" = "true" ] && echo false || echo true)
+            SKIP_CHECKS=false
+          else
+            TAG="$INPUT_TAG"
+            LATEST="$INPUT_LATEST"
+            SKIP_CHECKS="$INPUT_SKIP_CHECKS"
+          fi
+          # v1.0.0 is published as 1.0.0.
+          if [[ "$TAG" =~ ^[vV][0-9] ]]; then
+            TAG="${TAG:1}"
+          fi
           if ! printf '%s' "$TAG" | grep -Eq '^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$'; then
             echo "Refusing \"$TAG\"."
             echo "Use letters, numbers, dot, dash and underscore, starting with a letter or number."
             exit 1
           fi
-          if [ "$TAG" = "latest" ]; then
-            echo 'Refusing "latest": it is moved by the latest input, not published directly.'
+          if [ "$TAG" = "latest" ] || [ "$TAG" = "beta" ]; then
+            echo "Refusing \"$TAG\": latest moves with releases and beta with main."
             exit 1
           fi
-          echo "Publishing as \"$TAG\"."
+          # A version number has to be the one the app reports, or the image
+          # called 1.2.0 would say 1.1.0 on /readyz and in the app.
+          VERSION=$(sed -n "s/^__version__ = '\(.*\)'$/\1/p" fiscus/__init__.py)
+          if [[ "$TAG" =~ ^[0-9] ]] && [ "$TAG" != "$VERSION" ]; then
+            echo "Refusing \"$TAG\": this commit is Fiscus $VERSION."
+            echo "Set the version in fiscus/__init__.py and pyproject.toml, or release the commit that has it."
+            exit 1
+          fi
+          echo "Publishing as \"$TAG\" (latest: $LATEST)."
+          {
+            echo "tag=$TAG"
+            echo "latest=$LATEST"
+            echo "skip_checks=$SKIP_CHECKS"
+          } >> "$GITHUB_OUTPUT"
 
   checks:
     name: Checks
     needs: validate
-    if: ${{ !inputs.skip_checks }}
+    if: ${{ needs.validate.outputs.skip_checks != 'true' }}
     uses: ./.github/workflows/checks.yml
 
   image:
@@ -64,9 +111,7 @@ jobs:
     needs: [validate, checks]
     # `always()` so skipping the checks skips the job rather than cancelling
     # the release, while a real test failure still stops it.
-    if: ${{ always() && needs.validate.result == 'success' && (needs.checks.result == 'success' || inputs.skip_checks) }}
-    permissions:
-      contents: read
+    if: ${{ always() && needs.validate.result == 'success' && (needs.checks.result == 'success' || needs.validate.outputs.skip_checks == 'true') }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -94,15 +139,18 @@ jobs:
 
       # Safe to interpolate: the validate job refused anything that is not
       # [a-zA-Z0-9][a-zA-Z0-9._-]{0,63} before this job was allowed to start.
+      # `latest` is only ever the line below, never added by the action.
       - name: Tags
         id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ${{ env.REGISTRY_IMAGE }}
+          flavor: latest=false
           tags: |
-            type=raw,value=${{ inputs.tag }}
+            type=raw,value=${{ needs.validate.outputs.tag }}
             type=sha,format=long
-            type=raw,value=latest,enable=${{ inputs.latest }}
+            type=raw,value=latest,enable=${{ needs.validate.outputs.latest }}
+          labels: org.opencontainers.image.licenses=PolyForm-Noncommercial-1.0.0
 
       - name: Push
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
@@ -116,14 +164,14 @@ jobs:
 
       - name: Summary
         env:
-          TAG: ${{ inputs.tag }}
+          TAG: ${{ needs.validate.outputs.tag }}
           IMAGE: ${{ env.REGISTRY_IMAGE }}
-          MOVED_LATEST: ${{ inputs.latest }}
+          MOVED_LATEST: ${{ needs.validate.outputs.latest }}
         run: |
           {
             echo "## Published"
             echo
             echo "\`$IMAGE:$TAG\` (latest moved: $MOVED_LATEST)"
             echo
-            echo "Deploy: set \`TAG=$TAG\` in .env, then \`docker compose pull && docker compose up -d\`."
+            echo "Deploy: set \`TAG=$TAG\` (or \`latest\`) in .env, then \`docker compose pull && docker compose up -d\`."
           } >> "$GITHUB_STEP_SUMMARY"
