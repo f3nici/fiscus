@@ -381,9 +381,11 @@ build is also pushed as `f3nici/fiscus:sha-<commit>`, a branch's as
 Publishing a GitHub release runs the **Release** workflow: the checks again,
 then the image as the release's version, without a leading `v` (release
 `v1.0.0` is `f3nici/fiscus:1.0.0`), and `:latest` moved to it. A pre-release
-gets its version only. The version has to be the one in `fiscus/__init__.py`
-and `pyproject.toml`, so bump both before releasing. Running Release by hand
-from the Actions tab rebuilds a version, for example from its tag.
+gets its version only. The version is set in one place, the `VERSION` file
+at the root, which the app, the package and the image read; change it before
+releasing, as a release whose tag does not match it is refused. Running
+Release by hand from the Actions tab rebuilds a version, for example from its
+tag.
 
 | Tag | What it is |
 | --- | --- |

@@ -29,6 +29,7 @@ COPY fiscus ./fiscus
 # Tax tables sit outside the package so a newer year can be mounted over
 # /app/config/tax without rebuilding.
 COPY config ./config
+COPY VERSION ./VERSION
 USER fiscus
 VOLUME ["/data"]
 EXPOSE 8000

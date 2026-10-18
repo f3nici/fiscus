@@ -115,9 +115,9 @@ doc 10 wins.
 - Never commit to main. Branch per change with a descriptive name.
 - Tests with the feature, not after.
 - Commit, push, open a PR, then watch CI until it is green.
-- A merge to main is pushed as the `beta` image. A release bumps
-  `fiscus/__init__.py` and `pyproject.toml` together, then a GitHub release
-  publishes that version and `latest` (D65).
+- A merge to main is pushed as the `beta` image. A release changes `VERSION`
+  (the only place the version is set), then a GitHub release publishes that
+  version and `latest` (D65).
 - Verify web changes in a real browser (Playwright, Chromium) and read the
   console before calling it done. `tests/test_browser.py` is the pattern.
 - Verify container changes by running the built image (`scripts/smoke.sh`),
@@ -143,6 +143,7 @@ fiscus/
               vendor, fonts, icons
   migrations/ Alembic
 config/tax/   one YAML per financial year
+VERSION       the version, set nowhere else (D65)
 tests/        pytest; authenticator.py is a software passkey
 docs/         design notes (01 to 10), guide.md for running it, screenshots/
 scripts/      smoke.sh, generate_icons.py, icon.svg, screenshots.py (README

@@ -374,9 +374,13 @@ def test_health_and_ready(env: Env) -> None:
 
 
 def test_one_version(env: Env) -> None:
-    # The Release workflow publishes the image under this version.
-    pyproject = Path(__file__).resolve().parent.parent / 'pyproject.toml'
-    assert tomllib.loads(pyproject.read_text())['project']['version'] == __version__
+    # VERSION is the only place it is set; the Release workflow publishes under it.
+    root = Path(__file__).resolve().parent.parent
+    assert re.fullmatch(r'\d+\.\d+\.\d+\S*', __version__)
+    assert __version__ == (root / 'VERSION').read_text().strip()
+    pyproject = tomllib.loads((root / 'pyproject.toml').read_text())
+    assert 'version' not in pyproject['project']
+    assert pyproject['tool']['setuptools']['dynamic']['version'] == {'file': 'VERSION'}
     assert env.client().get('/readyz').json()['version'] == __version__
 
 

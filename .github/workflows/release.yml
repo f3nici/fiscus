@@ -86,10 +86,10 @@ jobs:
           fi
           # A version number has to be the one the app reports, or the image
           # called 1.2.0 would say 1.1.0 on /readyz and in the app.
-          VERSION=$(sed -n "s/^__version__ = '\(.*\)'$/\1/p" fiscus/__init__.py)
+          VERSION=$(tr -d '[:space:]' < VERSION)
           if [[ "$TAG" =~ ^[0-9] ]] && [ "$TAG" != "$VERSION" ]; then
             echo "Refusing \"$TAG\": this commit is Fiscus $VERSION."
-            echo "Set the version in fiscus/__init__.py and pyproject.toml, or release the commit that has it."
+            echo "Set it in the VERSION file, or release the commit that has it."
             exit 1
           fi
           echo "Publishing as \"$TAG\" (latest: $LATEST)."
