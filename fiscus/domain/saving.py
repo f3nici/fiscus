@@ -10,7 +10,7 @@ are checked together, so paying the first does not leave the second short.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import date
 
@@ -77,15 +77,17 @@ def check(
     due: date,
     need_cents: int,
     saved_cents: int,
-    monthly_cents: int,
+    monthly_cents: int = 0,
     put_aside_cents: int = 0,
     bill_cents: int | None = None,
+    added: Callable[[int], int] | None = None,
 ) -> DueCheck:
     """`saved_cents` is what the line holds to the end of the budget month
     starting `period_start`; each later month up to the one holding `due`
-    adds `monthly_cents`."""
+    adds `monthly_cents`, or `added(n)` is what the next n months add."""
     ahead = max(0, months_left(period_start, due, start_day) - 1)
-    by_then = saved_cents + ahead * monthly_cents + put_aside_cents
+    gained = added(ahead) if added is not None else ahead * monthly_cents
+    by_then = saved_cents + gained + put_aside_cents
     bill = need_cents if bill_cents is None else bill_cents
     return DueCheck(due, need_cents, by_then, saved_cents, bill)
 
@@ -96,8 +98,9 @@ def outlook(
     start_day: int,
     bills: Iterable[Due],
     saved_cents: int,
-    monthly_cents: int,
+    monthly_cents: int = 0,
     put_aside_cents: int = 0,
+    added: Callable[[int], int] | None = None,
 ) -> Outlook | None:
     """Every budget month holding a bill to pay, checked against all the bills
     due up to its end. None when there is nothing to pay."""
@@ -120,6 +123,7 @@ def outlook(
                     monthly_cents=monthly_cents,
                     put_aside_cents=put_aside_cents,
                     bill_cents=sum(b.cents for b in unpaid),
+                    added=added,
                 )
             )
     return Outlook(tuple(out)) if out else None

@@ -23,7 +23,7 @@ from fiscus.forms import (
 )
 from fiscus.models import FREQUENCIES, Account, Bill, Category, Transaction, User
 from fiscus.services import bills as svc
-from fiscus.services import ledger
+from fiscus.services import budgeting, ledger
 from fiscus.services.access import get_owned, maybe_owned
 from fiscus.web import DB, ctx, current_user, local_path, redirect, render
 
@@ -150,6 +150,10 @@ async def save_bill(
         return _form(request, db, user, bill, str(exc), dict(form))
     acct = maybe_owned(db, Account, int_or(f('account_id')), user)
     cat = maybe_owned(db, Category, int_or(f('category_id')), user)
+    today = c.clock.today()
+    # Saved-up lines keep what their bills gave them so far (D64).
+    touched = {cat.id if cat else None, bill.category_id if bill else None}
+    budgeting.settle(db, user, today, {cid for cid in touched if cid is not None})
     if bill is None:
         bill = Bill(
             user_id=user.id,
@@ -169,6 +173,7 @@ async def save_bill(
     bill.category_id = cat.id if cat else None
     bill.active = ('active' in form) if bill_id else True
     db.flush()
+    budgeting.follow_bills(db, user, today)
     return redirect(f'/bills/{bill.id}', flash='Bill saved', request=request)
 
 
@@ -285,5 +290,7 @@ def delete_bill(
     db: Session = DB,
 ) -> Response:
     bill = get_owned(db, Bill, bill_id, user)
+    if bill.category_id is not None:
+        budgeting.settle(db, user, ctx(request).clock.today(), {bill.category_id})
     db.delete(bill)
     return redirect('/bills', flash='Bill deleted', request=request)

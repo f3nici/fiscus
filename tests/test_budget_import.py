@@ -13,6 +13,7 @@ from fiscus.domain import budget_import as dom
 from fiscus.models import Budget, BudgetSpend, Category
 from fiscus.services import budget_import as svc
 from tests.conftest import CsrfClient, Env
+from tests.test_bills import create_bill
 
 
 def household_xlsx() -> bytes:
@@ -391,3 +392,43 @@ def _cat(env: Env, user_id: int, name: str) -> int:
                 select(Category.id).where(Category.user_id == user_id, Category.name == name)
             ).scalar_one()
         )
+
+
+def test_an_imported_amount_has_its_bills_in_it(env: Env) -> None:
+    """The file's amount is a line's whole budget: its bills and what is on top
+    of them, and never less than its bills (D64)."""
+    alex = env.user('alex')
+    a = env.login(alex)
+    utilities = _cat(env, alex.id, 'Utilities')
+    housing = _cat(env, alex.id, 'Housing')
+    create_bill(a, name='Power', amount='200', next_due='2026-10-20', category_id=str(utilities))
+    create_bill(a, name='Rent', amount='2000', next_due='2026-10-05', category_id=str(housing))
+    url = upload(a, svc.template_csv().encode(), 'b.csv')
+    form = {'count': '2', 'mode': 'replace'}
+    for i, (name, amount) in enumerate((('Utilities', '300'), ('Housing', '1500'))):
+        form |= {f'include_{i}': 'on', f'name_{i}': name, f'category_{i}': name}
+        form[f'amount_{i}'] = amount
+    assert a.post(url + '/apply', data=form).status_code == 303
+
+    def on_top() -> dict[str, int]:
+        with env.db() as db:
+            return {
+                db.get(Category, b.category_id).name: b.monthly_cents  # type: ignore[union-attr]
+                for b in db.execute(select(Budget).where(Budget.user_id == alex.id)).scalars()
+            }
+
+    assert on_top() == {'Utilities': 100_00, 'Housing': 0}
+    # Cleared, a line holding bills comes back with them and nothing on top.
+    url = upload(a, svc.template_csv().encode(), 'b.csv')
+    a.post(
+        url + '/apply',
+        data={
+            'count': '1',
+            'include_0': 'on',
+            'name_0': 'Internet',
+            'category_0': 'Internet',
+            'amount_0': '79.00',
+            'mode': 'clear',
+        },
+    )
+    assert on_top() == {'Internet': 79_00, 'Utilities': 0, 'Housing': 0}

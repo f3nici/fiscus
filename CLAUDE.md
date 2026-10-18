@@ -15,7 +15,8 @@ filed under a category; pay schedules and payslips (listed ten a page); the
 calendar (the month by default, D54); home loan and offset (one loan opens
 straight into it); forecasting with scenarios, its trend and what is free to
 spend as the budget has it, lines turned off staying off (D46, D47, D50,
-D51); the budget (bills paid out of it, a line's entries in its Edit panel);
+D51); the budget (each line its bills plus an estimate on top, D64; a line's
+entries in its Edit panel);
 bill import; the tax estimate, each job taxed on its own figures (D38); the
 dashboard; ntfy reminders through ntfy.sh or a server of the person's own
 (D53), payslips to put in among them; backups, downloaded from Settings;
@@ -24,7 +25,8 @@ savings goals inside accounts, out of the budget, one of them
 the tax money, any of them saved from budget lines, one goal from several
 (D32 to D34, D36); saved-up lines say if they will cover their bills in the
 year ahead, overdue ones first, and what they hold is typed in or lined up
-with them (D36, D40, D43, D44); budget lines in groups and in an order set by
+with them (D36, D40, D43, D44), a monthly line holding a yearly bill among
+them (D63); budget lines in groups and in an order set by
 hand (D35). Since D25 the budget is kept by hand (spending taken off,
 balances typed in); the transactions, statement import, rules and matching
 screens went in D37 and Square sync in D55. Bills marked paid, payslips and
