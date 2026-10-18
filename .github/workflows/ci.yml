@@ -41,7 +41,7 @@ jobs:
         run: echo "present=$([ -n "$USERNAME" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
       - name: Build
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           load: true
@@ -73,7 +73,7 @@ jobs:
 
       - name: Push
         if: steps.creds.outputs.present == 'true' && github.event_name != 'pull_request'
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           # Always push branch builds too: a change is verified by pulling and
