@@ -8,9 +8,9 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from fiscus.domain import arrange
-from fiscus.models import Budget, BudgetGroup, Category, User
+from fiscus.models import BudgetGroup, Category, User
 from fiscus.services.access import owned
-from fiscus.services.budgeting import BudgetRow
+from fiscus.services.budgeting import BudgetRow, order_amounts
 
 
 def groups(db: Session, user: User) -> list[BudgetGroup]:
@@ -56,7 +56,8 @@ class Section:
 def sections(db: Session, user: User, rows: list[BudgetRow]) -> list[Section]:
     """Each group in order with its lines, then the lines in no group. Empty
     groups are kept so they can be filled."""
-    ordered = sorted(rows, key=lambda r: _key(r.category, r.budget_cents))
+    amounts = order_amounts(db, user)
+    ordered = sorted(rows, key=lambda r: _key(r.category, amounts.get(r.category.id, 0)))
     gs = groups(db, user)
     known = {g.id for g in gs}
     out = [Section(g, [r for r in ordered if r.category.budget_group_id == g.id]) for g in gs]
@@ -66,13 +67,9 @@ def sections(db: Session, user: User, rows: list[BudgetRow]) -> list[Section]:
     return out
 
 
-def _monthly(db: Session, user: User) -> dict[int, int]:
-    return {b.category_id: b.monthly_cents for b in db.execute(owned(Budget, user)).scalars()}
-
-
 def move_line(db: Session, user: User, cat: Category, step: int) -> None:
     """Swap a line with its neighbour among the budget lines in its group."""
-    monthly = _monthly(db, user)
+    monthly = order_amounts(db, user)
     q = owned(Category, user).where(
         Category.budget_group_id.is_(None)
         if cat.budget_group_id is None

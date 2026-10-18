@@ -1,9 +1,11 @@
 """The budget: what is set aside for each category in a budget month, and what is left.
 
-A category's budget is what the person allocates to it, and nothing else.
-Their bills in it (each at its monthly equivalent, a one-off in the period
-it falls due) are shown beside it but never add to it: a bill is paid
-out of the allocation.
+A spending category's budget is its bills (each at its monthly equivalent,
+a one-off in the budget month it falls due) plus what the person budgets on
+top of them, an estimate of everything else (D64). Bills are known amounts,
+so they set the budget themselves: a line can never be budgeted below them,
+and a dearer bill raises it. Only the estimate is stored. Every spending
+category holding a bill has a line (`follow_bills`).
 
 Spending is not read from bank transactions. It is what the person takes off a
 budget by hand (`BudgetSpend`) plus every bill they mark paid
@@ -19,6 +21,7 @@ device cover) is saved up too, so what it does not spend waits for that bill.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, timedelta
 
@@ -58,11 +61,12 @@ class BudgetRow:
     category: Category
     budget: Budget | None
     spent_cents: int  # taken off by hand (earned, for income)
-    bills_cents: int  # this person's bills in the category, per month (shown, not added)
+    bills_cents: int  # this person's bills in the category, per month (in its budget)
     bills_paid_cents: int  # bills marked paid this period
     # Saved up and not yet spent, to the end of the period, for a line spent
     # every few months. None for a monthly line.
     saved_cents: int | None = None
+    bills_yearly_cents: int = 0  # its recurring bills over a year
 
     @property
     def saving(self) -> bool:
@@ -77,13 +81,32 @@ class BudgetRow:
         return self.spent_cents + self.bills_paid_cents
 
     @property
-    def budget_cents(self) -> int:
+    def estimate_cents(self) -> int:
+        """What is budgeted on top of its bills, a month."""
         return self.budget.monthly_cents if self.budget else 0
 
     @property
-    def cycle_total_cents(self) -> int:
-        """The budget for one cycle, as typed: $2,480 for a yearly line."""
+    def estimate_total_cents(self) -> int:
+        """What is budgeted on top of its bills for one cycle, as typed."""
         return cycle_total(self.budget) if self.budget else 0
+
+    @property
+    def budget_cents(self) -> int:
+        """Its bills and the estimate on top (D64). Income has no bills."""
+        if self.budget is None:
+            return 0
+        if self.category.is_income:
+            return self.budget.monthly_cents
+        return self.budget.monthly_cents + self.bills_cents
+
+    @property
+    def cycle_total_cents(self) -> int:
+        """The budget for one cycle: a yearly line's bills for a year and the
+        estimate on top."""
+        if self.budget is None:
+            return 0
+        bills_part = round_div(self.bills_yearly_cents * self.cycle_months, 12)
+        return cycle_total(self.budget) + bills_part
 
     @property
     def has_budget(self) -> bool:
@@ -120,11 +143,12 @@ class BudgetRow:
 class Summary:
     expected_cents: int  # pay due in the period plus income budgets
     pay_cents: int
-    budget_cents: int  # spending budgets, bills paid out of them
+    budget_cents: int  # spending budgets, their bills and the estimates on top
     spent_cents: int
     to_spend_cents: int  # what is left in budgets not yet overspent
     over: int
     saved_cents: int = 0  # the part of to_spend held by saved-up lines
+    bills_cents: int = 0  # the part of budget_cents that is bills
 
     @property
     def unbudgeted_cents(self) -> int:
@@ -150,6 +174,12 @@ def period(db: Session, user: User, day: date) -> tuple[date, date]:
 def period_starting_in(db: Session, user: User, month: date) -> tuple[date, date]:
     """The budget month that starts in the calendar month of `month`."""
     return period(db, user, recurrence.add_months(month, 0, start_day(db, user)))
+
+
+def _running(bill: Bill, start: date) -> bool:
+    """Not ended before `start`. A recurring bill's next due date is not when
+    it starts: it is running."""
+    return bill.end_date is None or bill.end_date >= start
 
 
 def bills_by_category(
@@ -187,6 +217,28 @@ def bill_cycles(db: Session, user: User, start: date | None = None) -> dict[int,
     return out
 
 
+def bills_yearly(db: Session, user: User, start: date) -> dict[int, int]:
+    """This person's recurring bills per category over a year, exactly (52 of a
+    weekly bill), leaving out those ended before `start`."""
+    out: dict[int, int] = {}
+    for bill in bills.user_bills(db, user):
+        if bill.category_id is None or bill.frequency == 'one_off' or not _running(bill, start):
+            continue
+        yearly = bill.amount_cents * recurrence.PER_YEAR[bill.frequency]
+        out[bill.category_id] = out.get(bill.category_id, 0) + yearly
+    return out
+
+
+def order_amounts(db: Session, user: User) -> dict[int, int]:
+    """Each line's budget over a year, its bills and the estimate on top, for
+    putting lines never moved by hand in order (D35)."""
+    yearly = bills_yearly(db, user, date.min)
+    return {
+        b.category_id: round_div(cycle_total(b) * 12, b.cycle_months) + yearly.get(b.category_id, 0)
+        for b in db.execute(owned(Budget, user)).scalars()
+    }
+
+
 def saves_up(row: Budget, category: Category, cycles: dict[int, int]) -> bool:
     """Whether a line is saved up: spent every few months, or a monthly
     spending line holding a bill paid less often (`bill_cycles`), so the
@@ -196,26 +248,63 @@ def saves_up(row: Budget, category: Category, cycles: dict[int, int]) -> bool:
     return row.cycle_months > 1 or category.id in cycles
 
 
-def start_saving(db: Session, user: User, day: date) -> None:
-    """A monthly line that has come to hold a bill paid less often saves up
-    from the budget month holding `day`, from what it has left then (D63).
-    One already saving carries on as it is."""
+def follow_bills(db: Session, user: User, day: date) -> None:
+    """Every spending category holding a bill has a budget line, its bills in it
+    and nothing on top until the person budgets more (D64). A monthly line that
+    has come to hold a bill paid less often saves up from the budget month
+    holding `day`, from what it has left then (D63); one already saving
+    carries on as it is."""
     start, _end = period(db, user, day)
     cycles = bill_cycles(db, user, start)
-    if not cycles:
+    held = {
+        b.category_id
+        for b in bills.user_bills(db, user)
+        if b.category_id is not None
+        and _running(b, start)
+        and (b.frequency != 'one_off' or b.next_due >= start)
+    }
+    if not held:
         return
-    for row in db.execute(
-        owned(Budget, user)
-        .join(Category, Category.id == Budget.category_id)
-        .where(
-            Budget.category_id.in_(cycles),
-            Budget.cycle_months == 1,
-            Budget.saved_since.is_(None),
-            Category.is_income.is_(False),
-        )
-    ).scalars():
+    lines = {
+        b.category_id: b
+        for b in db.execute(owned(Budget, user).where(Budget.category_id.in_(held))).scalars()
+    }
+    for cat in db.execute(owned(Category, user).where(Category.id.in_(held))).scalars():
+        if cat.is_income or cat.is_transfer:
+            continue
+        row = lines.get(cat.id)
+        if row is None:
+            row = Budget(
+                user_id=user.id,
+                category_id=cat.id,
+                monthly_cents=0,
+                total_cents=0,
+                use_in_forecast=False,
+                cycle_months=1,
+                saved_opening_cents=0,
+            )
+            db.add(row)
+        if row.cycle_months == 1 and row.saved_since is None and cat.id in cycles:
+            row.saved_since = start
+            row.saved_opening_cents = 0
+    db.flush()
+
+
+def settle(db: Session, user: User, day: date, category_ids: set[int] | None = None) -> None:
+    """Before bills change: carry each saved-up line (in `category_ids`, or all)
+    forward to the budget month holding `day` at its bills as they were, so the
+    change counts from this budget month on, not in months gone (D64)."""
+    start, _end = period(db, user, day)
+    cycles = bill_cycles(db, user, start)
+    q = owned(Budget, user).where(Budget.saved_since < start)
+    if category_ids is not None:
+        q = q.where(Budget.category_id.in_(category_ids))
+    for row in db.execute(q).scalars():
+        cat = db.get(Category, row.category_id)
+        if cat is None or not saves_up(row, cat, cycles):
+            continue
+        row.saved_opening_cents = saved_to(db, user, row, start - timedelta(days=1))
         row.saved_since = start
-        row.saved_opening_cents = 0
     db.flush()
 
 
@@ -286,17 +375,24 @@ def set_total(
     add: bool = False,
     cycle_months: int | None = None,
     saved_cents: int | None = None,
+    whole: bool = False,
 ) -> tuple[int, int]:
-    """Set a category's budget, the bills in it paid out of it. Returns the
-    monthly (total, bills).
+    """Set what a category budgets on top of its bills (D64). Returns the
+    monthly (estimate, bills).
 
-    The total is for `cycle_months` (the line's own cycle when None): kept as
-    typed, and as a monthly amount. With `add`, it goes on top of what is
-    allocated already. A saved-up line (`saves_up`) keeps what it has saved
-    when it changes, or holds `saved_cents` this budget month (`hold`).
+    The amount is for `cycle_months` (the line's own cycle when None): kept as
+    typed, and as a monthly amount. With `whole` it is the line's whole budget,
+    its bills in it, so only the rest is on top. With `add`, it goes on top of
+    what is budgeted already. A saved-up line (`saves_up`) keeps what it has
+    saved when it changes, or holds `saved_cents` this budget month (`hold`).
+    A line with no bills and nothing on top is removed.
     """
     start, end = period(db, user, day)
-    from_bills = bills_by_category(db, user, start, end).get(category.id, 0)
+    from_bills = 0
+    yearly = 0
+    if not category.is_income:
+        from_bills = bills_by_category(db, user, start, end).get(category.id, 0)
+        yearly = bills_yearly(db, user, start).get(category.id, 0)
     row = db.execute(
         owned(Budget, user).where(Budget.category_id == category.id)
     ).scalar_one_or_none()
@@ -305,10 +401,12 @@ def set_total(
     if add and row is not None:
         # What is there already, over the new cycle, plus the new amount.
         total += round_div(cycle_total(row) * cycle, row.cycle_months)
+    elif whole:
+        total -= round_div(yearly * cycle, 12)
     total = max(0, total)
     monthly = round_div(total, cycle)
     keep = use_in_forecast or (row is not None and row.use_in_forecast and add)
-    if monthly == 0 and not keep and cycle == 1:
+    if monthly == 0 and not keep and cycle == 1 and not from_bills and not yearly:
         if row is not None:
             db.delete(row)
         return 0, from_bills
@@ -351,24 +449,54 @@ def hold(db: Session, user: User, row: Budget, saved_cents: int, day: date) -> N
     db.flush()
 
 
+def taken_in(
+    db: Session,
+    user: User,
+    row: Budget,
+    since: date,
+    end: date,
+    held: list[Bill] | None = None,
+) -> int:
+    """What a line takes in over the budget months from the one starting
+    `since` to the one holding `end` (D64): a month's share of what is on top
+    of its bills each month (a cycle takes exactly what was typed for it), its
+    recurring bills' share for each month they run (a year of a yearly bill is
+    exactly the bill), and its one-off bills due in those months."""
+    first = start_day(db, user)
+    months: list[date] = []
+    p = since
+    while p <= end:
+        months.append(p)
+        p = recurrence.add_months(p, 1, first)
+    if not months:
+        return 0
+    total = round_div(cycle_total(row) * len(months), row.cycle_months)
+    cat = db.get(Category, row.category_id)
+    if cat is None or cat.is_income:
+        return total
+    for bill in held if held is not None else bills.user_bills(db, user):
+        if bill.category_id != row.category_id:
+            continue
+        if bill.frequency == 'one_off':
+            if months[0] <= bill.next_due < p:
+                total += bill.amount_cents
+            continue
+        n = sum(1 for m in months if _running(bill, m))
+        total += round_div(bill.amount_cents * recurrence.PER_YEAR[bill.frequency] * n, 12)
+    return total
+
+
 def saved_to(db: Session, user: User, row: Budget, end: date) -> int:
     """What a saved-up line holds at the end of `end`'s day: its opening amount,
-    plus a month's budget for every budget month since it started, less what
-    was spent (by hand and bills paid) in that time. A full cycle saves exactly
-    the amount typed for it."""
+    plus what it took in each budget month since it started (`taken_in`), less
+    what was spent (by hand and bills paid) in that time."""
     since = row.saved_since
     if since is None or end < since:
         return row.saved_opening_cents
-    first = start_day(db, user)
-    months, p = 0, since
-    while p <= end:
-        months += 1
-        p = recurrence.add_months(p, 1, first)
     cid = row.category_id
     spent = spent_by_category(db, user, since, end).get(cid, 0)
     paid = bills_paid_by_category(db, user, since, end).get(cid, 0)
-    saved = round_div(cycle_total(row) * months, row.cycle_months)
-    return row.saved_opening_cents + saved - spent - paid
+    return row.saved_opening_cents + taken_in(db, user, row, since, end) - spent - paid
 
 
 def rows(db: Session, user: User, start: date, end: date) -> list[BudgetRow]:
@@ -376,6 +504,7 @@ def rows(db: Session, user: User, start: date, end: date) -> list[BudgetRow]:
     paid = bills_paid_by_category(db, user, start, end)
     budgets = {b.category_id: b for b in db.execute(owned(Budget, user)).scalars()}
     from_bills = bills_by_category(db, user, start, end)
+    yearly = bills_yearly(db, user, start)
     cycles = bill_cycles(db, user, start)
     out = []
     for cat in ledger.categories(db, user):
@@ -402,6 +531,7 @@ def rows(db: Session, user: User, start: date, end: date) -> list[BudgetRow]:
                     from_bills.get(cid, 0),
                     paid.get(cid, 0),
                     saved,
+                    yearly.get(cid, 0),
                 )
             )
     out.sort(key=lambda r: (r.category.is_income, -r.budget_cents, r.category.name))
@@ -441,6 +571,20 @@ def due_checks(
         for o in bills.occurrences(db, user, start - DUE_LOOKBACK, horizon, today)
         if o.bill.category_id in lines
     ]
+    held = bills.user_bills(db, user)
+    following = recurrence.add_months(start, 1, first)
+
+    def added(row: Budget) -> Callable[[int], int]:
+        """What the line takes in over the next k budget months."""
+
+        def k_months(k: int) -> int:
+            if k <= 0:
+                return 0
+            last = recurrence.add_months(start, k + 1, first) - timedelta(days=1)
+            return taken_in(db, user, row, following, last, held)
+
+        return k_months
+
     out: dict[int, saving.Outlook] = {}
     for cid, r in lines.items():
         mine = [o for o in occs if o.bill.category_id == cid]
@@ -457,7 +601,7 @@ def due_checks(
             bills=[saving.Due(o.due, o.amount_cents) for o in unpaid]
             + [saving.Due(o.due, o.amount_cents, paid=True) for o in ahead],
             saved_cents=r.saved_cents,
-            monthly_cents=r.budget.monthly_cents,
+            added=added(r.budget),
             put_aside_cents=put_aside(db, user, cid, since, today),
         )
         if found is not None:
@@ -531,4 +675,5 @@ def summary(
         + max(0, loan_cents - loan_paid_cents),
         over=sum(1 for r in spend if r.state == 'over'),
         saved_cents=sum(max(0, r.saved_cents or 0) for r in spend if r.has_budget),
+        bills_cents=sum(r.bills_cents for r in spend if r.has_budget),
     )

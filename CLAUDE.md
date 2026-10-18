@@ -15,7 +15,8 @@ filed under a category; pay schedules and payslips (listed ten a page); the
 calendar (the month by default, D54); home loan and offset (one loan opens
 straight into it); forecasting with scenarios, its trend and what is free to
 spend as the budget has it, lines turned off staying off (D46, D47, D50,
-D51); the budget (bills paid out of it, a line's entries in its Edit panel);
+D51); the budget (each line its bills plus an estimate on top, D64; a line's
+entries in its Edit panel);
 bill import; the tax estimate, each job taxed on its own figures (D38); the
 dashboard; ntfy reminders through ntfy.sh or a server of the person's own
 (D53), payslips to put in among them; backups, downloaded from Settings;

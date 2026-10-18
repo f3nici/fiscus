@@ -203,8 +203,9 @@ amount and how often. Some lines start unticked, with the reason shown:
 Choose whether imported amounts replace or add to the budget you have, or
 clear it first so only the file's lines are in it. Nothing is saved until you
 press Import. An imported amount is the
-category's whole budget: bills already in that category count towards it, not
-on top. Anything that should appear on the calendar and in the forecast is a
+category's whole budget: bills already in that category count towards it, and
+what is left over is budgeted on top of them. A line is never budgeted below
+its bills. Anything that should appear on the calendar and in the forecast is a
 bill; add it on the Bills page (or import it, below). The Budget page also has
 a CSV template.
 

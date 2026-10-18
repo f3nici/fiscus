@@ -54,9 +54,9 @@ today with real balances. Each later day applies:
 Discretionary spending is, per category, the average of the last 90 days
 scaled to a month, excluding transfers, salary (covered by pay schedules) and
 any transaction matched to a bill (bills come from their schedule). Any budget
-line replaces that category's average with the part of its budget beyond the
-category's recurring bills, since the bills are already forecast from their own dates
-(D25: spending is budgeted, not imported). Business
+line replaces that category's average with what it budgets on top of its
+bills, which are already forecast from their own dates (D25: spending is
+budgeted, not imported; D64: only that estimate is stored). Business
 income is projected the same way.
 
 Outputs: per-account and combined daily balances, the combined balance's

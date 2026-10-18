@@ -109,9 +109,10 @@ def apply(
     """Sum the chosen lines per category and set those budgets. Returns (categories,
     monthly total).
 
-    An imported amount is the category's whole budget: bills in the
-    category are paid out of it, not added to it. A category takes the longest
-    cycle of its lines, so a yearly cost in it is saved up.
+    An imported amount is the category's whole budget: its bills count
+    towards it, and the rest is budgeted on top of them (D64). A category
+    takes the longest cycle of its lines, so a yearly cost in it is saved up.
+    A category holding a bill keeps a line, cleared or not.
     """
     lines: dict[int, tuple[Category, list[Chosen]]] = {}
     for c in chosen:
@@ -135,9 +136,10 @@ def apply(
             use_in_forecast=use_in_forecast,
             add=not replace,
             cycle_months=cycle,
+            whole=True,
         )
         monthly_total += sum(c.monthly_cents for c in picked)
-    db.flush()
+    budgeting.follow_bills(db, user, today)
     return len(lines), monthly_total
 
 

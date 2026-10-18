@@ -162,23 +162,23 @@ def save_budget(
     )
     every = 'a month' if cycle_months == 1 else budgeting.CYCLES[cycle_months].lower()
     longer = budgeting.bill_cycles(db, user, budgeting.period(db, user, today)[0])
-    if total == 0 and cycle_months == 1:
+    if total == 0 and cycle_months == 1 and not from_bills:
         target = _back(back, 'lines')
         msg = f'Budget for {cat.name} removed'
-    elif cents < from_bills * cycle_months:
-        msg = (
-            f'Budget for {cat.name} saved. Your bills in it come to'
-            f' {fmt(from_bills * cycle_months)} {every}, more than this'
-        )
     elif cycle_months > 1:
-        msg = f'Saving up {fmt(total)} a month for {cat.name}, spent {every}'
-    elif cat.id in longer and not cat.is_income:
+        msg = f'Saving up {fmt(total + from_bills)} a month for {cat.name}, spent {every}'
+    elif from_bills:
         msg = (
-            f'Budget for {cat.name} saved. What it does not spend carries into next'
-            f' month, for its bills paid {budgeting.CYCLES[longer[cat.id]].lower()}'
+            f'Budget for {cat.name} is {fmt(total + from_bills)} a month:'
+            f' {fmt(from_bills)} of bills and {fmt(total)} on top'
         )
     else:
         msg = f'Budget for {cat.name} saved'
+    if cycle_months == 1 and cat.id in longer:
+        msg += (
+            '. What it does not spend carries into next month, for its bills paid'
+            f' {budgeting.CYCLES[longer[cat.id]].lower()}'
+        )
     return redirect(target, flash=renamed + msg, request=request)
 
 
@@ -306,6 +306,14 @@ def remove_budget(
     row = db.execute(owned(Budget, user).where(Budget.category_id == cat.id)).scalar_one_or_none()
     if row is None:
         raise HTTPException(status_code=404)
+    start, end = budgeting.period(db, user, ctx(request).clock.today())
+    if budgeting.bills_by_category(db, user, start, end).get(cat.id):
+        return redirect(
+            _back(back, f'line-{cat.id}'),
+            flash=f'{cat.name} has bills in it, so it stays in the budget.'
+            ' Move or stop them on the Bills page',
+            request=request,
+        )
     db.delete(row)
     db.flush()
     return redirect(

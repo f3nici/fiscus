@@ -65,6 +65,7 @@ def apply_diff(
     db: Session, clock: Clock, user: User, diff: Diff, *, remove_missing: bool
 ) -> ApplyResult:
     by_name = {b.name.casefold(): b for b in user_bills(db, user)}
+    budgeting.settle(db, user, clock.today())
     for spec in diff.added:
         upsert(db, clock, user, spec)
     for _old, spec in diff.changed:
@@ -76,5 +77,5 @@ def apply_diff(
             by_name[spec.key()].active = False
             removed += 1
     db.flush()
-    budgeting.start_saving(db, user, clock.today())
+    budgeting.follow_bills(db, user, clock.today())
     return ApplyResult(len(diff.added), len(diff.changed), removed)

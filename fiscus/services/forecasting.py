@@ -135,18 +135,14 @@ def estimates(db: Session, user: User, today: date) -> list[Estimate]:
             name = cats[cid].name if cid in cats else 'Uncategorised'
             out.append(Estimate(cid, name, monthly, 'average'))
             seen.add(cid)
-    # Bills are forecast from their own dates and paid out of the budget, so
-    # only the part of a spending budget beyond its bills is added here.
-    in_bills = budgeting.bills_by_category(db, user, today, today, one_offs=False)
+    # Bills are forecast from their own dates, so a spending budget adds only
+    # what it budgets on top of them, which is all that is stored (D64).
     for cid, b in budgets.items():
         cat = cats.get(cid)
-        if cat is None:
+        if cat is None or (not cat.is_income and not b.monthly_cents):
             continue
-        if cat.is_income:
-            out.append(Estimate(cid, cat.name, b.monthly_cents, 'budget'))
-        else:
-            rest = max(0, b.monthly_cents - in_bills.get(cid, 0))
-            out.append(Estimate(cid, cat.name, -rest, 'budget'))
+        sign = 1 if cat.is_income else -1
+        out.append(Estimate(cid, cat.name, sign * b.monthly_cents, 'budget'))
     out.sort(key=lambda e: e.monthly_cents)
     return out
 
@@ -281,6 +277,7 @@ def still_to_spend(db: Session, user: User, today: date, days: int) -> list[int]
     }
     horizon = today + timedelta(days=days)
     first = today + timedelta(days=1)
+    recurring = budgeting.bills_by_category(db, user, start, end, one_offs=False)
     unpaid: dict[int, list[tuple[date, date, int]]] = defaultdict(list)
     for occ in bills.occurrences(
         db, user, today - timedelta(days=bills.OVERDUE_CARRY_DAYS), horizon, today
@@ -291,7 +288,7 @@ def still_to_spend(db: Session, user: User, today: date, days: int) -> list[int]
     lines = [
         BudgetLine(
             left_cents=r.remaining_cents,
-            monthly_cents=r.budget_cents,
+            monthly_cents=r.estimate_cents + recurring.get(r.category.id, 0),
             per_day=per_day.get(r.category.id, Fraction(0)),
             bills=tuple(unpaid.get(r.category.id, ())),
             saved=r.saving,
