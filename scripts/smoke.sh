@@ -29,6 +29,10 @@ for _ in $(seq 1 30); do
 done
 curl -fsS "http://localhost:${PORT}/readyz" | grep -q '"status":"ready"' || { docker logs "$NAME"; exit 1; }
 
+echo "reports the version in VERSION"
+version=$(tr -d '[:space:]' < "$(dirname "$0")/../VERSION")
+grep -q "\"version\":\"${version}\"" <<< "$(curl -fsS "http://localhost:${PORT}/readyz")"
+
 echo "serves the sign-in page"
 page=$(curl -fsS "http://localhost:${PORT}/login")
 grep -q 'Sign in with a passkey' <<< "$page"

@@ -3,7 +3,8 @@
 ## Authentication
 
 - **Passkeys** through py_webauthn. Registration asks for a discoverable
-  credential (`residentKey: required`) with user verification preferred.
+  credential (`residentKey: required`), and registration and sign-in require
+  user verification (D60): a face, fingerprint, PIN or screen lock.
   Sign-in offers usernameless (conditional autofill and a button) and
   username-first. An unknown username gets a response the same shape as a
   known one.
@@ -31,7 +32,9 @@
 
 - Server-side sessions; the cookie holds a random token, the table its
   SHA-256. `__Host-` prefixed, `Secure`, `HttpOnly`, `SameSite=Lax`. Idle
-  expiry 30 days (sliding), absolute 90.
+  expiry 30 days (sliding), absolute 90. Revoking a passkey ends every other
+  session, a recovery link ends them all, and Settings or `cli sign-out` end
+  them by hand (D56).
 - Every request re-checks the user is active (no screen disables anyone since
   D52; a recovery link from the CLI re-enables).
 - CSRF: a `__Host-` cookie, `SameSite=Strict`, compared in constant time with
@@ -45,8 +48,11 @@
   and `no-store` (JSON instead for a script's request); nothing is saved (the
   request's session rolls back).
 - Rate limits on `/auth/*` and `/setup/*` per IP and per username.
+- A request body over 64 MB is refused with 413 before it is read into
+  memory (D62).
 - Client IPs come from `X-Forwarded-For` only when the peer is in
-  `FISCUS_TRUSTED_PROXIES`.
+  `FISCUS_TRUSTED_PROXIES`. Compose publishes the port on `127.0.0.1` by
+  default, so only the proxy on the same host reaches it (D61).
 - Headers: strict CSP, `X-Frame-Options: DENY`, `nosniff`,
   `Referrer-Policy: same-origin`, HSTS over HTTPS, `no-store` on everything
   but static assets.

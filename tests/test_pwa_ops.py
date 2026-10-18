@@ -6,14 +6,16 @@ import os
 import re
 import socket
 import sqlite3
+import tomllib
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
 from sqlalchemy import select
 
-from fiscus import jobs
+from fiscus import __version__, jobs
 from fiscus.models import NotificationLog, UserSettings
 from fiscus.routes.pwa import shell_assets
 from fiscus.services import backup, ntfy, reminders
@@ -369,6 +371,17 @@ def test_health_and_ready(env: Env) -> None:
     assert c.get('/healthz').json() == {'status': 'ok'}
     ready = c.get('/readyz').json()
     assert ready['status'] == 'ready' and all(ready['checks'].values())
+
+
+def test_one_version(env: Env) -> None:
+    # VERSION is the only place it is set; the Release workflow publishes under it.
+    root = Path(__file__).resolve().parent.parent
+    assert re.fullmatch(r'\d+\.\d+\.\d+\S*', __version__)
+    assert __version__ == (root / 'VERSION').read_text().strip()
+    pyproject = tomllib.loads((root / 'pyproject.toml').read_text())
+    assert 'version' not in pyproject['project']
+    assert pyproject['tool']['setuptools']['dynamic']['version'] == {'file': 'VERSION'}
+    assert env.client().get('/readyz').json()['version'] == __version__
 
 
 def test_housekeeping_removes_stale_uploads(env: Env) -> None:

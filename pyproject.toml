@@ -1,6 +1,7 @@
 [project]
 name = "fiscus"
-version = "0.1.0"
+# Set in VERSION at the root, the one place it is kept.
+dynamic = ["version"]
 description = "Self-hosted personal finance tracker for an Australian household"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -37,6 +38,9 @@ dev = [
 [build-system]
 requires = ["setuptools==80.9.0"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools.dynamic]
+version = { file = "VERSION" }
 
 [tool.setuptools.packages.find]
 include = ["fiscus*"]

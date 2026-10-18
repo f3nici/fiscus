@@ -6,6 +6,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -24,8 +27,6 @@ jobs:
     name: Build, smoke test and push the image
     runs-on: ubuntu-latest
     needs: check
-    permissions:
-      contents: read
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -60,16 +61,20 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # main is `beta`, other branches their own name. `latest` is moved only
+      # by the Release workflow, so it is always a release.
       - name: Tags
         if: steps.creds.outputs.present == 'true' && github.event_name != 'pull_request'
         id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ${{ env.REGISTRY_IMAGE }}
+          flavor: latest=false
           tags: |
             type=sha,format=long
-            type=ref,event=branch
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch,enable=${{ github.ref_name != github.event.repository.default_branch }}
+            type=raw,value=beta,enable={{is_default_branch}}
+          labels: org.opencontainers.image.licenses=PolyForm-Noncommercial-1.0.0
 
       - name: Push
         if: steps.creds.outputs.present == 'true' && github.event_name != 'pull_request'
