@@ -8,9 +8,10 @@
         <li>
           <span class="grow"><a class="title" href="/bills/{{ o.bill.id }}">{{ o.bill.name }}</a><span class="text-xs muted">was due {{ o.due | d }}</span></span>
           {{ money_cell(-o.bill.amount_cents) }}
-          <form class="inline" method="post" action="/bills/{{ o.bill.id }}/occurrence/{{ o.due.isoformat() }}/paid">
+          <form class="{{ 'row put-aside paid-at' if o.bill.varies else 'inline' }}" method="post" action="/bills/{{ o.bill.id }}/occurrence/{{ o.due.isoformat() }}/paid">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <input type="hidden" name="back" value="{{ back }}">
+            {% if o.bill.varies %}<input class="input" name="amount" inputmode="decimal" value="{{ o.bill.amount_cents | money_plain }}" aria-label="Amount paid for {{ o.bill.name }}">{% endif %}
             <button class="btn btn-sm" type="submit">Mark paid</button>
           </form>
         </li>

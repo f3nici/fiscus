@@ -343,6 +343,9 @@ class Bill(Base, Owned):
         ForeignKey('categories.id', ondelete='SET NULL'), nullable=True
     )
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Power, water, gas: each is paid at what it came to, and the amount
+    # becomes the average of the last three paid (D66).
+    varies: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime)
 
 

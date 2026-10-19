@@ -22,6 +22,7 @@ from fiscus.forms import (
     text,
 )
 from fiscus.models import FREQUENCIES, Account, Bill, Category, Transaction, User
+from fiscus.money import fmt
 from fiscus.services import bills as svc
 from fiscus.services import budgeting, ledger
 from fiscus.services.access import get_owned, maybe_owned
@@ -38,6 +39,17 @@ FREQ_LABELS = {
     'yearly': 'Yearly',
     'one_off': 'One-off',
 }
+
+
+def _expects(bill: Bill, paid: list[int]) -> str:
+    """'. It now expects $312.40, the average of the last 3 paid', for a flash
+    message once a bill that varies has its average (D66)."""
+    if not paid:
+        return ''
+    which = (
+        'what was paid last time' if len(paid) == 1 else f'the average of the last {len(paid)} paid'
+    )
+    return f'. It now expects {fmt(bill.amount_cents)}, {which}'
 
 
 @router.get('/bills')
@@ -151,6 +163,7 @@ async def save_bill(
     acct = maybe_owned(db, Account, int_or(f('account_id')), user)
     cat = maybe_owned(db, Category, int_or(f('category_id')), user)
     today = c.clock.today()
+    was_varying = bill.varies if bill else False
     # Saved-up lines keep what their bills gave them so far (D64).
     touched = {cat.id if cat else None, bill.category_id if bill else None}
     budgeting.settle(db, user, today, {cid for cid in touched if cid is not None})
@@ -172,9 +185,13 @@ async def save_bill(
     bill.account_id = acct.id if acct else None
     bill.category_id = cat.id if cat else None
     bill.active = ('active' in form) if bill_id else True
+    bill.varies = 'varies' in form
     db.flush()
+    # Turned on, it expects what was paid already; after that, a typed
+    # amount holds until the next is marked paid (D66).
+    paid = budgeting.follow_paid(db, user, bill, today) if not was_varying else []
     budgeting.follow_bills(db, user, today)
-    return redirect(f'/bills/{bill.id}', flash='Bill saved', request=request)
+    return redirect(f'/bills/{bill.id}', flash=f'Bill saved{_expects(bill, paid)}', request=request)
 
 
 @router.get('/bills/{bill_id}')
@@ -251,12 +268,24 @@ async def mark_paid(
     bill = get_owned(db, Bill, bill_id, user)
     when = _occ(db, user, bill, due)
     form = await request.form()
+    back = local_path(form.get('back'), f'/bills/{bill.id}')
+    cents = None
+    raw = form.get('amount')
+    if bill.varies and isinstance(raw, str) and raw.strip():
+        # What it came to this time (D66); blank is what it expects.
+        try:
+            cents = money(raw, 'Amount paid', allow_negative=False)
+            if cents == 0:
+                raise FormError('Amount paid: enter more than zero')
+        except FormError as exc:
+            return redirect(back, flash=str(exc), request=request)
     today = c.clock.today()
     before = ledger.balances(db, user, today)
-    svc.mark_paid(db, c.clock, user, bill, when)
+    svc.mark_paid(db, c.clock, user, bill, when, cents)
+    expects = _expects(bill, budgeting.follow_paid(db, user, bill, today))
     return redirect(
-        local_path(form.get('back'), f'/bills/{bill.id}'),
-        flash=f'{bill.name} marked paid{ledger.now_at(db, user, before, today)}',
+        back,
+        flash=f'{bill.name} marked paid{expects}{ledger.now_at(db, user, before, today)}',
         request=request,
     )
 
@@ -274,10 +303,11 @@ async def mark_unpaid(
     today = ctx(request).clock.today()
     before = ledger.balances(db, user, today)
     svc.unmark(db, user, bill, when)
+    expects = _expects(bill, budgeting.follow_paid(db, user, bill, today))
     form = await request.form()
     return redirect(
         local_path(form.get('back'), f'/bills/{bill.id}'),
-        flash=f'{bill.name} marked unpaid{ledger.now_at(db, user, before, today)}',
+        flash=f'{bill.name} marked unpaid{expects}{ledger.now_at(db, user, before, today)}',
         request=request,
     )
 

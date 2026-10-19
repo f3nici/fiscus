@@ -75,7 +75,7 @@ Check it is up:
 
 ```bash
 curl https://fiscus.home.example.com/readyz
-# {"status":"ready","version":"1.0.0","build":"...","checks":{"database":true,"migrations":true,"data_dir_writable":true}}
+# {"status":"ready","version":"1.1.0","build":"...","checks":{"database":true,"migrations":true,"data_dir_writable":true}}
 ```
 
 ## First run: the bootstrap link
@@ -174,7 +174,8 @@ picker, which opens the Files app, including iCloud Drive and Downloads.
 **Desktop (Chrome, Edge)**: the install icon in the address bar.
 
 **Updates**: when a new version is deployed the app shows "A new version of
-Fiscus is ready" with a Reload button.
+Fiscus is ready" with a Reload button. The version running is at the foot of
+Settings and of the menu.
 
 ## Budget import from a spreadsheet
 
@@ -215,6 +216,13 @@ Every recurring cost lives in one place, **Bills**: rent, rates, insurance,
 strata, water, power, subscriptions. Each bill is on the calendar, in the
 forecast, and counts towards its category's budget at a monthly rate (weekly
 x 52 / 12, quarterly / 3 and so on). You never enter a cost twice.
+
+A bill that comes to something different each time (power, water, gas) is
+marked **The amount varies**. Marking it paid then asks what it came to, and
+its amount becomes the average of the last 3 paid (of those paid so far, at
+first), which the budget, the forecast and the calendar expect from then on.
+Ticked on a bill already paid, it takes the average at once. A new price
+typed in is used until the next one is marked paid.
 
 Type bills in one at a time, or Bills, **Import**, and upload a CSV or JSON
 file. Download a template from that page in either format.

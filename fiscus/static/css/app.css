@@ -310,6 +310,9 @@ tbody.group tr:not(.group-head) > td:first-child { box-shadow: inset 3px 0 0 rgb
   form.card.row > .input { flex: 1; width: auto; max-width: none; }
   .row > .input[type=search] { flex-basis: 100%; }
   .row > .input.grow { min-width: 8rem; }
+  /* What a bill that varies came to goes on a line of its own (D66). */
+  .list li:has(> .paid-at) { flex-wrap: wrap; }
+  .paid-at { flex-basis: 100%; justify-content: flex-end; }
 }
 
 /* A save returns to the line or form it changed; clear the sticky top bar. */

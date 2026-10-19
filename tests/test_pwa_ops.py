@@ -382,6 +382,10 @@ def test_one_version(env: Env) -> None:
     assert 'version' not in pyproject['project']
     assert pyproject['tool']['setuptools']['dynamic']['version'] == {'file': 'VERSION'}
     assert env.client().get('/readyz').json()['version'] == __version__
+    # Settings and the menu say what is running.
+    client = env.login(env.user('alex'))
+    for path in ('/settings', '/more'):
+        assert f'Fiscus {__version__}</p>' in client.get(path).text, path
 
 
 def test_housekeeping_removes_stale_uploads(env: Env) -> None:

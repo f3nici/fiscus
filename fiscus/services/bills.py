@@ -1,7 +1,8 @@
 """Bills: occurrences and their status.
 
 An occurrence is paid by marking it paid by hand, which takes it off the
-bill's account (D42).
+bill's account (D42). A bill whose amount varies is marked paid at what it
+came to, and expects the average of its last three paid (D66).
 """
 
 from __future__ import annotations
@@ -19,6 +20,8 @@ from fiscus.services import ledger
 from fiscus.services.access import owned
 
 DUE_SOON_DAYS = 7
+# A bill whose amount varies expects the average of this many paid (D66).
+AVERAGE_OF = 3
 # Unpaid this far back is still owed: the forecast pays it tomorrow, and the
 # budget's saved-up lines and the agenda count it.
 OVERDUE_CARRY_DAYS = 62
@@ -91,8 +94,11 @@ def overdue(db: Session, user: User, today: date) -> list[Occurrence]:
     ]
 
 
-def mark_paid(db: Session, clock: Clock, user: User, bill: Bill, due: date) -> BillPayment:
-    """Mark an occurrence paid by hand, today. It comes off the bill's account
+def mark_paid(
+    db: Session, clock: Clock, user: User, bill: Bill, due: date, cents: int | None = None
+) -> BillPayment:
+    """Mark an occurrence paid by hand, today, at `cents` (what a bill that
+    varies came to, D66) or the bill's amount. It comes off the bill's account
     today (D42), as the forecast had it."""
     existing = db.execute(
         select(BillPayment).where(
@@ -108,7 +114,7 @@ def mark_paid(db: Session, clock: Clock, user: User, bill: Bill, due: date) -> B
         user_id=user.id,
         due_date=due,
         paid_on=clock.today(),
-        amount_cents=bill.amount_cents,
+        amount_cents=bill.amount_cents if cents is None else cents,
         created_at=utcnow_naive(clock),
     )
     db.add(pay)
@@ -139,6 +145,18 @@ def unmark(db: Session, user: User, bill: Bill, due: date) -> bool:
         return False
     db.delete(existing)
     return True
+
+
+def last_paid(db: Session, user: User, bill: Bill) -> list[int]:
+    """What the bill's last AVERAGE_OF occurrences were paid at, latest due first."""
+    return list(
+        db.execute(
+            select(BillPayment.amount_cents)
+            .where(BillPayment.bill_id == bill.id, BillPayment.user_id == user.id)
+            .order_by(BillPayment.due_date.desc())
+            .limit(AVERAGE_OF)
+        ).scalars()
+    )
 
 
 def is_occurrence(bill: Bill, due: date) -> bool:
