@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import icon with context %}
 {% block title %}Settings{% endblock %}
 {% block content %}
   <h1>Settings</h1>
@@ -115,6 +116,37 @@
           </form>
         {% endif %}
       </div>
+    </div>
+
+    <div class="card" id="tabs">
+      <h2>Bottom tabs</h2>
+      <p class="muted text-sm">The bar along the bottom on a phone, and in the app once installed. Keep two to five screens there, in this order; every screen is in the menu too.</p>
+      {% if tabs_error %}<div class="alert alert-error">{{ tabs_error }}</div>{% endif %}
+      <form method="post" action="/settings/tabs">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <ol class="list tab-list">
+          {% for t in tab_editor.tabs %}
+            <li>
+              <span class="tab-name">{{ icon(t.screen.icon) }} {{ t.screen.label }}</span>
+              <span class="row order-btns">
+                <button class="btn btn-sm" type="submit" name="change" value="earlier:{{ t.screen.key }}" aria-label="Move {{ t.screen.label }} earlier" {{ 'disabled' if not t.earlier }}>↑</button>
+                <button class="btn btn-sm" type="submit" name="change" value="later:{{ t.screen.key }}" aria-label="Move {{ t.screen.label }} later" {{ 'disabled' if not t.later }}>↓</button>
+                <button class="btn btn-sm" type="submit" name="change" value="remove:{{ t.screen.key }}" aria-label="Take {{ t.screen.label }} off the tabs" {{ 'disabled' if not t.remove }}>Remove</button>
+              </span>
+            </li>
+          {% endfor %}
+        </ol>
+        <h3 class="mt">Add a tab</h3>
+        {% if tab_editor.full %}<p class="muted text-xs">Five is the most that fit. Remove one to add another.</p>{% endif %}
+        <div class="row">
+          {% for s in tab_editor.others %}
+            <button class="btn btn-sm" type="submit" name="change" value="add:{{ s.key }}" {{ 'disabled' if tab_editor.full }}>+ {{ s.label }}</button>
+          {% endfor %}
+        </div>
+        {% if not tab_editor.is_default %}
+          <button class="btn btn-sm mt" type="submit" name="change" value="reset">Back to the usual tabs</button>
+        {% endif %}
+      </form>
     </div>
 
     {% if user.is_admin %}

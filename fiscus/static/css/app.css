@@ -32,7 +32,7 @@
 }
 
 * { box-sizing: border-box; }
-html { background: var(--deep); color: #fff; -webkit-font-smoothing: antialiased; -webkit-text-size-adjust: 100%; }
+html { background: var(--deep); color: #fff; -webkit-font-smoothing: antialiased; -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; }
 body { margin: 0; font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.5; background: var(--deep); min-height: 100vh; }
 h1, h2, h3 { font-weight: 600; line-height: 1.25; margin: 0 0 0.5rem; letter-spacing: -0.01em; }
 h1 { font-size: 1.5rem; }
@@ -65,14 +65,59 @@ small, .muted { color: var(--mid); }
 .between { justify-content: space-between; }
 .grow { flex: 1; min-width: 0; }
 
-.bottom-nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; display: flex; justify-content: space-around; background: rgba(26, 26, 26, 0.96); border-top: 1px solid var(--line); padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); backdrop-filter: blur(8px); }
-.bottom-nav a { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; color: var(--mid); padding: 4px 0; border-radius: 10px; }
+/* Pressed things answer the finger, in place of the browser's blue flash. */
+a, button, summary, label { touch-action: manipulation; }
+
+.icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; margin: -6px -10px -6px 0; padding: 0; border: none; border-radius: var(--radius); background: none; color: #fff; cursor: pointer; transition: background-color 0.15s, transform 0.12s; }
+.icon-btn:hover { text-decoration: none; }
+.icon-btn:active { background: rgba(255, 255, 255, 0.12); transform: scale(0.92); }
+.icon-btn svg { width: 24px; height: 24px; }
+
+.bottom-nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; display: flex; justify-content: space-around; background: rgba(26, 26, 26, 0.96); border-top: 1px solid var(--line); padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); backdrop-filter: blur(8px); -webkit-user-select: none; user-select: none; }
+.bottom-nav a { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; color: var(--mid); padding: 2px 0; -webkit-touch-callout: none; transition: color 0.2s; }
 .bottom-nav a:hover { text-decoration: none; }
 .bottom-nav a.active { color: #fff; }
-.bottom-nav svg, .sidebar svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.bottom-nav a svg { box-sizing: content-box; padding: 4px 16px; border-radius: 999px; transition: background-color 0.2s, transform 0.12s; }
+.bottom-nav a.active svg { background: rgba(37, 99, 235, 0.3); }
+.bottom-nav a:active svg { transform: scale(0.88); }
+.bottom-nav span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The icons, drawn in the text colour wherever they sit. */
+.icon-btn svg, .bottom-nav svg, .sidebar svg, .drawer svg, .more-menu svg, .tab-name svg { stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+.bottom-nav svg, .sidebar svg, .drawer svg { width: 22px; height: 22px; }
+
+/* The menu: a panel from the right, every screen in it (D67). */
+dialog.drawer { position: fixed; inset: 0 0 0 auto; margin: 0; width: min(320px, 86vw); max-width: none; height: 100%; max-height: none; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); border: none; border-left: 1px solid var(--line-strong); background: var(--deep); color: #fff; overflow: hidden; touch-action: pan-y; transition: transform 0.24s cubic-bezier(0.4, 0, 1, 1); }
+dialog.drawer[open] { display: flex; flex-direction: column; animation: drawer-in 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); }
+dialog.drawer::backdrop { background: rgba(0, 0, 0, 0.55); animation: fade-in 0.3s ease; transition: opacity 0.24s; }
+dialog.drawer.closing { transform: translateX(100%); }
+dialog.drawer.closing::backdrop { opacity: 0; }
+dialog.drawer.dragging { transition: none; }
+html.drawer-open { overflow: hidden; }
+.drawer-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+.drawer-nav { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 8px; display: flex; flex-direction: column; gap: 2px; }
+.drawer-nav a, .drawer-signout { display: flex; align-items: center; gap: 14px; padding: 11px 12px; border-radius: var(--radius); color: #e5e5e5; font-size: 1rem; -webkit-touch-callout: none; transition: background-color 0.15s; }
+.drawer-nav a:hover { text-decoration: none; }
+/* Only where there is a pointer to hover: a tap leaves :hover behind. */
+@media (hover: hover) {
+  .icon-btn:hover, .drawer-nav a:hover, .drawer-signout:hover { background: rgba(255, 255, 255, 0.06); }
+}
+.drawer-nav a:active, .drawer-signout:active { background: rgba(255, 255, 255, 0.1); }
+.drawer-nav a.active { background: rgba(37, 99, 235, 0.2); color: #fff; }
+.drawer-nav .section { margin: 14px 12px 4px; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--mid); }
+.drawer-signout { width: 100%; border: none; background: none; font: inherit; text-align: left; cursor: pointer; }
+.drawer-foot { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 12px 20px 16px; border-top: 1px solid var(--line); }
+.drawer-foot p { margin: 0; }
+@keyframes drawer-in { from { transform: translateX(100%); } }
+@keyframes fade-in { from { opacity: 0; } }
+
+/* Runs along the top while a page is on its way. */
+.nav-progress { position: fixed; top: env(safe-area-inset-top); left: 0; z-index: 60; width: 100%; height: 3px; pointer-events: none; background: linear-gradient(90deg, var(--primary), var(--accent)); transform-origin: 0 50%; transform: scaleX(0); animation: nav-progress 6s cubic-bezier(0.1, 0.7, 0.3, 1) 80ms forwards; }
+.nav-progress.done { transform: scaleX(1); opacity: 0; animation: none; transition: transform 0.2s, opacity 0.25s 0.15s; }
+@keyframes nav-progress { 0% { transform: scaleX(0); } 8% { transform: scaleX(0.35); } 100% { transform: scaleX(0.92); } }
 
 .more-menu { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
-.more-menu a { display: block; padding: 14px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); color: #fff; }
+.more-menu a { display: flex; align-items: center; gap: 10px; padding: 14px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); color: #fff; }
+.more-menu svg { width: 20px; height: 20px; }
 
 @media (min-width: 900px) {
   .sidebar { display: flex; flex-direction: column; gap: 2px; width: 232px; flex-shrink: 0; padding: 16px 12px; border-right: 1px solid var(--line); position: sticky; top: 0; height: 100vh; overflow-y: auto; }
@@ -121,8 +166,9 @@ input.input-day { width: 5.5rem; }
   .stats .value { font-size: 1.6rem; }
 }
 
-.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: var(--radius); padding: 9px 16px; font: inherit; font-size: 0.875rem; font-weight: 500; border: 1px solid transparent; cursor: pointer; color: #fff; background: rgba(255, 255, 255, 0.05); border-color: var(--line); transition: background-color 0.15s; min-height: 40px; text-decoration: none; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: var(--radius); padding: 9px 16px; font: inherit; font-size: 0.875rem; font-weight: 500; border: 1px solid transparent; cursor: pointer; color: #fff; background: rgba(255, 255, 255, 0.05); border-color: var(--line); transition: background-color 0.15s, transform 0.12s; min-height: 40px; text-decoration: none; }
 .btn:hover { background: rgba(255, 255, 255, 0.1); text-decoration: none; }
+.btn:active:not(:disabled) { transform: scale(0.97); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-primary { background: var(--primary); border-color: var(--primary); }
 .btn-primary:hover { background: var(--primary-hover); }
@@ -318,3 +364,40 @@ tbody.group tr:not(.group-head) > td:first-child { box-shadow: inset 3px 0 0 rgb
 /* A save returns to the line or form it changed; clear the sticky top bar. */
 [id] { scroll-margin-top: calc(72px + env(safe-area-inset-top)); }
 @media (min-width: 900px) { [id] { scroll-margin-top: 16px; } }
+
+/* Bottom tabs in Settings: one screen to a line, its buttons beside it. */
+.tab-list li { flex-wrap: wrap; }
+.tab-name { display: flex; align-items: center; gap: 10px; }
+.tab-name svg { width: 20px; height: 20px; }
+.tab-list .order-btns { margin-bottom: 0; }
+
+/*
+ * Moving to another screen (D67): the page slides the way along the tabs it
+ * went, forward from the right and back from the left, while the bars stay
+ * where they are. A phone moves it the whole width; a wide screen a little.
+ * Not at all for anyone who has asked for less motion.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .topbar { view-transition-name: topbar; }
+  .bottom-nav { view-transition-name: tabs; }
+  .sidebar { view-transition-name: sidebar; }
+  ::view-transition-old(root), ::view-transition-new(root) { animation-duration: 0.32s; animation-timing-function: cubic-bezier(0.3, 0, 0.1, 1); animation-fill-mode: both; }
+  ::view-transition-old(root) { animation-name: page-out-left; }
+  ::view-transition-new(root) { animation-name: page-in-right; }
+  html[data-nav-dir=back]::view-transition-old(root) { animation-name: page-out-right; }
+  html[data-nav-dir=back]::view-transition-new(root) { animation-name: page-in-left; }
+}
+@media (prefers-reduced-motion: reduce) {
+  dialog.drawer[open], dialog.drawer::backdrop { animation: none; }
+  dialog.drawer, dialog.drawer::backdrop { transition: none; }
+}
+@keyframes page-out-left { to { transform: translateX(-100%); } }
+@keyframes page-in-right { from { transform: translateX(100%); } }
+@keyframes page-out-right { to { transform: translateX(100%); } }
+@keyframes page-in-left { from { transform: translateX(-100%); } }
+@media (min-width: 900px) {
+  @keyframes page-out-left { to { transform: translateX(-48px); opacity: 0; } }
+  @keyframes page-in-right { from { transform: translateX(48px); opacity: 0; } }
+  @keyframes page-out-right { to { transform: translateX(48px); opacity: 0; } }
+  @keyframes page-in-left { from { transform: translateX(-48px); opacity: 0; } }
+}

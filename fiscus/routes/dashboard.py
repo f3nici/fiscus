@@ -101,6 +101,8 @@ def dashboard(request: Request, user: User = Depends(current_user), db: Session 
     )
 
 
+# The menu as a page, where the menu button goes if its script never ran; it
+# opens the menu as a panel otherwise (D67).
 @router.get('/more')
 def more(request: Request, user: User = Depends(current_user)) -> Response:
     return render(request, 'more.html')

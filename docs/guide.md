@@ -154,6 +154,12 @@ full-screen with a bottom navigation bar, like a native app. The app shell is
 cached; your figures never are. Offline, it shows an offline screen rather
 than old numbers.
 
+On a phone the bar holds two to five screens of your choosing, in your order:
+**Settings, Bottom tabs** (or **Choose the bottom tabs** at the foot of the
+menu). Every screen is in the menu, the button at the top right. Pages slide
+in from the side their tab is on; with Reduce Motion turned on in the phone's
+settings they change without moving.
+
 **iPhone and iPad (Safari)**
 
 1. Open your Fiscus address in **Safari** and sign in.

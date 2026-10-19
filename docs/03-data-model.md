@@ -16,7 +16,7 @@ user's `data_version` (the forecast cache key).
 | auth_challenges | WebAuthn challenge by opaque handle, purpose, five-minute expiry, deleted on first use |
 | audit_log | append-only (triggers refuse UPDATE and DELETE) |
 | app_state | small key/value for instance state |
-| user_settings (owned) | low-balance threshold, forecast horizon, spending account, ntfy settings (`ntfy_payslips`: a payday passed without a payslip), `budget_start_day` (the budget month runs from this day), `chart_lines` (forecast chart lines turned off or on in its legend, JSON, D50) |
+| user_settings (owned) | low-balance threshold, forecast horizon, spending account, ntfy settings (`ntfy_payslips`: a payday passed without a payslip), `budget_start_day` (the budget month runs from this day), `chart_lines` (forecast chart lines turned off or on in its legend, JSON, D50), `tabs` (the screens on the bottom tabs in order, a JSON list of keys, empty for the default, D67) |
 
 ## Money
 

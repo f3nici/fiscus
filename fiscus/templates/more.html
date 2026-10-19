@@ -1,18 +1,12 @@
 {% extends "base.html" %}
+{% from "_macros.html" import icon with context %}
 {% block title %}Menu{% endblock %}
 {% block content %}
   <h1>Menu</h1>
   <div class="more-menu mt">
-    <a href="/accounts">Accounts</a>
-    <a href="/pay">Pay and payslips</a>
-    <a href="/budget">Budget</a>
-    <a href="/goals">Goals</a>
-    <a href="/forecast">Forecast</a>
-    <a href="/scenarios">Scenarios</a>
-    <a href="/loans">Home loan</a>
-    <a href="/tax">Tax</a>
-    <a href="/categories">Categories</a>
-    <a href="/settings">Settings</a>
+    {% for s in screens %}
+      <a href="{{ s.href }}">{{ icon(s.icon) }} {{ s.label }}</a>
+    {% endfor %}
   </div>
   <form class="mt" method="post" action="/auth/logout" hx-boost="false">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

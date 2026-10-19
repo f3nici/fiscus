@@ -29,27 +29,19 @@
   </head>
   <body hx-boost="true" hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'>
     {% block body %}
-      {% set nav = [
-        ('/', 'Dashboard', 'home'),
-        ('/calendar', 'Calendar', 'calendar'),
-        ('/accounts', 'Accounts', 'wallet'),
-        ('/bills', 'Bills', 'receipt'),
-        ('/pay', 'Pay', 'cash'),
-        ('/budget', 'Budget', 'pie'),
-        ('/goals', 'Goals', 'target'),
-        ('/forecast', 'Forecast', 'chart'),
-        ('/loans', 'Home loan', 'house'),
-        ('/tax', 'Tax', 'percent'),
-        ('/categories', 'Categories', 'tag'),
-      ] %}
+      {% macro nav_link(s) -%}
+        <a href="{{ s.href }}" data-nav="{{ s.match | join(' ') }}"{% if s.current(path) %} class="active" aria-current="page"{% endif %}>{{ icon(s.icon) }}{{ caller() }}</a>
+      {%- endmacro %}
       <div class="shell">
         <nav class="sidebar" aria-label="Main">
           <a class="brand" href="/"><img src="/static/icons/icon-192.png" alt=""> Fiscus</a>
-          {% for href, label, ic in nav %}
-            <a href="{{ href }}" class="{{ 'active' if (href == '/' and path == '/') or (href != '/' and path.startswith(href)) else '' }}">{{ icon(ic) }} {{ label }}</a>
+          {% for s in screens if not s.you %}
+            {% call nav_link(s) %} {{ s.label }}{% endcall %}
           {% endfor %}
           <div class="section">You</div>
-          <a href="/settings" class="{{ 'active' if path.startswith('/settings') else '' }}">{{ icon('cog') }} Settings</a>
+          {% for s in screens if s.you %}
+            {% call nav_link(s) %} {{ s.label }}{% endcall %}
+          {% endfor %}
           <form method="post" action="/auth/logout" hx-boost="false">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button class="btn btn-link text-sm" type="submit">Sign out {{ user.display_name if user else '' }}</button>
@@ -58,7 +50,7 @@
         <div class="grow">
           <header class="topbar">
             <a class="brand" href="/"><img src="/static/icons/icon-192.png" alt=""> Fiscus</a>
-            <a class="btn btn-sm" href="/more">Menu</a>
+            <a class="icon-btn" href="/more" hx-boost="false" role="button" data-drawer-open aria-controls="drawer" aria-expanded="false" aria-label="Menu">{{ icon('menu') }}</a>
           </header>
           <main class="main" id="main">
             {% if flash %}<div data-flash class="hidden">{{ flash }}</div>{% endif %}
@@ -66,11 +58,34 @@
           </main>
         </div>
       </div>
-      <nav class="bottom-nav" aria-label="Quick">
-        {% for href, label, ic in [('/', 'Home', 'home'), ('/calendar', 'Calendar', 'calendar'), ('/budget', 'Budget', 'pie'), ('/bills', 'Bills', 'receipt'), ('/more', 'More', 'menu')] %}
-          <a href="{{ href }}" class="{{ 'active' if (href == '/' and path == '/') or (href != '/' and path.startswith(href)) else '' }}">{{ icon(ic) }}<span>{{ label }}</span></a>
+      <nav class="bottom-nav" aria-label="Tabs">
+        {% for s in tabs %}
+          {% call nav_link(s) %}<span>{{ s.tab_label }}</span>{% endcall %}
         {% endfor %}
       </nav>
+      <dialog class="drawer" id="drawer" aria-label="Menu">
+        <div class="drawer-head">
+          <a class="brand" href="/"><img src="/static/icons/icon-192.png" alt=""> Fiscus</a>
+          <button class="icon-btn" type="button" data-drawer-close aria-label="Close the menu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+        </div>
+        <nav class="drawer-nav" aria-label="Menu">
+          {% for s in screens if not s.you %}
+            {% call nav_link(s) %}<span>{{ s.label }}</span>{% endcall %}
+          {% endfor %}
+          <div class="section">You{% if user %} · {{ user.display_name }}{% endif %}</div>
+          {% for s in screens if s.you %}
+            {% call nav_link(s) %}<span>{{ s.label }}</span>{% endcall %}
+          {% endfor %}
+          <form method="post" action="/auth/logout" hx-boost="false">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="drawer-signout" type="submit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4H5v16h4M14 8l4 4-4 4M18 12H9"/></svg><span>Sign out</span></button>
+          </form>
+        </nav>
+        <div class="drawer-foot">
+          <a class="text-sm" href="/settings#tabs">Choose the bottom tabs</a>
+          <p class="muted text-xs">Fiscus {{ version }}</p>
+        </div>
+      </dialog>
     {% endblock %}
   </body>
 </html>

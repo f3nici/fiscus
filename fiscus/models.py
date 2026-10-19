@@ -184,6 +184,8 @@ class UserSettings(Base, Owned):
     # Forecast chart lines turned off or on in its legend, as JSON
     # {"trend": false, "account:3": true}; the rest show as drawn (D50).
     chart_lines: Mapped[str] = mapped_column(Text, default='{}')
+    # The bottom tabs, a JSON list of screen keys; empty is the default (D67).
+    tabs: Mapped[str] = mapped_column(Text, default='')
 
 
 # ---------------------------------------------------------------- accounts etc.
