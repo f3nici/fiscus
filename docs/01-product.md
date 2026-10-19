@@ -36,7 +36,7 @@ and is used mostly from phones as an installed PWA.
 | Dashboard | Overdue bills, balances, unbudgeted money and what is left in each budget, the next 14 days, budget status, tax position, offset savings and a 3-month sparkline with any low-balance warning. |
 | PWA | Installable on iOS, Android and desktop. The service worker caches the app shell only; offline shows an offline screen. Bottom navigation when installed. Update prompt. |
 | Reminders | Optional ntfy pushes, through ntfy.sh or a server of your own, for bills due soon, overdue bills, low balances and paydays without a payslip. |
-| Ops | One container, a named volume, health and ready checks, nightly backups with retention, download from Settings, CLI restore, recovery links and removing a person. |
+| Ops | One container, a named volume, health and ready checks, nightly backups with retention, download from Settings, CLI restore, recovery links and removing a person. The version running is at the foot of Settings and the menu. |
 
 ## Out of scope for v1
 

@@ -75,7 +75,7 @@ Check it is up:
 
 ```bash
 curl https://fiscus.home.example.com/readyz
-# {"status":"ready","version":"1.0.0","build":"...","checks":{"database":true,"migrations":true,"data_dir_writable":true}}
+# {"status":"ready","version":"1.1.0","build":"...","checks":{"database":true,"migrations":true,"data_dir_writable":true}}
 ```
 
 ## First run: the bootstrap link
@@ -174,7 +174,8 @@ picker, which opens the Files app, including iCloud Drive and Downloads.
 **Desktop (Chrome, Edge)**: the install icon in the address bar.
 
 **Updates**: when a new version is deployed the app shows "A new version of
-Fiscus is ready" with a Reload button.
+Fiscus is ready" with a Reload button. The version running is at the foot of
+Settings and of the menu.
 
 ## Budget import from a spreadsheet
 
