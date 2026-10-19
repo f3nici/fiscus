@@ -938,3 +938,44 @@ def test_a_budget_keeps_only_what_is_on_top_of_its_bills(tmp_path: Path) -> None
         )
     assert back == {1: 5317, 2: 60000, 3: 7500, 4: 20000, 5: 12140, 6: 15417, 7: 500000}
     engine.dispose()
+
+
+def test_bills_start_not_varying_and_keep_their_payments(tmp_path: Path) -> None:
+    """0032 (D66) adds whether a bill varies, off for every bill; going back
+    drops it and leaves the payments that point at bills."""
+    url = f'sqlite:///{tmp_path / "fiscus.db"}'
+    cfg = alembic_config(url)
+    command.upgrade(cfg, '0031')
+    engine = create_engine(url)
+    with engine.begin() as c:
+        c.execute(
+            text(
+                'INSERT INTO users (id, username, display_name, is_admin, is_active,'
+                " user_handle, data_version, created_at) VALUES (1, 'alex', 'Alex', 1, 1, :h,"
+                " 0, '2026-01-01')"
+            ),
+            {'h': bytes([1]) * 64},
+        )
+        c.execute(
+            text(
+                'INSERT INTO bills (id, user_id, name, amount_cents, frequency, next_due,'
+                " active, created_at) VALUES (1, 1, 'Power', 30000, 'quarterly',"
+                " '2026-07-01', 1, '2026-01-01')"
+            )
+        )
+        c.execute(
+            text(
+                'INSERT INTO bill_payments (id, bill_id, user_id, due_date, paid_on,'
+                " amount_cents, created_at) VALUES (1, 1, 1, '2026-07-01', '2026-07-01',"
+                " 31250, '2026-07-01')"
+            )
+        )
+    command.upgrade(cfg, '0032')
+    with engine.connect() as c:
+        assert c.execute(text('SELECT varies, amount_cents FROM bills')).one() == (0, 30000)
+    command.downgrade(cfg, '0031')
+    cols = {col['name'] for col in inspect(engine).get_columns('bills')}
+    assert 'varies' not in cols
+    with engine.connect() as c:
+        assert c.execute(text('SELECT amount_cents FROM bill_payments')).scalar_one() == 31250
+    engine.dispose()

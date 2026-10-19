@@ -29,6 +29,9 @@
       </div>
     </div>
 
+    {% set varies = ('varies' in v) if v else (bill.varies if bill else false) %}
+    <label class="check mt"><input type="checkbox" name="varies" {{ 'checked' if varies else '' }}> The amount varies (power, water, gas)</label>
+    <p class="muted text-xs">Marking it paid then asks what it came to, and its amount becomes the average of the last 3 paid, which the budget and forecast expect. An amount typed here is used until the next is paid.</p>
     {% if bill %}<label class="check mt"><input type="checkbox" name="active" {{ 'checked' if bill.active else '' }}> Active</label>{% endif %}
     <div class="row mt">
       <button class="btn btn-primary" type="submit">Save</button>

@@ -5,7 +5,7 @@
   <div class="page-head">
     <div>
       <h1>{{ bill.name }}</h1>
-      <span class="muted text-sm">{{ freq[bill.frequency] }} · {{ bill.amount_cents | money }}{% if not bill.active %} · inactive{% endif %}</span>
+      <span class="muted text-sm">{{ freq[bill.frequency] }} · {{ bill.amount_cents | money }}{% if bill.varies %}, varies{% endif %}{% if not bill.active %} · inactive{% endif %}</span>
     </div>
     <div class="row">
       <a class="btn" href="/bills/{{ bill.id }}/edit">Edit</a>
@@ -20,6 +20,7 @@
       <li><span>Paid from</span><span>{{ account.name if account else 'Your spending account' }}</span></li>
       <li><span>Category</span><span>{% if category %}<a href="/bills?category={{ category.id }}">{{ category.name }}</a>{% else %}None{% endif %}</span></li>
       {% if bill.end_date %}<li><span>Ends</span><span>{{ bill.end_date | d }}</span></li>{% endif %}
+      {% if bill.varies %}<li><span>Amount varies</span><span>Each one marked paid makes it the average of the last 3 paid</span></li>{% endif %}
     </ul>
   </div>
   <div class="card mt">
@@ -27,7 +28,7 @@
     <ul class="list">
       {% for o in occ %}
         <li>
-          <span class="grow"><span class="title">{{ o.due | d('long') }}</span>{% if o.payment %}<span class="text-xs muted">paid {{ o.payment.paid_on | d }}{{ ' (matched to a payment)' if o.payment.transaction_id else '' }}</span>{% endif %}</span>
+          <span class="grow"><span class="title">{{ o.due | d('long') }}</span>{% if o.payment %}<span class="text-xs muted">paid {{ o.payment.paid_on | d }}{{ ', ' ~ (o.amount_cents | money) if bill.varies else '' }}{{ ' (matched to a payment)' if o.payment.transaction_id else '' }}</span>{% endif %}</span>
           {{ status_pill(o.status) }}
           <button class="btn btn-sm" type="button" data-sheet="/bills/{{ bill.id }}/occurrence/{{ o.due.isoformat() }}">Details</button>
         </li>

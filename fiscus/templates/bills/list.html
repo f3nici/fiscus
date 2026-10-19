@@ -23,6 +23,7 @@
             <tr class="{{ 'muted' if not b.active else '' }}">
               <td>
                 <a href="/bills/{{ b.id }}">{{ b.name }}</a>
+                {% if b.varies %}<span class="pill">Varies</span>{% endif %}
                 {% if not b.active %}<span class="pill">Inactive</span>{% endif %}
               </td>
               <td data-label="Category">{% if b.category_id in cats %}<a href="/bills?category={{ b.category_id }}">{{ cats[b.category_id] }}</a>{% endif %}</td>

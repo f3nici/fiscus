@@ -11,7 +11,8 @@ one person, with no users page, nothing shared and no password (D52);
 accounts with balances typed in and kept by day (D39), moved by bills marked
 paid, payslips and spending taken off the budget until the next is typed in
 (D42, D45, D49); categories; bills with states, each paid from an account and
-filed under a category; pay schedules and payslips (listed ten a page); the
+filed under a category, one that varies expecting the average of its last
+three paid (D66); pay schedules and payslips (listed ten a page); the
 calendar (the month by default, D54); home loan and offset (one loan opens
 straight into it); forecasting with scenarios, its trend and what is free to
 spend as the budget has it, lines turned off staying off (D46, D47, D50,

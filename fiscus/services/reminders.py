@@ -11,7 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from fiscus.clock import Clock, utcnow_naive
-from fiscus.models import NotificationLog, User
+from fiscus.models import Bill, NotificationLog, User
 from fiscus.money import fmt
 from fiscus.services import bills, forecasting, ntfy, pay
 from fiscus.services.users import settings_for
@@ -31,6 +31,11 @@ class Reminder:
     tags: str = ''
 
 
+def _amount(bill: Bill) -> str:
+    """What a bill comes to; one that varies is its average (D66), about that."""
+    return f'about {fmt(bill.amount_cents)}' if bill.varies else fmt(bill.amount_cents)
+
+
 def due_reminders(db: Session, clock: Clock, user: User) -> list[Reminder]:
     prefs = settings_for(db, user)
     today = clock.today()
@@ -45,7 +50,7 @@ def due_reminders(db: Session, clock: Clock, user: User) -> list[Reminder]:
                         'bill_due',
                         f'{occ.bill.id}:{occ.due.isoformat()}',
                         f'{occ.bill.name} due {when}',
-                        f'{occ.bill.name}: {fmt(occ.bill.amount_cents)} due {when}.',
+                        f'{occ.bill.name}: {_amount(occ.bill)} due {when}.',
                         tags='calendar',
                     )
                 )
@@ -56,7 +61,7 @@ def due_reminders(db: Session, clock: Clock, user: User) -> list[Reminder]:
                     'overdue',
                     f'{occ.bill.id}:{occ.due.isoformat()}',
                     f'{occ.bill.name} is overdue',
-                    f'{occ.bill.name}: {fmt(occ.bill.amount_cents)} was due '
+                    f'{occ.bill.name}: {_amount(occ.bill)} was due '
                     f'{occ.due.strftime("%d %b")} and has not been marked paid.',
                     priority='high',
                     tags='warning',

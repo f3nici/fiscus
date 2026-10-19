@@ -308,6 +308,26 @@ def settle(db: Session, user: User, day: date, category_ids: set[int] | None = N
     db.flush()
 
 
+def follow_paid(db: Session, user: User, bill: Bill, day: date) -> list[int]:
+    """A bill whose amount varies expects the average of its last three paid
+    (D66), so its line's budget and the forecast use it. Its saved-up line
+    keeps what the old amount gave it, so the new one counts from the budget
+    month holding `day` (D64). Call it once a payment is in or out. Returns
+    the amounts averaged; none paid leaves the amount as it is."""
+    if not bill.varies:
+        return []
+    paid = bills.last_paid(db, user, bill)
+    if not paid:
+        return paid
+    average = round_div(sum(paid), len(paid))
+    if average != bill.amount_cents:
+        if bill.category_id is not None:
+            settle(db, user, day, {bill.category_id})
+        bill.amount_cents = average
+        db.flush()
+    return paid
+
+
 def bills_paid_by_category(db: Session, user: User, start: date, end: date) -> dict[int, int]:
     """What was paid for this person's bills due in the period, by the bill's
     category: each payment as it was marked paid, whatever the bill says now,

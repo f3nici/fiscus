@@ -2,7 +2,7 @@
 <h2>{{ o.bill.name }}</h2>
 <p class="muted">{{ o.due | d('long') }} · {{ status_pill(o.status) }}</p>
 <ul class="list">
-  <li><span>Amount</span><span class="num">{{ o.amount_cents | money }}</span></li>
+  <li><span>{{ 'Expected' if o.bill.varies and not o.payment else 'Amount' }}</span><span class="num">{{ o.amount_cents | money }}</span></li>
 </ul>
 {% set back = request.headers.get('hx-current-url', '/calendar') %}
 {% if o.payment %}
@@ -17,6 +17,7 @@
     <form method="post" action="/bills/{{ o.bill.id }}/occurrence/{{ o.due.isoformat() }}/paid" hx-boost="false">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="back" value="/calendar">
+      {% if o.bill.varies %}<input class="input mb" name="amount" inputmode="decimal" value="{{ o.amount_cents | money_plain }}" aria-label="Amount paid for {{ o.bill.name }}">{% endif %}
       <button class="btn btn-primary" type="submit">Mark paid</button>
     </form>
     <a class="btn" href="/bills/{{ o.bill.id }}/edit">Edit bill</a>
