@@ -17,10 +17,10 @@ from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session, sessionmaker
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from fiscus import __version__
+from fiscus import __version__, nav
 from fiscus.clock import Clock, utcnow_naive
 from fiscus.config import Settings
-from fiscus.models import AuthSession, User
+from fiscus.models import AuthSession, User, UserSettings
 from fiscus.money import fmt, fmt_plain, fmt_short
 from fiscus.security.ratelimit import RateLimiter
 from fiscus.security.tokens import new_token, same, token_hash
@@ -49,14 +49,16 @@ class UserView:
     username: str
     display_name: str
     is_admin: bool
+    tabs: tuple[str, ...] = nav.DEFAULT_TABS
 
 
-def user_view(user: User) -> UserView:
+def user_view(user: User, prefs: UserSettings | None = None) -> UserView:
     return UserView(
         user.id,
         user.username,
         user.display_name,
         user.is_admin,
+        nav.stored(prefs.tabs) if prefs is not None else nav.DEFAULT_TABS,
     )
 
 
@@ -195,7 +197,7 @@ def optional_user(request: Request, db: Session = DB) -> User | None:
     if found is None:
         return None
     request.state.user = found[1]
-    request.state.user_view = user_view(found[1])
+    request.state.user_view = user_view(found[1], db.get(UserSettings, found[1].id))
     request.state.auth_session = found[0]
     return found[1]
 
@@ -283,6 +285,7 @@ def make_templates() -> Jinja2Templates:
     env.filters['d'] = _date_fmt
     env.filters['tojson_attr'] = lambda v: json.dumps(v, separators=(',', ':'))
     env.globals['version'] = __version__
+    env.globals['screens'] = nav.SCREENS
     return t
 
 
@@ -295,9 +298,11 @@ def render(
     headers: dict[str, str] | None = None,
 ) -> HTMLResponse:
     c = ctx(request)
+    user: UserView | None = getattr(request.state, 'user_view', None)
     data: dict[str, Any] = {
         'request': request,
-        'user': getattr(request.state, 'user_view', None),
+        'user': user,
+        'tabs': nav.screens(user.tabs if user else nav.DEFAULT_TABS),
         'csrf_token': getattr(request.state, 'csrf', ''),
         'today': c.clock.today(),
         'settings': c.settings,

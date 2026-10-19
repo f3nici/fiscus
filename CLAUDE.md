@@ -28,7 +28,8 @@ the tax money, any of them saved from budget lines, one goal from several
 year ahead, overdue ones first, and what they hold is typed in or lined up
 with them (D36, D40, D43, D44), a monthly line holding a yearly bill among
 them (D63); budget lines in groups and in an order set by
-hand (D35). Since D25 the budget is kept by hand (spending taken off,
+hand (D35); bottom tabs the person chooses, every screen in a menu that
+slides in, and pages sliding between screens (D67). Since D25 the budget is kept by hand (spending taken off,
 balances typed in); the transactions, statement import, rules and matching
 screens went in D37 and Square sync in D55. Bills marked paid, payslips and
 budget spends still write transactions; rows those features left stay. Next
@@ -130,6 +131,7 @@ doc 10 wins.
 ```
 fiscus/
   config.py clock.py money.py db.py models.py web.py app.py jobs.py cli.py
+  nav.py      the screens: sidebar, menu and bottom tabs (D67)
   domain/     recurrence, splits (migrations only), uploads, loan, forecast,
               tax, bill_import, budget_import, pdftext, payslip, pay, goals,
               saving, arrange.
@@ -194,6 +196,11 @@ FISCUS_DATA_DIR=./data FISCUS_BASE_URL=http://localhost:8000 python -m fiscus
 - **iOS installed PWAs need a user gesture for WebAuthn.** Every
   `navigator.credentials` call starts from a click, except the conditional
   (autofill) request on the login page, which iOS allows.
+- **Pages slide only on a boosted GET to another screen** (`app.js`, D67):
+  it sets `transition:true` on that one swap. Saves, sheets and fragments
+  never slide. `.topbar`, `.bottom-nav` and `.sidebar` have a
+  `view-transition-name` so they stay put while the page moves; a new fixed
+  bar needs one too, or it slides with the page.
 - **iOS has no `beforeinstallprompt`.** Install is a Share-menu instruction
   (`docs/guide.md`). File uploads use the file picker, which works in
   standalone mode.

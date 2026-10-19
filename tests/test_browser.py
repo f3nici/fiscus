@@ -23,6 +23,7 @@ import uvicorn
 from fiscus.app import create_app
 from fiscus.services import auth as auth_service
 from fiscus.services.budget_import import template_csv
+from fiscus.services.users import create_user
 from tests.conftest import settings_for
 from tests.test_paydays import simple_slip
 from tests.test_payslip_pdf import payslip_pdf
@@ -432,4 +433,161 @@ def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any
     benign = ('favicon', 'Failed to load resource: net::ERR_INTERNET_DISCONNECTED')
     real = [e for e in errors if not any(b in e for b in benign)]
     assert real == [], real
+    context.close()
+
+
+def test_menu_tabs_and_slides(server: tuple[str, Any], browser: Any) -> None:
+    """The menu slides in from the right, a tapped tab lights up before its
+    page comes, and the page slides the way along the tabs it went (D67)."""
+    base, ctx = server
+    with ctx.sessions() as db:
+        alex = create_user(db, ctx.clock, 'alex', 'Alex', is_admin=True)
+        token = auth_service.start_session(
+            db, ctx.settings, ctx.clock, alex, 'test', '127.0.0.1', 'pytest'
+        )
+        db.commit()
+    context = browser.new_context(
+        viewport={'width': 390, 'height': 844}, is_mobile=True, has_touch=True
+    )
+    context.add_cookies([{'name': ctx.settings.session_cookie, 'value': token, 'url': base}])
+    page = context.new_page()
+    errors: list[str] = []
+    page.on('console', lambda m: errors.append(m.text) if m.type == 'error' else None)
+    page.on('pageerror', lambda e: errors.append(str(e)))
+
+    def poll(js: str) -> None:
+        # Polled from here: the page's CSP refuses wait_for_function's eval.
+        for _ in range(50):
+            if page.evaluate(js):
+                return
+            page.wait_for_timeout(50)
+        raise AssertionError(js)
+
+    page.goto(f'{base}/')
+    tabs = page.eval_on_selector_all('.bottom-nav a', 'els => els.map(a => a.textContent.trim())')
+    assert tabs == ['Home', 'Calendar', 'Budget', 'Bills', 'Accounts']
+    # No blue box where a finger lands.
+    assert (
+        page.evaluate('getComputedStyle(document.documentElement).webkitTapHighlightColor')
+        == 'rgba(0, 0, 0, 0)'
+    )
+    # Count the slides: htmx starts a view transition for each.
+    page.evaluate("""() => {
+        window.slides = 0;
+        const start = document.startViewTransition.bind(document);
+        document.startViewTransition = (cb) => { window.slides += 1; return start(cb); };
+    }""")
+
+    # The menu opens over the page and Escape slides it away.
+    page.tap('[data-drawer-open]')
+    poll("document.getElementById('drawer').open")
+    assert page.get_attribute('[data-drawer-open]', 'aria-expanded') == 'true'
+    assert page.evaluate("document.documentElement.classList.contains('drawer-open')")
+    page.keyboard.press('Escape')
+    poll("!document.getElementById('drawer').open")
+    assert page.get_attribute('[data-drawer-open]', 'aria-expanded') == 'false'
+
+    # A swipe to the right closes it too.
+    page.tap('[data-drawer-open]')
+    poll("document.getElementById('drawer').open")
+    page.wait_for_timeout(350)
+    cdp = context.new_cdp_session(page)
+    for kind, x in (('touchStart', 120), ('touchMove', 150), ('touchMove', 260), ('touchEnd', 0)):
+        points = [] if kind == 'touchEnd' else [{'x': x, 'y': 400}]
+        cdp.send('Input.dispatchTouchEvent', {'type': kind, 'touchPoints': points})
+    poll("!document.getElementById('drawer').open")
+    assert page.url == f'{base}/'
+
+    # A screen picked from the menu: the menu goes, the page slides in.
+    page.tap('[data-drawer-open]')
+    poll("document.getElementById('drawer').open")
+    page.tap('#drawer a[href="/tax"]')
+    page.wait_for_url(f'{base}/tax')
+    poll("!document.getElementById('drawer').open")
+    assert page.get_attribute('html', 'data-nav-dir') == 'forward'
+    assert not page.evaluate("document.documentElement.classList.contains('drawer-open')")
+    assert page.evaluate('window.slides') == 1
+
+    # The tab lights up and the bar runs while its page is on the way.
+    held: list[Any] = []
+    page.route(f'{base}/budget', lambda route: held.append(route))
+    page.tap('.bottom-nav a[href="/budget"]')
+    page.wait_for_selector('.nav-progress', state='attached')
+    assert page.get_attribute('.bottom-nav a[href="/budget"]', 'aria-current') == 'page'
+    assert page.url == f'{base}/tax'
+    held[0].continue_()
+    page.wait_for_url(f'{base}/budget')
+    page.wait_for_selector('.nav-progress', state='detached')
+    page.unroute(f'{base}/budget')
+    # Budget is right of Home on the tabs: back is from the left.
+    page.tap('.bottom-nav a[href="/"]')
+    page.wait_for_url(f'{base}/')
+    poll("document.documentElement.getAttribute('data-nav-dir') === 'back'")
+    # Further into a screen is forward, out of it back.
+    page.tap('.bottom-nav a[href="/bills"]')
+    page.wait_for_url(f'{base}/bills')
+    page.click('main a[href="/bills/new"]')
+    page.wait_for_url(f'{base}/bills/new')
+    assert page.get_attribute('html', 'data-nav-dir') == 'forward'
+    assert page.evaluate('window.slides') == 5
+
+    # A save comes back without a slide.
+    page.goto(f'{base}/settings')
+    page.evaluate("""() => {
+        window.slides = 0;
+        const start = document.startViewTransition.bind(document);
+        document.startViewTransition = (cb) => { window.slides += 1; return start(cb); };
+    }""")
+    page.click('button[aria-label="Move Accounts earlier"]')
+    page.wait_for_selector('[data-flash]:has-text("Tabs saved")', state='attached')
+    tabs = page.eval_on_selector_all('.bottom-nav a', 'els => els.map(a => a.textContent.trim())')
+    assert tabs == ['Home', 'Calendar', 'Budget', 'Accounts', 'Bills']
+    assert page.evaluate('window.slides') == 0
+    # Nor for anyone who asked for less motion.
+    page.emulate_media(reduced_motion='reduce')
+    page.tap('.bottom-nav a[href="/calendar"]')
+    page.wait_for_url(f'{base}/calendar')
+    assert page.evaluate('window.slides') == 0
+    page.emulate_media(reduced_motion='no-preference')
+
+    # A link to a place on another screen slides in and lands there.
+    page.goto(f'{base}/')
+    page.tap('[data-drawer-open]')
+    poll("document.getElementById('drawer').open")
+    page.tap('#drawer a[href="/settings#tabs"]')
+    page.wait_for_url(f'{base}/settings#tabs')
+    poll("Math.abs(document.getElementById('tabs').getBoundingClientRect().top) < 150")
+
+    # One loan opens straight into it: a 204 on to the loan still slides.
+    csrf = next(c['value'] for c in context.cookies() if c['name'] == ctx.settings.csrf_cookie)
+    made = page.request.post(
+        f'{base}/loans',
+        form={
+            'name': 'Home',
+            'principal': '500000',
+            'start_date': '2024-01-15',
+            'term_years': '30',
+            'repayment_frequency': 'monthly',
+            'initial_rate': '6',
+            'balance': '480000',
+            'balance_date': '2026-09-01',
+        },
+        headers={'X-CSRF-Token': csrf},
+        max_redirects=0,
+    )
+    assert made.status == 303
+    page.goto(f'{base}/')
+    page.evaluate("""() => {
+        window.slides = 0;
+        const start = document.startViewTransition.bind(document);
+        document.startViewTransition = (cb) => { window.slides += 1; return start(cb); };
+    }""")
+    page.tap('[data-drawer-open]')
+    poll("document.getElementById('drawer').open")
+    page.tap('#drawer a[href="/loans"]')
+    page.wait_for_url(f'{base}/loans/*')
+    assert page.evaluate('window.slides') == 1
+    assert page.get_attribute('html', 'data-nav-dir') == 'forward'
+
+    assert errors == [], errors
     context.close()

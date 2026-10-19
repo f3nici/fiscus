@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from starlette.background import BackgroundTask
 
+from fiscus import nav
 from fiscus.clock import utcnow_naive
 from fiscus.models import Account, AuthSession, User, WebAuthnCredential
 from fiscus.money import MoneyError, parse_cents
@@ -76,6 +77,7 @@ def _page(
         .all()
     )
     accounts = db.execute(owned(Account, user).order_by(Account.name)).scalars().all()
+    prefs = settings_for(db, user)
     c = ctx(request)
     here = getattr(request.state, 'auth_session', None)
     # Expired ones wait for the hourly housekeeping, signed in nowhere.
@@ -95,7 +97,8 @@ def _page(
             'sessions': sessions,
             'backups': backup.list_backups(c.settings) if user.is_admin else [],
             'retention': c.settings.backup_retention_days,
-            'prefs': settings_for(db, user),
+            'prefs': prefs,
+            'tab_editor': nav.editor(nav.stored(prefs.tabs)),
             'accounts': accounts,
             'recovered': request.query_params.get('recovered') == '1',
             'passkeys_allowed': c.settings.passkeys_allowed,
@@ -273,6 +276,22 @@ def forecast_prefs(
     else:
         prefs.spending_account_id = None
     return redirect('/settings', flash='Forecast settings saved', request=request)
+
+
+@router.post('/settings/tabs')
+def tabs_prefs(
+    request: Request,
+    change: str = Form(''),
+    user: User = Depends(current_user),
+    db: Session = DB,
+) -> Response:
+    prefs = settings_for(db, user)
+    try:
+        keys = nav.changed(nav.stored(prefs.tabs), change)
+    except nav.TabsError as exc:
+        return _page(request, db, user, {'tabs_error': str(exc)}, 400)
+    prefs.tabs = nav.dump(keys)
+    return redirect('/settings#tabs', flash='Tabs saved', request=request)
 
 
 @router.post('/settings/ntfy')

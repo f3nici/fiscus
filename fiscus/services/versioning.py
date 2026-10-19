@@ -20,9 +20,10 @@ _IGNORED = (ForecastCache,)
 
 
 def _quiet(key: str) -> bool:
-    """A setting no forecast reads: a chart line turned off (D50), reminders.
-    Low balance, the horizon and the spending account do change one."""
-    return key == 'chart_lines' or key.startswith('ntfy_')
+    """A setting no forecast reads: a chart line turned off (D50), reminders,
+    the bottom tabs (D67). Low balance, the horizon and the spending account
+    do change one."""
+    return key in ('chart_lines', 'tabs') or key.startswith('ntfy_')
 
 
 def _users_for(obj: Any) -> set[int]:
