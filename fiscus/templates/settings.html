@@ -2,15 +2,24 @@
 {% from "_macros.html" import icon with context %}
 {% block title %}Settings{% endblock %}
 {% block content %}
-  <h1>Settings</h1>
+  <div class="page-head">
+    <div>
+      <h1>Settings</h1>
+      <span class="sub">Signed in as {{ user.display_name }} · {{ creds | length }} passkey{{ '' if creds | length == 1 else 's' }}</span>
+    </div>
+  </div>
   {% if recovered %}
     <div class="alert alert-ok">You are back in. If you lost a device, revoke its passkey below so it can no longer sign in.</div>
   {% endif %}
   {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
 
-  <div class="grid grid-2">
+  <div class="settings">
+    <section>
+      <div class="about">
+        <h2>Passkeys</h2>
+        <p>How you sign in: one passkey for each phone or computer. There is no password.</p>
+      </div>
     <div class="card" data-passkey-register data-start="/settings/passkeys/options" data-finish="/settings/passkeys/verify">
-      <h2>Passkeys</h2>
       <ul class="list">
         {% for c in creds %}
           <li>
@@ -45,9 +54,14 @@
       <button class="btn btn-primary" type="button" data-passkey-go {{ 'disabled' if not passkeys_allowed }}>Add passkey</button>
       <p class="muted text-xs mt">To add another phone or computer, sign in on it with a passkey you already have (most browsers offer a QR code to scan with your phone), then add one there. Lost every passkey? On the server, <code>python -m fiscus.cli recovery-link {{ user.username }}</code> prints a recovery link.</p>
     </div>
+    </section>
 
+    <section>
+      <div class="about">
+        <h2>Signed in</h2>
+        <p>The devices signed in now. Revoking a passkey signs out every other device too.</p>
+      </div>
     <div class="card" id="sessions">
-      <h2>Signed in</h2>
       <ul class="list">
         {% for s in sessions %}
           <li>
@@ -64,11 +78,17 @@
           <button class="btn btn-danger" type="submit">Sign out everywhere else</button>
         </form>
       {% endif %}
-      <p class="muted text-xs mt">Revoking a passkey signs out every other device too. A recovery link signs out everywhere before it signs you in.</p>
+      <p class="muted text-xs mt">A recovery link signs out everywhere before it signs you in.</p>
     </div>
+    </section>
 
+    <section>
+      <div class="about">
+        <h2>Forecast and warnings</h2>
+        <p>When an account counts as low, how far the forecast looks ahead, and which account day-to-day spending comes from.</p>
+        <p class="now">Warns below {{ prefs.low_balance_cents | money }} · {{ prefs.forecast_months }} months ahead</p>
+      </div>
     <div class="card">
-      <h2>Forecast and warnings</h2>
       <form method="post" action="/settings/forecast">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <div class="form-grid">
@@ -81,10 +101,15 @@
         <button class="btn btn-primary" type="submit">Save</button>
       </form>
     </div>
+    </section>
 
+    <section>
+      <div class="about">
+        <h2>Reminders (ntfy)</h2>
+        <p>Optional pushes through ntfy: the public ntfy.sh or a server of your own. Off until you turn them on. Each one names a bill, a date and an amount, never an account.</p>
+        <p class="now">{{ ('On, sent at ' ~ ('%02d:00' | format(prefs.ntfy_hour))) if prefs.ntfy_enabled else 'Off' }}</p>
+      </div>
     <div class="card">
-      <h2>Reminders (ntfy)</h2>
-      <p class="muted text-sm">Optional pushes through ntfy: the public ntfy.sh or a server of your own. Off until you turn them on. Each one names a bill, a date and an amount, never an account.</p>
       {% if ntfy_error %}<div class="alert alert-error">{{ ntfy_error }}</div>{% endif %}
       <form method="post" action="/settings/ntfy">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -117,10 +142,14 @@
         {% endif %}
       </div>
     </div>
+    </section>
 
+    <section>
+      <div class="about">
+        <h2>Bottom tabs</h2>
+        <p>The bar along the bottom on a phone, and in the app once installed. Keep two to five screens there, in this order; every screen is in the menu too.</p>
+      </div>
     <div class="card" id="tabs">
-      <h2>Bottom tabs</h2>
-      <p class="muted text-sm">The bar along the bottom on a phone, and in the app once installed. Keep two to five screens there, in this order; every screen is in the menu too.</p>
       {% if tabs_error %}<div class="alert alert-error">{{ tabs_error }}</div>{% endif %}
       <form method="post" action="/settings/tabs">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -129,8 +158,8 @@
             <li>
               <span class="tab-name">{{ icon(t.screen.icon) }} {{ t.screen.label }}</span>
               <span class="row order-btns">
-                <button class="btn btn-sm" type="submit" name="change" value="earlier:{{ t.screen.key }}" aria-label="Move {{ t.screen.label }} earlier" {{ 'disabled' if not t.earlier }}>↑</button>
-                <button class="btn btn-sm" type="submit" name="change" value="later:{{ t.screen.key }}" aria-label="Move {{ t.screen.label }} later" {{ 'disabled' if not t.later }}>↓</button>
+                <button class="btn btn-sm" type="submit" name="change" value="earlier:{{ t.screen.key }}" aria-label="Move {{ t.screen.label }} earlier" {{ 'disabled' if not t.earlier }}>{{ icon('up') }}</button>
+                <button class="btn btn-sm" type="submit" name="change" value="later:{{ t.screen.key }}" aria-label="Move {{ t.screen.label }} later" {{ 'disabled' if not t.later }}>{{ icon('down') }}</button>
                 <button class="btn btn-sm" type="submit" name="change" value="remove:{{ t.screen.key }}" aria-label="Take {{ t.screen.label }} off the tabs" {{ 'disabled' if not t.remove }}>Remove</button>
               </span>
             </li>
@@ -148,11 +177,15 @@
         {% endif %}
       </form>
     </div>
+    </section>
 
     {% if user.is_admin %}
-      <div class="card" id="backups">
+    <section>
+      <div class="about">
         <h2>Backups</h2>
-        <p class="muted text-sm">A copy of the whole database is written to <code>/data/backups</code> every night and kept for {{ retention }} days. Download one to keep somewhere else, and store it carefully: it holds all your finances.</p>
+        <p>A copy of the whole database is written to <code>/data/backups</code> every night and kept for {{ retention }} days. Download one to keep somewhere else, and store it carefully: it holds all your finances.</p>
+      </div>
+      <div class="card" id="backups">
         <div class="row">
           <form method="post" action="/settings/backups/download" hx-boost="false">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -172,7 +205,8 @@
         </ul>
         <p class="muted text-xs mt">Restore with the container stopped: <code>docker compose run --rm fiscus python -m fiscus.cli restore /data/backups/&lt;file&gt;</code></p>
       </div>
+    </section>
     {% endif %}
   </div>
-  <p class="muted text-xs center mt">Fiscus {{ version }}</p>
+  <p class="muted text-xs mt">Fiscus {{ version }}</p>
 {% endblock %}

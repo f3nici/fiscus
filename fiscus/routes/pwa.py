@@ -16,7 +16,7 @@ from fiscus.web import ctx, render
 router = APIRouter()
 STATIC = Path(__file__).resolve().parent.parent / 'static'
 SW_SOURCE = STATIC / 'js' / 'sw.src.js'
-THEME = '#1a1a1a'
+THEME = '#f2f4f7'
 
 
 @lru_cache(maxsize=1)

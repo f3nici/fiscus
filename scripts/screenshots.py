@@ -115,7 +115,7 @@ def seed(app: Any, clock: Clock, base: str) -> str:
 
     f.post(
         '/pay/schedules',
-        name='Acme Logistics',
+        name='Harbourline Freight',
         frequency='fortnightly',
         anchor_date='2026-07-02',
         net='3260',
@@ -130,7 +130,7 @@ def seed(app: Any, clock: Clock, base: str) -> str:
         f.post(
             '/payslips',
             date=payday.isoformat(),
-            source='Acme Logistics',
+            source='Harbourline Freight',
             gross='4200',
             tax_withheld='940',
             net='3260',

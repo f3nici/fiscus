@@ -8,6 +8,7 @@
       <a class="btn btn-primary" href="/accounts/new">Add account</a>
     </div>
   </div>
+  <div class="grid grid-21">
   <div class="card">
     <div class="table-wrap">
       <table class="stack-table cols-3">
@@ -44,11 +45,11 @@
   </div>
   {% set active = accounts | rejectattr('archived') | list %}
   {% if active %}
-    <form class="card mt" method="post" action="/accounts/balances">
+    <form class="card" method="post" action="/accounts/balances">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <h2>Update balances</h2>
       <p class="muted text-sm">Type in what each account is at today, from your banking app. Credit cards owing money are negative. Until you next do, bills you mark paid, payslips you add and spending you take off the budget move them.</p>
-      <div class="form-grid">
+      <div class="form-grid one-col">
         {% for a in active %}
           <div class="field">
             <label class="label" for="balance_{{ a.id }}">{{ a.name }}</label>
@@ -59,5 +60,6 @@
       <button class="btn btn-primary" type="submit">Save balances</button>
     </form>
   {% endif %}
+  </div>
   <p class="muted text-sm mt">One account can hold several things: a trip, general savings, an emergency fund. Keep the account's real balance here and split it into <a href="/goals">goals</a>; what is left over shows as unallocated.</p>
 {% endblock %}

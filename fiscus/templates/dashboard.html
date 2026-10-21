@@ -1,14 +1,19 @@
 {% extends "base.html" %}
-{% from "_macros.html" import money_cell, status_pill, estimate %}
+{% from "_macros.html" import status_pill, estimate %}
 {% block title %}Dashboard{% endblock %}
 {% block content %}
+  {% set next = namespace(e=none) %}
+  {% for day in upcoming %}{% for e in day.events %}{% if not next.e and e.kind == 'bill' and e.status != 'paid' %}{% set next.e = e %}{% endif %}{% endfor %}{% endfor %}
   <div class="page-head">
-    <h1>G'day, {{ user.display_name }}</h1>
-    <span class="muted text-sm">{{ today | d('long') }}</span>
+    <div>
+      <h1>G'day, {{ user.display_name }}</h1>
+      <span class="sub">{{ today | d('long') }}{% if next.e %} · next out: {{ next.e.title }}, {{ (-next.e.amount_cents) | money }} on {{ next.e.date.strftime('%a') }} {{ next.e.date | d('dm') }}{% endif %}</span>
+    </div>
+    {% if has_any %}<a class="btn btn-primary" href="/budget#spend">Take off a budget</a>{% endif %}
   </div>
 
   {% if not has_any %}
-    <div class="card">
+    <div class="card mb">
       <h2>Getting started</h2>
       <ol>
         <li><a href="/accounts/new">Add your accounts</a> with what they are at today: transaction, offset, savings, credit card.</li>
@@ -36,118 +41,139 @@
     </div>
   {% endif %}
 
-  <div class="grid grid-2 grid-4">
-    <div class="card stat">
+  <div class="kpis cols-5">
+    <div class="stat lead">
+      <div class="label">Free to spend</div>
+      {% if accounts %}
+        <div class="value {{ 'neg' if free.days[0] < 0 else '' }}">{{ free.days[0] | money }}</div>
+        <span class="text-sm">after goals and the budget to {{ budget_end | d('dm') }} · <a href="/budget">Budget</a></span>
+      {% else %}
+        <div class="value muted">-</div><a class="text-sm" href="/accounts/new">Add your accounts</a>
+      {% endif %}
+    </div>
+    <div class="stat">
       <div class="label">All accounts</div>
       <div class="value">{{ total | money }}</div>
       <a class="text-sm" href="/accounts">{{ accounts | length }} account{{ '' if accounts | length == 1 else 's' }}</a>
     </div>
-    <div class="card stat">
+    <div class="stat">
       <div class="label">Unbudgeted (extra)</div>
       {% if budget.budget_cents or budget.expected_cents %}
-        <div class="value {{ 'neg' if budget.unbudgeted_cents < 0 else 'pos' }}">{{ budget.unbudgeted_cents | money }}</div>
-        <span class="text-sm muted">{{ budget.expected_cents | money }} to earn, {{ budget.budget_cents | money }} budgeted</span>
+        <div class="value {{ 'neg' if budget.unbudgeted_cents < 0 else '' }}">{{ budget.unbudgeted_cents | money }}</div>
+        <span class="text-sm">{{ budget.expected_cents | money }} to earn, {{ budget.budget_cents | money }} budgeted</span>
       {% else %}
-        <div class="value">-</div><a class="text-sm" href="/budget">Set a budget</a>
+        <div class="value muted">-</div><a class="text-sm" href="/budget">Set a budget</a>
       {% endif %}
     </div>
-    <div class="card stat">
+    <div class="stat">
       <div class="label">Tax set aside {{ estimate() }}</div>
       {% if tax %}
-        <div class="value {{ 'neg' if tax.set_aside_gap_cents < 0 else '' }}">{{ tax.set_aside_actual_cents | money }}</div>
-        <span class="text-sm muted">should be {{ tax.should_set_aside_cents | money }} · <a href="/tax">Tax</a></span>
+        <div class="value">{{ tax.set_aside_actual_cents | money }}</div>
+        <span class="text-sm">should be {{ tax.should_set_aside_cents | money }}{% if tax.set_aside_gap_cents < 0 %} · <span class="neg">{{ (-tax.set_aside_gap_cents) | money }} short</span>{% endif %} · <a href="/tax">Tax</a></span>
       {% else %}
-        <div class="value">-</div><span class="text-sm muted">No tax table for this year</span>
+        <div class="value muted">-</div><span class="text-sm">No tax table for this year</span>
       {% endif %}
     </div>
-    <div class="card stat">
-      <div class="label">Offset saved this month {{ estimate() }}</div>
+    <div class="stat">
+      <div class="label">Offset saved {{ estimate() }}</div>
       {% if loans and not (loans | selectattr('started') | list) %}
-        <div class="value">-</div><span class="text-sm muted">Loan starts {{ loans[0].loan.start_date | d }}</span>
+        <div class="value muted">-</div><span class="text-sm">Loan starts {{ loans[0].loan.start_date | d }}</span>
       {% elif loans %}
-        <div class="value pos">{{ loans | sum(attribute='saved_month_cents') | money }}</div>
+        <div class="value">{{ loans | sum(attribute='saved_month_cents') | money }}</div>
         {% set counted_from = loans | map(attribute='saved_year_from') | select | list %}
-        <span class="text-sm muted">{{ loans | sum(attribute='saved_year_cents') | money }} this financial year{% if counted_from %} (since {{ counted_from | max | d('dm') }}){% endif %}</span>
+        <span class="text-sm">this month, {{ loans | sum(attribute='saved_year_cents') | money }} this financial year{% if counted_from %} (since {{ counted_from | max | d('dm') }}){% endif %}</span>
       {% else %}
-        <div class="value">-</div><a class="text-sm" href="/loans/new">Add your home loan</a>
+        <div class="value muted">-</div><a class="text-sm" href="/loans/new">Add your home loan</a>
       {% endif %}
     </div>
   </div>
 
-  <div class="grid grid-2 mt">
-    <div class="card">
-      <div class="row between"><h2 class="mb-0">Next 3 months</h2><a class="text-sm" href="/forecast">Forecast</a></div>
-      <svg class="spark mt" viewBox="0 0 {{ spark.width }} {{ spark.height }}" preserveAspectRatio="none" role="img" aria-label="Projected combined balance over the next three months">
-        {% if spark.zero %}<line x1="0" x2="{{ spark.width }}" y1="{{ spark.zero }}" y2="{{ spark.zero }}"></line>{% endif %}
-        <polyline points="{{ spark.points }}"></polyline>
-      </svg>
-      <div class="row between text-sm muted">
-        <span>Today {{ forecast.combined[0] | money }}</span>
-        <span>{{ forecast.dates[-1] | d('dm') }}: {{ forecast.combined[-1] | money }}</span>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="row between"><h2 class="mb-0">Next 14 days</h2><a class="text-sm" href="/calendar">Calendar</a></div>
-      <ul class="list">
-        {% for day in upcoming %}
-          {% for e in day.events %}
-            <li>
-              <span class="grow">
-                <span class="title"><span class="legend-dot dot-{{ e.kind }}"></span>{{ e.title }}</span>
-                <span class="text-xs muted">{{ e.date | d('dm') }}</span>
-              </span>
-              {{ money_cell(e.amount_cents) }}
-              {% if e.kind == 'bill' %}{{ status_pill(e.status) }}{% endif %}
+  <div class="grid grid-21 start mt">
+    <div class="stack">
+      <section class="card" id="next-14">
+        <div class="card-head"><h2>Next 14 days</h2><a class="aside" href="/calendar">Calendar</a></div>
+        <ol class="ledger">
+          {% for day in upcoming if day.events %}
+            <li class="day">
+              <div class="when"><strong>{{ day.date.strftime('%a') }} {{ day.date.day }}</strong>{{ day.date.strftime('%b') }}</div>
+              <div class="items">
+                {% for e in day.events %}
+                  <div class="item">
+                    <span class="what"><span class="legend-dot dot-{{ e.kind }}"></span>{{ e.title }}</span>
+                    <span class="state">{% if e.kind == 'bill' and e.status != 'upcoming' %}{{ status_pill(e.status) }}{% endif %}</span>
+                    <span class="num {{ 'in' if e.amount_cents > 0 else '' }}">{{ e.amount_cents | money_signed if e.amount_cents > 0 else e.amount_cents | money }}</span>
+                  </div>
+                {% endfor %}
+                {% if day.balance is not none %}
+                  <div class="after"><span>All accounts after</span><span class="num {{ 'neg' if day.balance < 0 else '' }}">{{ day.balance | money }}</span></div>
+                {% endif %}
+              </div>
             </li>
+          {% else %}
+            <li class="day"><div class="when"></div><div class="muted">Nothing due in the next fortnight.</div></li>
           {% endfor %}
-        {% else %}
-          <li class="muted">Nothing due in the next fortnight.</li>
-        {% endfor %}
-      </ul>
+        </ol>
+      </section>
+
+      <section class="card">
+        <div class="card-head"><h2>Free to spend, next 3 months {{ estimate() }}</h2><a class="aside" href="/forecast">Forecast</a></div>
+        <div class="chart compact" data-forecast-chart data-compact data-chart="{{ chart }}"></div>
+        <div class="chart-foot num">
+          <span>Today {{ free.days[0] | money }}</span>
+          <span>{{ forecast.dates[-1] | d('dm') }}: {{ free.days[-1] | money }}</span>
+        </div>
+      </section>
     </div>
 
-    <div class="card">
-      <div class="row between"><h2 class="mb-0">Accounts</h2><a class="text-sm" href="/accounts">All</a></div>
-      <ul class="list">
-        {% for a in accounts %}
-          <li><a class="title" href="/accounts/{{ a.id }}">{{ a.name }}</a>{{ money_cell(balances.get(a.id, 0)) }}</li>
-        {% else %}
-          <li class="muted"><a href="/accounts/new">Add an account</a></li>
-        {% endfor %}
-      </ul>
-    </div>
-
-    <div class="card">
-      <div class="row between"><h2 class="mb-0">Budget left</h2><a class="text-sm" href="/budget">Budget</a></div>
-      <ul class="list">
-        {% for r in spending %}
-          <li><span class="title">{{ r.category.name }}</span><span class="num {{ 'neg' if r.state == 'over' else '' }}">{{ r.remaining_cents | money }} <span class="text-xs muted">{% if r.saving %}saved up{% else %}of {{ r.budget_cents | money }}{% endif %}</span></span></li>
-        {% else %}
-          <li class="muted"><a href="/budget">Set a budget</a> to see what is left until {{ budget_end | d('dm') }}.</li>
-        {% endfor %}
-      </ul>
-      {% if spending %}<p class="text-sm muted mt">{{ budget.to_spend_cents | money }} still to spend until {{ budget_end | d('dm') }}.</p>{% endif %}
-      {% if over %}
-        <p class="text-sm neg mt">Over budget: {% for r in over %}{{ r.category.name }}{{ ', ' if not loop.last else '' }}{% endfor %}</p>
-      {% endif %}
-    </div>
-
-    {% if goals %}
-      <div class="card">
-        <div class="row between"><h2 class="mb-0">Goals</h2><a class="text-sm" href="/goals">All</a></div>
+    <div class="stack">
+      <section class="card">
+        <div class="card-head"><h2>Accounts</h2><a class="aside" href="/accounts">All</a></div>
         <ul class="list">
-          {% for v in goals %}
-            <li>
-              <span class="grow">
-                <a class="title" href="/goals/{{ v.goal.id }}">{{ v.goal.name }}</a>
-                {% if v.goal.target_cents %}<meter min="0" max="{{ v.goal.target_cents }}" optimum="{{ v.goal.target_cents }}" low="{{ v.goal.target_cents // 2 }}" value="{{ [[v.held_cents, 0] | max, v.goal.target_cents] | min }}">{{ v.progress.pct }}%</meter>{% endif %}
-              </span>
-              <span class="num">{{ v.held_cents | money }}{% if v.goal.target_cents %} <span class="text-xs muted">of {{ v.goal.target_cents | money }}</span>{% endif %}</span>
-            </li>
+          {% for a in accounts %}
+            <li><a class="title" href="/accounts/{{ a.id }}">{{ a.name }}</a><span class="num {{ 'muted' if balances.get(a.id, 0) == 0 else '' }}">{{ balances.get(a.id, 0) | money }}</span></li>
+          {% else %}
+            <li class="muted"><a href="/accounts/new">Add an account</a></li>
           {% endfor %}
         </ul>
-      </div>
-    {% endif %}
+      </section>
+
+      <section class="card">
+        <div class="card-head"><h2>Budget left</h2><a class="aside" href="/budget">Budget</a></div>
+        <ul class="list">
+          {% for r in spending %}
+            <li>
+              <span class="grow">
+                <span class="title">{{ r.category.name }}</span>
+                {% if not r.saving and r.budget_cents > 0 %}<meter min="0" max="{{ r.budget_cents }}" low="{{ r.budget_cents * 9 // 10 }}" high="{{ r.budget_cents - 1 if r.state == 'over' else r.budget_cents }}" optimum="0" value="{{ [r.actual_cents, r.budget_cents] | min }}">{{ r.pct }}%</meter>{% endif %}
+              </span>
+              <span class="num {{ 'neg' if r.state == 'over' else '' }}">{{ r.remaining_cents | money }} <span class="text-xs muted">{% if r.saving %}saved up{% else %}of {{ r.budget_cents | money }}{% endif %}</span></span>
+            </li>
+          {% else %}
+            <li class="muted"><a href="/budget">Set a budget</a> to see what is left until {{ budget_end | d('dm') }}.</li>
+          {% endfor %}
+        </ul>
+        {% if spending %}<p class="card-note">{{ budget.to_spend_cents | money }} still to spend until {{ budget_end | d('dm') }}.</p>{% endif %}
+        {% if over %}
+          <p class="card-note neg">Over budget: {% for r in over %}{{ r.category.name }}{{ ', ' if not loop.last else '' }}{% endfor %}</p>
+        {% endif %}
+      </section>
+
+      {% if goals %}
+        <section class="card">
+          <div class="card-head"><h2>Goals</h2><a class="aside" href="/goals">All</a></div>
+          <ul class="list">
+            {% for v in goals %}
+              <li>
+                <span class="grow">
+                  <a class="title" href="/goals/{{ v.goal.id }}">{{ v.goal.name }}</a>
+                  {% if v.goal.target_cents %}<meter min="0" max="{{ v.goal.target_cents }}" value="{{ [[v.held_cents, 0] | max, v.goal.target_cents] | min }}">{{ v.progress.pct }}%</meter>{% endif %}
+                </span>
+                <span class="num">{{ v.held_cents | money }}{% if v.goal.target_cents %} <span class="text-xs muted">of {{ v.goal.target_cents | money }}</span>{% endif %}</span>
+              </li>
+            {% endfor %}
+          </ul>
+        </section>
+      {% endif %}
+    </div>
   </div>
 {% endblock %}

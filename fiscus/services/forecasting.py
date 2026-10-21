@@ -37,7 +37,7 @@ from fiscus.models import (
     User,
 )
 from fiscus.money import round_div
-from fiscus.services import bills, budgeting, ledger, pay
+from fiscus.services import bills, budgeting, goals, ledger, pay
 from fiscus.services.access import owned
 from fiscus.services.users import settings_for
 
@@ -304,6 +304,31 @@ def still_to_spend(db: Session, user: User, today: date, days: int) -> list[int]
         offset = sum(max(0, balances.get(a, 0)) for a in spec.offset_account_ids)
         due.extend(repayments(spec, first, last, offset))
     return _still_to_spend(today, days, budgeting.start_day(db, user), lines, due)
+
+
+@dataclass(frozen=True)
+class Free:
+    """Free to spend, day by day, and the two things taken off the accounts."""
+
+    days: list[int]
+    goals_held: int
+    to_spend: int  # today's, the budget page's Still to spend
+
+
+def free_to_spend(db: Session, user: User, today: date, base: ForecastResult) -> Free:
+    """Free to spend as the budget page has it today, for each day of `base`
+    (D51): the accounts it counts, less what goals keep aside today (the same
+    amount off every day, D46) and what is still budgeted for the rest of each
+    budget month."""
+    accts = [a for a in ledger.accounts(db, user) if not a.is_set_aside]
+    counted = [a.id for a in accts if a.id in base.accounts]
+    held = goals.held_outside(db, user, accts)
+    to_spend = still_to_spend(db, user, today, len(base.dates) - 1)
+    days = [
+        sum(base.accounts[a][i] for a in counted) - held - to_spend[i]
+        for i in range(len(base.dates))
+    ]
+    return Free(days, held, to_spend[0])
 
 
 # The chart's own lines a person can turn off or on in its legend; each

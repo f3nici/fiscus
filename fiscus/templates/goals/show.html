@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import estimate %}
+{% from "_macros.html" import icon, estimate %}
 {% block title %}{{ goal.name }}{% endblock %}
 {% block content %}
   <div class="page-head">
@@ -13,18 +13,18 @@
     </div>
   </div>
 
-  <div class="grid grid-2">
-    <div class="card stat">
+  <div class="kpis cols-2">
+    <div class="stat">
       <div class="label">Holds</div>
       <div class="value">{{ v.held_cents | money }}</div>
       {% if goal.target_cents %}
-        <meter class="mt-sm" min="0" max="{{ goal.target_cents }}" optimum="{{ goal.target_cents }}" low="{{ goal.target_cents // 2 }}" value="{{ [[v.held_cents, 0] | max, goal.target_cents] | min }}">{{ v.progress.pct }}%</meter>
+        <meter class="mt-sm" min="0" max="{{ goal.target_cents }}" value="{{ [[v.held_cents, 0] | max, goal.target_cents] | min }}">{{ v.progress.pct }}%</meter>
         <span class="text-sm muted">{{ v.progress.pct }}% of {{ goal.target_cents | money }}{% if v.progress.remaining_cents %}, {{ v.progress.remaining_cents | money }} to go{% endif %}</span>
       {% else %}
         <span class="text-sm muted">No target</span>
       {% endif %}
     </div>
-    <div class="card stat">
+    <div class="stat">
       <div class="label">To put in this month</div>
       {% if v.state == 'saving' %}
         <div class="value">{{ v.per_month_cents | money }}</div>
@@ -152,7 +152,7 @@
           <span class="num {{ 'neg' if m.amount_cents < 0 else '' }}">{{ m.amount_cents | money }}</span>
           <form class="inline" method="post" action="/goals/{{ goal.id }}/moves/{{ m.id }}/delete" data-confirm="{{ 'Remove this entry? Its spend on the budget goes too.' if m.spend_id else 'Remove this entry?' }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button class="btn btn-sm" type="submit" aria-label="Remove">✕</button>
+            <button class="btn btn-sm btn-icon" type="submit" aria-label="Remove">{{ icon('x') }}</button>
           </form>
         </li>
       {% else %}

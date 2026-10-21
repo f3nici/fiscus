@@ -1,52 +1,59 @@
 /*
  * The calendar. The markup uses vue-cal 4's DOM and class names, so the
- * vendored vuecal-4.10.2.css lays it out exactly as it does in CareLane, and
- * these rules are CareLane's RosterPage tint (RosterPage.vue <style scoped>)
- * plus the Fiscus event colours and the forecast balance in each cell.
+ * vendored vuecal-4.10.2.css lays it out as it does in CareLane; these rules
+ * give it the ledger's look (D68): faint day lines, today's date in a filled
+ * disc, and each kind of event its own mark, so a bill reads apart from a
+ * payday and an overdue bill apart from both at a glance.
  */
 
-.fiscus-cal { border-radius: 10px; overflow: hidden; }
+.fiscus-cal { border-radius: var(--radius-control); overflow: hidden; font-size: 14px; }
 .fiscus-cal.vuecal { box-shadow: none; }
 .fiscus-cal .vuecal__header,
 .fiscus-cal .vuecal__cell,
 .fiscus-cal .vuecal__bg { background: transparent; color: inherit; }
-.fiscus-cal .vuecal__title-bar { background: rgba(255, 255, 255, 0.04); }
-.fiscus-cal .vuecal__cell--today { background: rgba(37, 99, 235, 0.12); }
-.fiscus-cal .vuecal__cell--selected { background: rgba(37, 99, 235, 0.18); }
-.fiscus-cal .vuecal__cell--out-of-scope { color: #666; }
+.fiscus-cal .vuecal__title-bar { background: transparent; min-height: 44px; font-size: 16px; font-weight: 600; }
+.fiscus-cal .vuecal__cell--today { background: transparent; }
+.fiscus-cal .vuecal__cell--selected { background: var(--raised); }
+.fiscus-cal .vuecal__cell--out-of-scope { color: var(--muted); }
+.fiscus-cal .vuecal__cell--out-of-scope .vuecal__cell-date { opacity: 0.7; }
 .fiscus-cal .vuecal__weekdays-headings,
 .fiscus-cal .vuecal__cell,
-.fiscus-cal .vuecal__time-column { border-color: rgba(255, 255, 255, 0.08); }
-.fiscus-cal .vuecal__cell:before { border-color: rgba(255, 255, 255, 0.08); }
-.fiscus-cal .vuecal__no-event { color: #777; }
-.fiscus-cal .vuecal__event { color: #fff; border-radius: 6px; padding: 1px 4px; font-size: 11px; margin: 1px 2px; cursor: pointer; display: block; text-align: left; border: none; width: calc(100% - 4px); font-family: inherit; }
-.fiscus-cal .vuecal__event:focus-visible { outline: 2px solid #fff; }
-.fiscus-cal .vuecal__arrow, .fiscus-cal .vuecal__today-btn, .fiscus-cal .vuecal__title button, .fiscus-cal .vuecal__view-btn { color: inherit; text-decoration: none; }
-.fiscus-cal .vuecal__today-btn span.default { font-size: 12px; padding: 10px 8px; }
-.fiscus-cal .vuecal__arrow { padding: 8px 6px; }
-.fiscus-cal .vuecal__view-btn { font-size: 0.95em; display: inline-block; line-height: 2.2em; height: auto; }
-.fiscus-cal .vuecal__menu { background-color: rgba(255, 255, 255, 0.02); }
-.fiscus-cal .vuecal__title-bar { font-size: 1.15em; }
-.fiscus-cal .vuecal__heading { height: 2.4em; color: var(--mid); font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.04em; }
+.fiscus-cal .vuecal__time-column { border-color: var(--rule); }
+.fiscus-cal .vuecal__weekdays-headings { border-bottom: 1px solid var(--border); }
+.fiscus-cal .vuecal__cell:before { border-color: var(--rule); }
+.fiscus-cal .vuecal__no-event { color: var(--muted); }
+.fiscus-cal .vuecal__arrow, .fiscus-cal .vuecal__today-btn, .fiscus-cal .vuecal__title a, .fiscus-cal .vuecal__view-btn { color: inherit; text-decoration: none; }
+.fiscus-cal .vuecal__today-btn span.default { font-size: 13px; font-weight: 500; text-transform: none; padding: 6px 10px; border-radius: var(--radius-control); background: var(--secondary); }
+.fiscus-cal .vuecal__today-btn:hover span.default { background: var(--secondary-hover); }
+.fiscus-cal .vuecal__arrow { display: inline-flex; align-items: center; justify-content: center; min-width: 36px; min-height: 36px; border-radius: var(--radius-control); }
+.fiscus-cal .vuecal__arrow:hover { background: var(--hover); }
+.fiscus-cal .vuecal__arrow i.angle { padding: 0.22em; border-color: var(--text); }
+.fiscus-cal .vuecal__menu { justify-content: flex-start; gap: 2px; padding: 4px; margin: 0 4px 4px; width: max-content; max-width: calc(100% - 8px); background: var(--raised); border-radius: var(--radius-control); }
+.fiscus-cal .vuecal__view-btn { font-size: 13px; font-weight: 500; display: inline-block; line-height: 28px; height: auto; padding: 0 12px; border-radius: 4px; color: var(--muted); }
+.fiscus-cal .vuecal__view-btn--active { border-bottom-width: 0; background: var(--surface); color: var(--text); box-shadow: 0 0 0 1px var(--border); }
+.fiscus-cal .vuecal__heading { height: 2.4em; color: var(--muted); font-size: 12px; text-transform: none; letter-spacing: 0; }
 
-/* Event types (CareLane: .ev-scheduled / .ev-in_progress / .ev-completed). */
-.fiscus-cal .ev-bill { background: rgba(37, 99, 235, 0.85); }
-.fiscus-cal .ev-pay { background: rgba(34, 197, 94, 0.7); }
-.fiscus-cal .ev-loan { background: rgba(168, 85, 247, 0.75); }
-/* States. Paid fades, overdue gets a red edge, due soon an amber one. */
-.fiscus-cal .ev-paid { opacity: 0.55; }
-.fiscus-cal .ev-paid .vuecal__event-title::before { content: '✓ '; }
-.fiscus-cal .ev-overdue { box-shadow: inset 3px 0 0 var(--danger); background: rgba(239, 68, 68, 0.75); }
-.fiscus-cal .ev-due_soon { box-shadow: inset 3px 0 0 var(--warning); }
+/* Events: a bill a grey chip, a payday a green one, a loan repayment an
+   outline; overdue the pale red pair, due soon the pale amber, paid faded. */
+.fiscus-cal .vuecal__event { color: var(--text); background: var(--pill-neutral-bg); border-radius: 4px; padding: 1px 5px; font-size: 12px; line-height: 1.5; margin: 1px 3px; cursor: pointer; display: block; text-align: left; border: none; width: calc(100% - 6px); font-family: inherit; transition: filter 0.15s; }
+.fiscus-cal .vuecal__event:hover { filter: brightness(0.96); }
+.fiscus-cal.vuecal--month-view .vuecal__event-title { font-size: 1em; padding: 0; }
+.fiscus-cal .vuecal__event:focus-visible { outline: 2px solid var(--text); outline-offset: 1px; }
+.fiscus-cal .ev-bill { background: var(--pill-neutral-bg); color: var(--pill-neutral-ink); }
+.fiscus-cal .ev-pay { background: var(--pill-positive-bg); color: var(--pill-positive-ink); }
+.fiscus-cal .ev-loan { background: transparent; color: var(--text); box-shadow: inset 0 0 0 1px var(--control); }
+.fiscus-cal .ev-paid { background: transparent; color: var(--muted); box-shadow: none; text-decoration: line-through; text-decoration-color: var(--control); }
+.fiscus-cal .ev-overdue { background: var(--pill-negative-bg); color: var(--pill-negative-ink); }
+.fiscus-cal .ev-due_soon { background: var(--pill-warning-bg); color: var(--pill-warning-ink); box-shadow: inset 0 0 0 1px var(--pill-warning-edge); }
 
 /* Month view: date top-left, events below, forecast balance at the foot. */
-.fiscus-cal.vuecal--month-view .vuecal__cell { min-height: 92px; align-items: stretch; }
-.fiscus-cal.vuecal--month-view .vuecal__cell-content { display: flex; flex-direction: column; justify-content: flex-start; padding: 2px 0 14px; }
-.fiscus-cal .vuecal__cell-date { text-align: left; padding: 2px 6px; font-size: 0.8em; }
-.fiscus-cal .vuecal__cell--today .vuecal__cell-date { color: #93b4f8; font-weight: 600; }
+.fiscus-cal.vuecal--month-view .vuecal__cell { min-height: 96px; align-items: stretch; }
+.fiscus-cal.vuecal--month-view .vuecal__cell-content { display: flex; flex-direction: column; justify-content: flex-start; padding: 4px 0 18px; }
+.fiscus-cal .vuecal__cell-date { align-self: flex-start; min-width: 24px; height: 24px; margin: 0 0 2px 4px; padding: 0 6px; border-radius: 12px; font-size: 13px; line-height: 24px; text-align: center; font-variant-numeric: tabular-nums; }
+.fiscus-cal .vuecal__cell--today .vuecal__cell-date { background: var(--chart); color: var(--surface); font-weight: 600; }
 .fiscus-cal .vuecal__cell-events { flex: 1; }
-.fiscus-cal .cell-balance { position: absolute; left: 4px; right: 4px; bottom: 1px; font-size: 10px; color: var(--mid); text-align: right; font-variant-numeric: tabular-nums; pointer-events: none; }
-.fiscus-cal .cell-balance.low { color: #fca5a5; }
+.fiscus-cal .cell-balance { position: absolute; left: 4px; right: 6px; bottom: 3px; font-size: 11px; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; pointer-events: none; }
+.fiscus-cal .cell-balance.low { color: var(--negative); }
 .fiscus-cal .cell-balance .narrow { display: none; }
 /* A 320px phone fits "57.8k" in a cell, not "$57.8k". */
 @media (max-width: 380px) {
@@ -55,41 +62,42 @@
 }
 .fiscus-cal a.vuecal__cell-content { color: inherit; text-decoration: none; }
 .fiscus-cal .cell-tags { display: none; padding: 2px 4px; text-decoration: none; }
-/* The day's count on a pill split evenly into its events' colours (the ev-*
-   rules above): half green and half blue for a pay and a bill, thirds for
-   three. A paid part is faded. */
-.fiscus-cal .cell-tags .vuecal__cell-events-count { position: relative; left: auto; top: auto; transform: none; display: flex; width: 100%; max-width: 40px; min-width: 24px; height: 18px; padding: 0; border-radius: 9px; overflow: hidden; background: none; }
-.fiscus-cal .cell-tags .cell-tag { flex: 1; box-shadow: none; }
-.fiscus-cal .cell-tags .cell-tag-count { position: absolute; inset: 0; line-height: 18px; font-size: 11px; color: #fff; text-align: center; text-shadow: 0 0 2px rgba(0, 0, 0, 0.7); }
-/* A bill due soon: an amber ring round the whole pill, over its colours. */
-.fiscus-cal .cell-tags .due-soon::after { content: ''; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 2px var(--warning); }
+/* The day's count on a pill split evenly into its events' marks (the ev-*
+   rules above): half green and half grey for a pay and a bill, thirds for
+   three. */
+.fiscus-cal .cell-tags .vuecal__cell-events-count { position: relative; left: auto; top: auto; transform: none; display: flex; width: 100%; max-width: 40px; min-width: 24px; height: 18px; padding: 0; border-radius: 9px; overflow: hidden; background: none; box-shadow: inset 0 0 0 1px var(--border); }
+.fiscus-cal .cell-tags .cell-tag { flex: 1; box-shadow: none; text-decoration: none; }
+.fiscus-cal .cell-tags .cell-tag-count { position: absolute; inset: 0; line-height: 18px; font-size: 11px; font-weight: 600; color: var(--text); text-align: center; }
+/* A bill due soon: an amber ring round the whole pill, over its marks. */
+.fiscus-cal .cell-tags .due-soon::after { content: ''; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 1.5px var(--warning); }
 
 /* Narrow month: vue-cal's xsmall treatment, events collapse to their counts. */
 @media (max-width: 560px) {
-  .fiscus-cal.vuecal--month-view .vuecal__cell { min-height: 64px; }
+  .fiscus-cal.vuecal--month-view .vuecal__cell { min-height: 68px; }
   .fiscus-cal.vuecal--month-view .vuecal__event { display: none; }
   .fiscus-cal.vuecal--month-view .cell-tags { display: block; }
+  .fiscus-cal .vuecal__cell-date { margin-left: 2px; padding: 0 4px; min-width: 22px; height: 22px; line-height: 22px; font-size: 12px; }
   .fiscus-cal .cell-balance { font-size: 11px; left: 2px; right: 2px; }
 }
 
 /* Week view (no time grid: Fiscus events are all-day). */
 .fiscus-cal.vuecal--week-view .vuecal__cell { min-height: 280px; display: block; }
-.fiscus-cal.vuecal--week-view .vuecal__event { min-height: 28px; padding: 4px; margin-bottom: 3px; }
+.fiscus-cal.vuecal--week-view .vuecal__event { min-height: 28px; padding: 4px 6px; margin-bottom: 3px; }
 .fiscus-cal.vuecal--week-view .vuecal__cell-content { padding-bottom: 18px; }
 
 /* Day and agenda: a list. */
 .cal-list { list-style: none; margin: 0; padding: 0 8px; }
-.cal-list .cal-day { padding: 10px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.06); }
+.cal-list .cal-day { padding: 12px 0; border-bottom: 1px solid var(--rule); }
 .cal-list .cal-day:last-child { border-bottom: none; }
-.cal-list .cal-day-head { display: flex; justify-content: space-between; color: var(--mid); font-size: 0.8rem; margin-bottom: 6px; }
-.cal-list .cal-day-head.today { color: #93b4f8; font-weight: 600; }
-.cal-list .vuecal__event { padding: 8px 10px; font-size: 0.9rem; margin: 0 0 6px; border-radius: 10px; display: flex; justify-content: space-between; gap: 8px; width: 100%; }
-.cal-list .empty { color: var(--mid); padding: 24px 8px; text-align: center; }
+.cal-list .cal-day-head { display: flex; justify-content: space-between; color: var(--muted); font-size: 13px; margin-bottom: 8px; }
+.cal-list .cal-day-head.today { color: var(--chart-ink); font-weight: 600; }
+.cal-list .vuecal__event { padding: 9px 12px; font-size: 14px; margin: 0 0 6px; border-radius: var(--radius-control); display: flex; justify-content: space-between; gap: 8px; width: 100%; }
+.cal-list .empty { color: var(--muted); padding: 24px 8px; text-align: center; }
 .cal-list { display: block; width: 100%; overflow-y: auto; }
 .fiscus-cal .vuecal__body { min-width: 0; }
 .fiscus-cal .vuecal__title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 560px) {
-  .fiscus-cal .vuecal__title-bar { font-size: 1em; }
-  .fiscus-cal .vuecal__view-btn { padding: 0 0.7em; }
+  .fiscus-cal .vuecal__title-bar { font-size: 15px; }
+  .fiscus-cal .vuecal__view-btn { padding: 0 10px; }
 }
-.cal-list .cal-day-head.neg { color: #fca5a5; }
+.cal-list .cal-day-head.neg { color: var(--negative); }
