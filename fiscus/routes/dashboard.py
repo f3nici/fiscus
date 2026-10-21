@@ -58,7 +58,7 @@ def dashboard(request: Request, user: User = Depends(current_user), db: Session 
         loan_paid_cents=sum(x.paid_cents for x in loan_lines),
     )
     base = forecasting.base(db, c.clock, user, 3)
-    spare = forecasting.free_to_spend(db, user, today, base)
+    spare = forecasting.free_to_spend(db, user, today, base, accts)
     try:
         tax_view = taxes.view(db, user, today, c.tax_dir)
     except TaxConfigError:

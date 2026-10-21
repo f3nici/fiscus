@@ -315,12 +315,20 @@ class Free:
     to_spend: int  # today's, the budget page's Still to spend
 
 
-def free_to_spend(db: Session, user: User, today: date, base: ForecastResult) -> Free:
+def free_to_spend(
+    db: Session,
+    user: User,
+    today: date,
+    base: ForecastResult,
+    accounts: list[Account] | None = None,
+) -> Free:
     """Free to spend as the budget page has it today, for each day of `base`
     (D51): the accounts it counts, less what goals keep aside today (the same
     amount off every day, D46) and what is still budgeted for the rest of each
-    budget month."""
-    accts = [a for a in ledger.accounts(db, user) if not a.is_set_aside]
+    budget month. `accounts` is `ledger.accounts`, when the caller has it."""
+    if accounts is None:
+        accounts = ledger.accounts(db, user)
+    accts = [a for a in accounts if not a.is_set_aside]
     counted = [a.id for a in accts if a.id in base.accounts]
     held = goals.held_outside(db, user, accts)
     to_spend = still_to_spend(db, user, today, len(base.dates) - 1)

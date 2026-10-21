@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import icon %}
+{% from "_macros.html" import icon, budget_meter %}
 {% block title %}Budget{% endblock %}
 {% block content %}
   {% set back = '/budget?month=' ~ start.strftime('%Y-%m') %}
@@ -183,7 +183,7 @@
             <tr id="line-{{ r.category.id }}">
               <td>
                 {{ r.category.name }}{% if r.category.is_income %} <span class="pill pill-ok">Income</span>{% endif %}
-                {% if r.has_budget and not r.saving %}<meter min="0" max="{{ r.budget_cents }}" low="{{ r.budget_cents * 9 // 10 }}" high="{{ r.budget_cents - 1 if r.state == 'over' else r.budget_cents }}" optimum="0" value="{{ [r.actual_cents, r.budget_cents] | min }}">{{ r.pct }}%</meter>{% endif %}
+                {% if r.has_budget and not r.saving %}{{ budget_meter(r) }}{% endif %}
                 {% if r.saving and r.cycle_months > 1 %}<div class="text-xs muted">Saving up {{ r.cycle_total_cents | money }} {{ cycles[r.cycle_months] | lower }}</div>
                 {% elif r.saving and r.category.id in bill_cycles %}<div class="text-xs muted">Carries what is left into next month, for its bills paid {{ cycles[bill_cycles[r.category.id]] | lower }}</div>{% endif %}
                 {% if r.bills_cents %}<div class="text-xs muted"><a href="/bills?category={{ r.category.id }}">{{ r.bills_cents | money }} a month of bills</a>{% if r.has_budget %}{% if r.estimate_cents %} and {{ r.estimate_cents | money }} on top{% else %}, nothing on top{% endif %}{% endif %}</div>{% endif %}

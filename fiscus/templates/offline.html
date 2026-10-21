@@ -1,3 +1,4 @@
+{% from "_macros.html" import mark %}
 <!DOCTYPE html>
 <html lang="en-AU">
   <head>
@@ -13,7 +14,7 @@
   <body>
     <div class="auth-wrap">
       <div class="auth-card">
-        <div class="brand"><svg class="brand-mark" viewBox="0 0 26 26" aria-hidden="true"><path class="rim" d="M3.5 8h19" fill="none" stroke-width="2.4" stroke-linecap="round"/><path class="body" d="M5.5 11.5l2.2 10h10.6l2.2-10M6.6 16.5h12.8M11 11.5l.6 10M15 11.5l-.6 10" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg> Fiscus</div>
+        <div class="brand">{{ mark() }} Fiscus</div>
         <div class="card" id="offline-screen">
           <h1>You are offline</h1>
           <p>Fiscus does not keep your figures on this device, so there is nothing to show until you reconnect. Nothing you see here is out of date because nothing is shown.</p>

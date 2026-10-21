@@ -5,7 +5,7 @@
   <div class="page-head">
     <div>
       <h1>Pay and payslips</h1>
-      <span class="sub">{% for s in schedules if next[s.id] %}{% if loop.first %}Next pay: {{ s.name }}, {{ next[s.id].strftime('%a') }} {{ next[s.id] | d }}{% endif %}{% else %}No pay schedule yet{% endfor %}{% if to_put_in %} · <span class="neg">{{ to_put_in | length }} payslip{{ '' if to_put_in | length == 1 else 's' }} to put in</span>{% endif %}</span>
+      <span class="sub">{% if soonest %}Next pay: {{ soonest[1] }}, {{ soonest[0].strftime('%a') }} {{ soonest[0] | d }}{% elif schedules %}No payday ahead{% else %}No pay schedule yet{% endif %}{% if to_put_in %} · <span class="neg">{{ to_put_in | length }} payslip{{ '' if to_put_in | length == 1 else 's' }} to put in</span>{% endif %}</span>
     </div>
   </div>
   {% if to_put_in %}

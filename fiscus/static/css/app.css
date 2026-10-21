@@ -192,7 +192,6 @@ html.drawer-open { overflow: hidden; }
 @media (min-width: 900px) {
   .sidebar { display: flex; flex-direction: column; gap: 2px; width: var(--sidebar-width); flex-shrink: 0; padding: 20px 12px 16px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
   .sidebar .brand { padding: 2px 12px 2px; }
-  .sidebar .scope { margin: 2px 12px 18px 48px; font-size: var(--fs-small); color: var(--muted); }
   .sidebar a:not(.brand) { display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 6px 12px; border-radius: var(--radius-control); color: var(--text); font-size: 14px; text-decoration: none; transition: background-color 0.15s; }
   .sidebar a:not(.brand) svg { color: var(--muted); }
   .sidebar a:not(.brand):hover { background: var(--hover); }
@@ -214,15 +213,11 @@ html.drawer-open { overflow: hidden; }
 @media (min-width: 700px) {
   .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .span-2 { grid-column: span 2; }
 }
 @media (min-width: 1100px) {
-  .grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .cal-layout { grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); }
   .grid-21 { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
-  .grid-12 { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); }
 }
-.grid.start { align-items: start; }
 /* Peer objects share a row's height, their content at the top. */
 .grid.peers { align-items: stretch; }
 .stack { display: grid; gap: var(--gap); align-content: start; min-width: 0; }
@@ -247,9 +242,9 @@ a.goal-card:hover { border-color: var(--control); }
  * Headline figures: one panel split by 1px lines into equal cells, label over
  * value. The lines are the panel's own colour showing through a 1px gap.
  */
-.kpis, .stats { display: grid; gap: 1px; grid-template-columns: repeat(2, minmax(0, 1fr)); background: var(--border); border: 1px solid var(--border); border-radius: var(--radius-card); overflow: hidden; }
-.kpis > *, .stats > .card { background: var(--surface); border: none; border-radius: 0; padding: 16px 18px; min-width: 0; }
-.kpis > :last-child:nth-child(odd), .stats > .card:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.kpis { display: grid; gap: 1px; grid-template-columns: repeat(2, minmax(0, 1fr)); background: var(--border); border: 1px solid var(--border); border-radius: var(--radius-card); overflow: hidden; }
+.kpis > * { background: var(--surface); border: none; border-radius: 0; padding: 16px 18px; min-width: 0; }
+.kpis > :last-child:nth-child(odd) { grid-column: 1 / -1; }
 .kpis > .lead { grid-column: 1 / -1; }
 .kpis > .lead ~ :last-child:nth-child(odd) { grid-column: auto; }
 .kpis > .lead ~ :last-child:nth-child(even) { grid-column: 1 / -1; }
@@ -265,11 +260,11 @@ input.input-day { width: 5.5rem; }
 /* A strip inside a panel runs to its edges as the panel's foot. */
 .card .kpis { margin: 16px calc(-1 * var(--card-pad)) calc(-1 * var(--card-pad)); border: none; border-top: 1px solid var(--rule); border-radius: 0; background: var(--rule); }
 @media (min-width: 700px) {
-  .kpis.cols-3, .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .kpis.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .kpis.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .kpis.cols-5 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  .kpis > *, .stats > .card { padding: 18px 20px; }
-  .kpis > :last-child:nth-child(odd), .stats > .card:last-child:nth-child(odd) { grid-column: auto; }
+  .kpis > * { padding: 18px 20px; }
+  .kpis > :last-child:nth-child(odd) { grid-column: auto; }
   .kpis > .lead ~ :last-child:nth-child(even), .kpis > .lead ~ :last-child:nth-child(odd) { grid-column: auto; }
   .kpis.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
@@ -374,7 +369,6 @@ td .text-xs, td .text-sm.muted { margin-top: 3px; }
 .list .grow > .text-xs { display: block; margin-top: 2px; }
 .list li > .num { font-weight: 500; }
 .list li.muted { justify-content: flex-start; }
-.list.plain li { min-height: 0; padding: 4px 0; border: none; }
 
 meter { display: block; width: 100%; height: 4px; margin-top: 8px; border: none; border-radius: 2px; background: var(--rule); }
 meter::-webkit-meter-bar { background: var(--rule); border: none; border-radius: 2px; height: 4px; }
@@ -419,8 +413,6 @@ code { padding: 1px 4px; border-radius: 4px; background: var(--raised); }
 .dot-pay { background: var(--positive); }
 .dot-loan { background: transparent; box-shadow: inset 0 0 0 1.5px var(--muted); }
 .dot-overdue { background: var(--negative); }
-.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--muted); }
-.legend span { display: inline-flex; align-items: center; }
 /* uPlot: its legend in the text face, sentence case, quiet. */
 .uplot { font-family: inherit; }
 .uplot .u-legend { margin-top: 10px; font-size: 13px; color: var(--muted); text-align: left; }
@@ -444,7 +436,8 @@ code { padding: 1px 4px; border-radius: 4px; background: var(--raised); }
 .ledger .items { display: grid; gap: 6px; min-width: 0; }
 .ledger .item { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: baseline; gap: 10px; min-width: 0; }
 .ledger .item .what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ledger .item .num { text-align: right; min-width: 92px; }
+/* The amount keeps the last column, so it lines up with or without a pill. */
+.ledger .item .num { grid-column: 3; text-align: right; min-width: 92px; }
 .ledger .item .state { text-align: right; }
 .ledger .item .state:empty { display: none; }
 .ledger .after { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; color: var(--muted); }
@@ -457,7 +450,6 @@ code { padding: 1px 4px; border-radius: 4px; background: var(--raised); }
 .saved { color: var(--positive); font-size: 13px; }
 .w-full { width: 100%; }
 .mt { margin-top: var(--gap); }
-.mt-lg { margin-top: 24px; }
 .mt-sm { margin-top: 8px; }
 .mb-0 { margin-bottom: 0; }
 .mb { margin-bottom: var(--gap); }
@@ -467,7 +459,6 @@ code { padding: 1px 4px; border-radius: 4px; background: var(--raised); }
 button.btn-link { font: inherit; color: inherit; text-align: left; cursor: pointer; display: block; text-decoration: none; }
 button.btn-link .title { color: var(--text); font-weight: 500; }
 .w-auto, .input.w-auto { width: auto; }
-.foot-note { margin-top: 20px; color: var(--muted); font-size: 13px; max-width: 72ch; }
 
 /* ---------------------------------------------------------------- budget and imports */
 
@@ -565,11 +556,12 @@ tbody.group tr:not(.group-head) > td:first-child { padding-left: 12px; }
 /* Phones: headline figures two to a row, forms that wrap. */
 @media (max-width: 699px) {
   :root { --card-pad: 16px; }
+  /* Stacked tables never scroll sideways; a scroll box here would also stop a
+     save landing on its last row. */
+  .table-wrap:has(> .stack-table) { overflow: visible; }
   .page-head { margin-bottom: 16px; }
   .page-head h1 { font-size: 22px; }
-  .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .grid-4 > .span-2 { grid-column: span 2; }
-  .kpis > *, .stats > .card { padding: 14px; }
+  .kpis > * { padding: 14px; }
   .stat .value { font-size: 20px; }
   .stat.lead .value { font-size: 26px; }
   .stat .label { overflow-wrap: anywhere; }

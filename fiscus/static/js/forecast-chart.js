@@ -32,21 +32,34 @@
   }
 
   // Round steps for the money axis: 1, 2, 2.5 or 5 of a power of ten, four
-  // or five of them, with the top one above the highest value.
+  // or five of them, with the top one above the highest value. A step is at
+  // least a dollar, so no two labels read the same.
   function step(min, max) {
-    const raw = Math.max(1, max - min) / 4;
+    const raw = Math.max(400, max - min) / 4;
     const mag = Math.pow(10, Math.floor(Math.log10(raw)));
     return [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw);
   }
-  function range(u, min, max) {
-    const s = step(min, max);
-    return [Math.floor(min / s) * s, Math.ceil(max / s) * s + (max % s === 0 ? s : 0)];
-  }
-  function splits(u, axisIdx, min, max) {
-    const s = step(min, max);
-    const out = [];
-    for (let v = Math.ceil(min / s) * s; v <= max + 1e-6; v += s) out.push(v);
-    return out;
+  // The money axis's range and its lines, sharing the step the range chose,
+  // so the lines run to the top of the range. One pair to a chart.
+  function moneyScale() {
+    let s = 100;
+    const range = (u, min, max) => {
+      if (min == null || max == null) [min, max] = [0, 0];
+      // A flat line sits in the middle, not on the floor.
+      if (max - min < 400) {
+        const mid = (min + max) / 2;
+        const pad = Math.max(10000, Math.abs(mid) / 10);
+        [min, max] = [mid - pad, mid + pad];
+      }
+      s = step(min, max);
+      return [Math.floor(min / s) * s, Math.ceil(max / s) * s + (max % s === 0 ? s : 0)];
+    };
+    const splits = (u, axisIdx, min, max) => {
+      const out = [];
+      for (let v = Math.ceil(min / s) * s; v <= max + 1e-6; v += s) out.push(v);
+      return out;
+    };
+    return { range, splits };
   }
 
   function linePlugin(value, colour) {
@@ -86,7 +99,7 @@
     }).catch(() => {});
   }
 
-  function axes(compact) {
+  function axes(compact, splits) {
     const muted = token('--muted', '#5d6269');
     const grid = token('--grid', '#e5e7eb');
     const font = '12px ' + (getComputedStyle(document.body).fontFamily || 'sans-serif');
@@ -96,7 +109,18 @@
     ];
   }
 
-  function draw(el) {
+  // Each chart drawn, so a change of light or dark can draw it again in the
+  // new colours, and one taken off the page lets go of its listener.
+  const drawn = new Map();
+  function forget(el) {
+    const entry = drawn.get(el);
+    if (!entry) return;
+    window.removeEventListener('resize', entry.resize);
+    entry.plot.destroy();
+    drawn.delete(el);
+  }
+
+  function draw(el, shown) {
     if (el.dataset.drawn || !window.uPlot) return;
     // In an attribute, not a <script>: htmx drops script tags when it swaps a
     // boosted page (allowScriptTags is off), which left the chart blank.
@@ -109,7 +133,9 @@
     const muted = token('--muted', '#5d6269');
     const negative = token('--negative', '#c4242a');
     const xs = data.dates.map((d) => Date.parse(d) / 1000);
-    const lines = data.lines || {};
+    // Lines turned off or on since the page came keep that way when it is
+    // drawn again.
+    const lines = shown || data.lines || {};
     const series = [{}];
     const values = [xs];
     const keys = [null];
@@ -143,12 +169,13 @@
     }
     const threshold = el.hasAttribute('data-threshold') ? Number(el.getAttribute('data-threshold')) : null;
     const height = compact ? 190 : Math.max(260, Math.min(400, Math.round(el.clientWidth * 0.42)));
+    const y = moneyScale();
     const opts = {
       width: el.clientWidth,
       height,
       series,
-      scales: { x: { time: true }, y: { range } },
-      axes: axes(compact),
+      scales: { x: { time: true }, y: { range: y.range } },
+      axes: axes(compact, y.splits),
       cursor: compact ? { drag: { x: false, y: false }, points: { size: 8 } } : { drag: { x: true, y: false }, points: { size: 8 } },
       legend: { show: !compact, live: true },
       plugins: [compact ? linePlugin(0, muted) : linePlugin(threshold, negative)],
@@ -163,16 +190,39 @@
       },
     };
     const plot = new window.uPlot(opts, values, el);
-    const resize = () => plot.setSize({ width: el.clientWidth, height: opts.height });
+    const resize = () => {
+      if (!el.isConnected) return forget(el);
+      plot.setSize({ width: el.clientWidth, height: opts.height });
+    };
     window.addEventListener('resize', resize);
+    drawn.set(el, { plot, resize, lines });
+  }
+
+  // Charts gone with the page they were on (a boosted move swaps it out).
+  function sweep() {
+    drawn.forEach((entry, el) => {
+      if (!el.isConnected) forget(el);
+    });
   }
 
   function bind(root) {
-    (root.querySelectorAll ? root : document).querySelectorAll('[data-forecast-chart]').forEach(draw);
+    sweep();
+    (root.querySelectorAll ? root : document).querySelectorAll('[data-forecast-chart]').forEach((el) => draw(el));
   }
 
   document.addEventListener('DOMContentLoaded', () => {
     bind(document);
     if (window.htmx) window.htmx.onLoad((el) => bind(el));
+    // The colours come from the page's tokens, which change with the device's
+    // light or dark; draw again in the new ones.
+    const scheme = window.matchMedia('(prefers-color-scheme: dark)');
+    scheme.addEventListener('change', () => {
+      sweep();
+      Array.from(drawn.entries()).forEach(([el, entry]) => {
+        forget(el);
+        delete el.dataset.drawn;
+        draw(el, entry.lines);
+      });
+    });
   });
 })();

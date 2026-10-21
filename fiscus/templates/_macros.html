@@ -40,6 +40,11 @@
   <span class="num">{{ cents | money }}</span>
 {%- endmacro %}
 
+{# A spending line's meter: ink with room left, amber from 90%, red once over. #}
+{% macro budget_meter(r) -%}
+  <meter min="0" max="{{ r.budget_cents }}" low="{{ r.budget_cents * 9 // 10 }}" high="{{ r.budget_cents - 1 if r.state == 'over' else r.budget_cents }}" optimum="0" value="{{ [r.actual_cents, r.budget_cents] | min }}">{{ r.pct }}%</meter>
+{%- endmacro %}
+
 {% macro status_pill(status) -%}
   {%- set labels = {'paid': 'Paid', 'overdue': 'Overdue', 'due_soon': 'Due soon', 'upcoming': 'Upcoming', 'scheduled': 'Scheduled'} -%}
   <span class="pill pill-{{ status }}">{{ labels.get(status, status) }}</span>

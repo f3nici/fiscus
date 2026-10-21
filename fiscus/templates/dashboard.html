@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import status_pill, estimate %}
+{% from "_macros.html" import budget_meter, status_pill, estimate %}
 {% block title %}Dashboard{% endblock %}
 {% block content %}
   {% set next = namespace(e=none) %}
@@ -9,7 +9,7 @@
       <h1>G'day, {{ user.display_name }}</h1>
       <span class="sub">{{ today | d('long') }}{% if next.e %} · next out: {{ next.e.title }}, {{ (-next.e.amount_cents) | money }} on {{ next.e.date.strftime('%a') }} {{ next.e.date | d('dm') }}{% endif %}</span>
     </div>
-    {% if has_any %}<a class="btn btn-primary" href="/budget#spend">Take off a budget</a>{% endif %}
+    {% if spending %}<a class="btn btn-primary" href="/budget#spend">Take off a budget</a>{% endif %}
   </div>
 
   {% if not has_any %}
@@ -88,7 +88,7 @@
     </div>
   </div>
 
-  <div class="grid grid-21 start mt">
+  <div class="grid grid-21 mt">
     <div class="stack">
       <section class="card" id="next-14">
         <div class="card-head"><h2>Next 14 days</h2><a class="aside" href="/calendar">Calendar</a></div>
@@ -144,7 +144,7 @@
             <li>
               <span class="grow">
                 <span class="title">{{ r.category.name }}</span>
-                {% if not r.saving and r.budget_cents > 0 %}<meter min="0" max="{{ r.budget_cents }}" low="{{ r.budget_cents * 9 // 10 }}" high="{{ r.budget_cents - 1 if r.state == 'over' else r.budget_cents }}" optimum="0" value="{{ [r.actual_cents, r.budget_cents] | min }}">{{ r.pct }}%</meter>{% endif %}
+                {% if not r.saving and r.budget_cents > 0 %}{{ budget_meter(r) }}{% endif %}
               </span>
               <span class="num {{ 'neg' if r.state == 'over' else '' }}">{{ r.remaining_cents | money }} <span class="text-xs muted">{% if r.saving %}saved up{% else %}of {{ r.budget_cents | money }}{% endif %}</span></span>
             </li>

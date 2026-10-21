@@ -99,7 +99,7 @@ def forecast_page(
     sc_result = forecasting.scenario(db, c.clock, user, sc, months) if sc else None
     accts = ledger.accounts(db, user)
     names = {a.id: a.name for a in accts}
-    spare = forecasting.free_to_spend(db, user, c.clock.today(), base)
+    spare = forecasting.free_to_spend(db, user, c.clock.today(), base, accts)
     free = spare.days
     month_end = base.month_end
     sc_month_end = {m['date']: m['combined'] for m in sc_result.month_end} if sc_result else {}

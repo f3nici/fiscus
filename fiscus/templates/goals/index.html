@@ -7,7 +7,7 @@
   </div>
   <p class="muted text-sm">Money set aside inside your accounts for something: a trip, an emergency fund, a new car. It stays in the account (an offset keeps saving you interest) but is not counted as free to spend. Goals are not in the budget: what they hold only comes off what is free in your accounts.</p>
 
-  <div class="grid peers {{ 'grid-3' if views | length % 3 == 0 else 'grid-2' }} mt">
+  <div class="grid peers {{ 'grid-3' if views and views | length % 3 == 0 else 'grid-2' }} mt">
     {% for v in views %}
       <a class="card goal-card" href="/goals/{{ v.goal.id }}">
         <div class="row between">
