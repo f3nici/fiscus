@@ -12,14 +12,14 @@
         <h2 class="mb-0"><a href="/loans/{{ s.loan.id }}">{{ s.loan.name }}</a></h2>
         <a class="btn btn-sm" href="/loans/{{ s.loan.id }}">Details</a>
       </div>
-      <div class="grid grid-2 grid-4 mt">
+      <div class="kpis cols-4">
         <div class="stat"><div class="label">Owing</div><div class="value">{{ s.loan.balance_cents | money }}</div></div>
         <div class="stat"><div class="label">Repayment</div><div class="value">{{ s.repayment_cents | money }}</div><span class="text-sm muted">{{ s.loan.repayment_frequency }} at {{ s.rate }}%</span></div>
         <div class="stat"><div class="label">Offset</div><div class="value">{{ s.offset_balance_cents | money }}</div></div>
         <div class="stat">
           <div class="label">Offset saved {{ estimate() }}</div>
           {% if s.started %}
-            <div class="value pos">{{ s.saved_month_cents | money }}</div>
+            <div class="value">{{ s.saved_month_cents | money }}</div>
             <span class="text-sm muted">this month, {{ s.saved_year_cents | money }} this financial year{% if s.saved_year_from %} (since {{ s.saved_year_from | d('dm') }}){% endif %}</span>
           {% else %}
             <div class="value">-</div>

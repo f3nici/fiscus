@@ -1467,7 +1467,8 @@ def test_dashboard_contents(env: Env) -> None:
     dash = a.get('/').text
     assert 'All accounts' in dash and '$3,000.00' in dash
     assert 'Next 14 days' in dash and 'Rent' in dash and 'Acme wages' in dash
-    assert '<polyline' in dash
+    # Free to spend leads, and its next three months are drawn from a data attribute.
+    assert 'Free to spend' in dash and 'data-forecast-chart data-compact' in dash
     assert 'Tax set aside' in dash and 'Offset saved' in dash
 
 

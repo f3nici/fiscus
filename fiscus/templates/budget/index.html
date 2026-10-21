@@ -1,44 +1,48 @@
 {% extends "base.html" %}
+{% from "_macros.html" import icon, budget_meter %}
 {% block title %}Budget{% endblock %}
 {% block content %}
   {% set back = '/budget?month=' ~ start.strftime('%Y-%m') %}
   <div class="page-head">
-    <h1>Budget</h1>
+    <div>
+      <h1>Budget</h1>
+      <span class="sub">{{ summary.to_spend_cents | money }} still to spend until {{ end | d('dm') }}{% if summary.over %} · <span class="neg">{{ summary.over }} line{{ '' if summary.over == 1 else 's' }} over</span>{% endif %}</span>
+    </div>
     <div class="row">
-      <a class="btn btn-sm btn-nav" href="/budget?month={{ prev.strftime('%Y-%m') }}" aria-label="Previous budget month">‹</a>
-      <strong>{{ start | d('dm') }} to {{ end | d }}</strong>
-      <a class="btn btn-sm btn-nav" href="/budget?month={{ next.strftime('%Y-%m') }}" aria-label="Next budget month">›</a>
+      <a class="btn btn-sm btn-nav" href="/budget?month={{ prev.strftime('%Y-%m') }}" aria-label="Previous budget month">{{ icon('left') }}</a>
+      <strong class="num">{{ start | d('dm') }} to {{ end | d }}</strong>
+      <a class="btn btn-sm btn-nav" href="/budget?month={{ next.strftime('%Y-%m') }}" aria-label="Next budget month">{{ icon('right') }}</a>
       <a class="btn btn-sm" href="#import" hx-boost="false">Import spreadsheet</a>
     </div>
   </div>
 
-  <div class="grid stats">
-    <div class="card stat">
+  <div class="kpis cols-3">
+    <div class="stat">
       <div class="label">Expected to earn</div>
       <div class="value">{{ summary.expected_cents | money }}</div>
       <span class="text-sm muted">{% if summary.pay_cents %}{{ summary.pay_cents | money }} pay{% if summary.expected_cents != summary.pay_cents %}, {{ (summary.expected_cents - summary.pay_cents) | money }} other income{% endif %}{% else %}<a href="/pay">Add your pay</a>{% endif %}{% if spread_pay %}<br>includes {{ spread_pay | money }} a month of quarterly pay{% endif %}</span>
     </div>
-    <div class="card stat">
+    <div class="stat">
       <div class="label">Budgeted</div>
       <div class="value">{{ summary.budget_cents | money }}</div>
       <span class="text-sm muted">{% if summary.bills_cents %}{{ summary.bills_cents | money }} of it bills, the rest estimates{% else %}your estimates of what you spend{% endif %}</span>
     </div>
-    <div class="card stat">
+    <div class="stat">
       <div class="label">Unbudgeted (extra)</div>
       <div class="value {{ 'neg' if summary.unbudgeted_cents < 0 else 'pos' }}">{{ summary.unbudgeted_cents | money }}</div>
       <span class="text-sm muted">{{ 'more budgeted than you expect to earn' if summary.unbudgeted_cents < 0 else 'earned but not budgeted for' }}</span>
     </div>
-    <div class="card stat">
+    <div class="stat">
       <div class="label">Spent so far</div>
       <div class="value {{ 'neg' if summary.over else '' }}">{{ summary.spent_cents | money }}</div>
       <span class="text-sm muted">{% if summary.over %}<span class="neg">{{ summary.over }} categor{{ 'y' if summary.over == 1 else 'ies' }} over</span>{% else %}nothing over{% endif %}</span>
     </div>
-    <div class="card stat">
+    <div class="stat">
       <div class="label">Still to spend</div>
       <div class="value">{{ summary.to_spend_cents | money }}</div>
       <span class="text-sm muted">left in your budgets{% if summary.saved_cents %}, {{ summary.saved_cents | money }} of it saved up for bills every few months{% endif %}</span>
     </div>
-    <div class="card stat">
+    <div class="stat">
       <div class="label">Free in accounts now</div>
       {% if current and has_accounts %}
         <div class="value {{ 'neg' if spendable - summary.to_spend_cents < 0 else 'pos' }}">{{ (spendable - summary.to_spend_cents) | money }}</div>
@@ -56,7 +60,7 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="back" value="{{ back }}">
       <h2>Take off a budget</h2>
-      <div class="form-grid">
+      <div class="form-grid spend-grid{{ '' if spend_accts else ' no-account' }}">
         <div class="field">
           <label class="label" for="spend_category">Category</label>
           <select class="input" id="spend_category" name="category_id">{% for c in spend_cats %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select>
@@ -82,8 +86,8 @@
             </select>
           </div>
         {% endif %}
+        <div class="field"><button class="btn btn-primary" type="submit">Take off</button></div>
       </div>
-      <button class="btn btn-primary" type="submit">Take off</button>
       <p class="muted text-xs mt">It comes off the account it was paid from too, until you next type that balance in, so spending within a budget leaves what is free in your accounts as it was. A negative amount puts money back, for a refund. Bills you tick as paid come off their category by themselves.</p>
     </form>
   {% endif %}
@@ -147,12 +151,12 @@
               <th class="cell-full cell-actions">
                 {% if sec.group %}
                   <div class="row order-btns">
-                    {% for dir, arrow in (('up', '↑'), ('down', '↓')) %}
+                    {% for dir in ('up', 'down') %}
                       <form class="inline" method="post" action="/budget/groups/{{ sec.group.id }}/move">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                         <input type="hidden" name="back" value="{{ back }}">
                         <input type="hidden" name="direction" value="{{ dir }}">
-                        <button class="btn btn-sm" type="submit" aria-label="Move {{ sec.group.name }} {{ dir }}">{{ arrow }}</button>
+                        <button class="btn btn-sm" type="submit" aria-label="Move {{ sec.group.name }} {{ dir }}">{{ icon(dir) }}</button>
                       </form>
                     {% endfor %}
                   </div>
@@ -179,7 +183,7 @@
             <tr id="line-{{ r.category.id }}">
               <td>
                 {{ r.category.name }}{% if r.category.is_income %} <span class="pill pill-ok">Income</span>{% endif %}
-                {% if r.has_budget and not r.saving %}<meter min="0" max="{{ r.budget_cents }}" low="{{ r.budget_cents * 9 // 10 }}" high="{{ r.budget_cents - 1 if r.state == 'over' else r.budget_cents }}" optimum="0" value="{{ [r.actual_cents, r.budget_cents] | min }}">{{ r.pct }}%</meter>{% endif %}
+                {% if r.has_budget and not r.saving %}{{ budget_meter(r) }}{% endif %}
                 {% if r.saving and r.cycle_months > 1 %}<div class="text-xs muted">Saving up {{ r.cycle_total_cents | money }} {{ cycles[r.cycle_months] | lower }}</div>
                 {% elif r.saving and r.category.id in bill_cycles %}<div class="text-xs muted">Carries what is left into next month, for its bills paid {{ cycles[bill_cycles[r.category.id]] | lower }}</div>{% endif %}
                 {% if r.bills_cents %}<div class="text-xs muted"><a href="/bills?category={{ r.category.id }}">{{ r.bills_cents | money }} a month of bills</a>{% if r.has_budget %}{% if r.estimate_cents %} and {{ r.estimate_cents | money }} on top{% else %}, nothing on top{% endif %}{% endif %}</div>{% endif %}
@@ -227,12 +231,12 @@
               <td class="cell-full cell-actions">
                 {% if r.has_budget %}
                   <div class="row order-btns">
-                    {% for dir, arrow in (('up', '↑'), ('down', '↓')) %}
+                    {% for dir in ('up', 'down') %}
                       <form class="inline" method="post" action="/budget/{{ r.category.id }}/move">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                         <input type="hidden" name="back" value="{{ back }}">
                         <input type="hidden" name="direction" value="{{ dir }}">
-                        <button class="btn btn-sm" type="submit" aria-label="Move {{ r.category.name }} {{ dir }}">{{ arrow }}</button>
+                        <button class="btn btn-sm" type="submit" aria-label="Move {{ r.category.name }} {{ dir }}">{{ icon(dir) }}</button>
                       </form>
                     {% endfor %}
                   </div>
@@ -290,7 +294,7 @@
                             <form class="inline" method="post" action="/budget/spend/{{ s.id }}/delete" data-confirm="Remove this entry?">
                               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                               <input type="hidden" name="back" value="{{ back }}">
-                              <button class="btn btn-sm" type="submit" aria-label="Remove {{ s.amount_cents | money }} from {{ r.category.name }}">✕</button>
+                              <button class="btn btn-sm btn-icon" type="submit" aria-label="Remove {{ s.amount_cents | money }} from {{ r.category.name }}">{{ icon('x') }}</button>
                             </form>
                           </li>
                         {% endfor %}

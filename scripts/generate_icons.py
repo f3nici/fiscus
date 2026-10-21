@@ -36,7 +36,7 @@ def main() -> None:
             inset = int(size * pad)
             inner = size - 2 * inset
             html = (
-                '<html><body style="margin:0;background:#1a1a1a">'
+                '<html><body style="margin:0;background:#f2f4f7">'
                 f'<div style="width:{size}px;height:{size}px;display:flex;align-items:center;'
                 f'justify-content:center">'
                 f'<div style="width:{inner}px;height:{inner}px">{SVG}</div></div></body></html>'

@@ -1,8 +1,9 @@
 {% extends "base.html" %}
+{% from "_macros.html" import mark %}
 {% block body %}
   <div class="auth-wrap">
     <div class="auth-card">
-      <div class="brand"><img src="/static/icons/icon-192.png" alt="" width="36" height="36"> Fiscus</div>
+      <div class="brand">{{ mark() }} Fiscus</div>
       {% if flash %}<div class="alert alert-info">{{ flash }}</div>{% endif %}
       {% block auth %}{% endblock %}
     </div>

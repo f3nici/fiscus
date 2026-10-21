@@ -29,7 +29,8 @@ year ahead, overdue ones first, and what they hold is typed in or lined up
 with them (D36, D40, D43, D44), a monthly line holding a yearly bill among
 them (D63); budget lines in groups and in an order set by
 hand (D35); bottom tabs the person chooses, every screen in a menu that
-slides in, and pages sliding between screens (D67). Since D25 the budget is kept by hand (spending taken off,
+slides in, and pages sliding between screens (D67); an ink ledger on a blue-grey ground,
+light or dark as the device is set (D68). Since D25 the budget is kept by hand (spending taken off,
 balances typed in); the transactions, statement import, rules and matching
 screens went in D37 and Square sync in D55. Bills marked paid, payslips and
 budget spends still write transactions; rows those features left stay. Next
@@ -158,8 +159,8 @@ scripts/      smoke.sh, generate_icons.py, icon.svg, screenshots.py (README
 Python 3.12, FastAPI, SQLAlchemy 2.1 + Alembic on SQLite (WAL), Jinja2 +
 HTMX, py_webauthn, httpx (ntfy only), openpyxl + defusedxml
 (budget XLSX import), pdfminer.six (payslip PDFs). uPlot for the forecast
-chart, vue-cal's stylesheet for the calendar. pytest, ruff, mypy --strict,
-djlint, Playwright.
+and dashboard charts, vue-cal's stylesheet for the calendar, Geist for type.
+pytest, ruff, mypy --strict, djlint, Playwright.
 
 ## Verifying
 

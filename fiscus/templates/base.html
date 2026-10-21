@@ -1,15 +1,16 @@
-{% from "_macros.html" import icon with context %}
+{% from "_macros.html" import icon, mark with context %}
 <!DOCTYPE html>
 <html lang="en-AU">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title>{% block title %}Fiscus{% endblock %}{% if self.title() != 'Fiscus' %} · Fiscus{% endif %}</title>
-    <meta name="theme-color" content="#1a1a1a">
-    <meta name="color-scheme" content="dark">
+    <meta name="theme-color" content="#f2f4f7" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#0c0c0d" media="(prefers-color-scheme: dark)">
+    <meta name="color-scheme" content="light dark">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="Fiscus">
     <meta name="csrf-token" content="{{ csrf_token }}">
     <meta name="htmx-config" content='{"includeIndicatorStyles":false,"historyCacheSize":0,"refreshOnHistoryMiss":true,"selfRequestsOnly":true,"allowScriptTags":false,"attributesToSettle":["class","width","height"]}'>
@@ -34,7 +35,7 @@
       {%- endmacro %}
       <div class="shell">
         <nav class="sidebar" aria-label="Main">
-          <a class="brand" href="/"><img src="/static/icons/icon-192.png" alt=""> Fiscus</a>
+          <a class="brand" href="/">{{ mark() }} Fiscus</a>
           {% for s in screens if not s.you %}
             {% call nav_link(s) %} {{ s.label }}{% endcall %}
           {% endfor %}
@@ -42,14 +43,15 @@
           {% for s in screens if s.you %}
             {% call nav_link(s) %} {{ s.label }}{% endcall %}
           {% endfor %}
-          <form method="post" action="/auth/logout" hx-boost="false">
+          <form class="user" method="post" action="/auth/logout" hx-boost="false">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button class="btn btn-link text-sm" type="submit">Sign out {{ user.display_name if user else '' }}</button>
+            <span class="who">{{ user.display_name if user else '' }}</span>
+            <button class="btn-link" type="submit">Sign out</button>
           </form>
         </nav>
         <div class="grow">
           <header class="topbar">
-            <a class="brand" href="/"><img src="/static/icons/icon-192.png" alt=""> Fiscus</a>
+            <a class="brand" href="/">{{ mark() }} Fiscus</a>
             <a class="icon-btn" href="/more" hx-boost="false" role="button" data-drawer-open aria-controls="drawer" aria-expanded="false" aria-label="Menu">{{ icon('menu') }}</a>
           </header>
           <main class="main" id="main">
@@ -65,7 +67,7 @@
       </nav>
       <dialog class="drawer" id="drawer" aria-label="Menu">
         <div class="drawer-head">
-          <a class="brand" href="/"><img src="/static/icons/icon-192.png" alt=""> Fiscus</a>
+          <a class="brand" href="/">{{ mark() }} Fiscus</a>
           <button class="icon-btn" type="button" data-drawer-close aria-label="Close the menu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
         </div>
         <nav class="drawer-nav" aria-label="Menu">

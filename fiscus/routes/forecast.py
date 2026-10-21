@@ -32,7 +32,7 @@ from fiscus.models import (
     ScenarioAdjustment,
     User,
 )
-from fiscus.services import forecasting, goals, ledger
+from fiscus.services import forecasting, ledger
 from fiscus.services.access import get_owned, maybe_owned, owned
 from fiscus.services.users import settings_for
 from fiscus.web import DB, ctx, current_user, redirect, render
@@ -99,17 +99,8 @@ def forecast_page(
     sc_result = forecasting.scenario(db, c.clock, user, sc, months) if sc else None
     accts = ledger.accounts(db, user)
     names = {a.id: a.name for a in accts}
-    # Free to spend, day by day, as the budget page has it today (D51): the
-    # accounts it counts, less what goals keep aside today (the same amount
-    # off every day, D46) and what is still budgeted for the rest of each
-    # budget month.
-    counted = [a.id for a in accts if not a.is_set_aside and a.id in base.accounts]
-    goals_held = goals.held_outside(db, user, [a for a in accts if not a.is_set_aside])
-    to_spend = forecasting.still_to_spend(db, user, c.clock.today(), len(base.dates) - 1)
-    free = [
-        sum(base.accounts[a][i] for a in counted) - goals_held - to_spend[i]
-        for i in range(len(base.dates))
-    ]
+    spare = forecasting.free_to_spend(db, user, c.clock.today(), base, accts)
+    free = spare.days
     month_end = base.month_end
     sc_month_end = {m['date']: m['combined'] for m in sc_result.month_end} if sc_result else {}
     return render(
@@ -124,8 +115,8 @@ def forecast_page(
             'sc_result': sc_result,
             'sc_month_end': sc_month_end,
             'scenarios': db.execute(owned(Scenario, user).order_by(Scenario.name)).scalars().all(),
-            'goals_held': goals_held,
-            'to_spend': to_spend[0],
+            'goals_held': spare.goals_held,
+            'to_spend': spare.to_spend,
             'free_on': dict(zip(base.dates, free, strict=True)) if free != base.combined else {},
             'chart': chart_payload(
                 base,

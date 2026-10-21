@@ -16,16 +16,33 @@
     'tag': 'M3 3h8l10 10-8 8L3 11zM7 7h.01',
     'cog': 'M12 15a3 3 0 100-6 3 3 0 000 6zM19 12l2-1-1-3-2 .5-1.5-1.5.5-2-3-1-1 2h-2l-1-2-3 1 .5 2L6 9.5 4 9l-1 3 2 1v2l-2 1 1 3 2-.5 1.5 1.5-.5 2 3 1 1-2h2l1 2 3-1-.5-2 1.5-1.5 2 .5 1-3-2-1z',
     'menu': 'M4 6h16M4 12h16M4 18h16',
+    'x': 'M6 6l12 12M18 6L6 18',
+    'up': 'M12 19V5M6 11l6-6 6 6',
+    'down': 'M12 5v14M6 13l6 6 6-6',
+    'left': 'M15 5l-7 7 7 7',
+    'right': 'M9 5l7 7-7 7',
+    'plus': 'M12 5v14M5 12h14',
   } -%}
   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="{{ paths.get(name, '') }}"/></svg>
+{%- endmacro %}
+
+{# The mark: a fiscus was the woven basket the treasury's money was kept in. #}
+{% macro mark() -%}
+  <svg class="brand-mark" viewBox="0 0 26 26" aria-hidden="true"><path class="rim" d="M3.5 8h19" fill="none" stroke-width="2.4" stroke-linecap="round"/><path class="body" d="M5.5 11.5l2.2 10h10.6l2.2-10M6.6 16.5h12.8M11 11.5l.6 10M15 11.5l-.6 10" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
 {%- endmacro %}
 
 {% macro csrf() -%}
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 {%- endmacro %}
 
+{# The sign carries a money figure's direction; red is for what is short or over. #}
 {% macro money_cell(cents) -%}
-  <span class="num {{ 'neg' if cents < 0 else '' }}">{{ cents | money }}</span>
+  <span class="num">{{ cents | money }}</span>
+{%- endmacro %}
+
+{# A spending line's meter: ink with room left, amber from 90%, red once over. #}
+{% macro budget_meter(r) -%}
+  <meter min="0" max="{{ r.budget_cents }}" low="{{ r.budget_cents * 9 // 10 }}" high="{{ r.budget_cents - 1 if r.state == 'over' else r.budget_cents }}" optimum="0" value="{{ [r.actual_cents, r.budget_cents] | min }}">{{ r.pct }}%</meter>
 {%- endmacro %}
 
 {% macro status_pill(status) -%}

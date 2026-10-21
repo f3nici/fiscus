@@ -114,4 +114,4 @@ tests hold.
 
 [PolyForm Noncommercial 1.0.0](LICENSE), copyright Fenici. Free for
 noncommercial use, including running it for your own household. Bundled: htmx
-(0BSD), uPlot (MIT), vue-cal's stylesheet (MIT) and Inter (OFL).
+(0BSD), uPlot (MIT), vue-cal's stylesheet (MIT) and Geist (OFL).

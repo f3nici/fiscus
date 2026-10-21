@@ -156,6 +156,10 @@ def _page(
         d = nxt[s.id]
         if d is not None and s.end_date and d > s.end_date:
             nxt[s.id] = None
+    # The soonest payday across every schedule, for the page's heading.
+    soonest = min(
+        ((when, s.name) for s in schedules if (when := nxt[s.id]) is not None), default=None
+    )
     fy_start, fy_end = fy_bounds(today)
     total = db.scalar(select(func.count()).select_from(owned(Payslip, user).subquery())) or 0
     pages = max(1, -(-total // SLIPS_PER_PAGE))
@@ -191,6 +195,7 @@ def _page(
             'schedules': schedules,
             'expected': {ps.id: net for ps, net in expected},
             'next': nxt,
+            'soonest': soonest,
             'slips': slips,
             'page': page,
             'pages': pages,

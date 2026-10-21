@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import icon %}
 {% block title %}{{ sc.name }}{% endblock %}
 {% block content %}
   <div class="page-head">
@@ -30,7 +31,7 @@
           </span>
           <form class="inline" method="post" action="/scenarios/{{ sc.id }}/adjustments/{{ a.id }}/delete">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button class="btn btn-sm" type="submit" aria-label="Remove">✕</button>
+            <button class="btn btn-sm btn-icon" type="submit" aria-label="Remove">{{ icon('x') }}</button>
           </form>
         </li>
       {% else %}
