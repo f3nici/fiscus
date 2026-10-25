@@ -6,7 +6,7 @@ import re
 
 import pytest
 
-from fiscus import nav
+from fiscus import __version__, nav
 from fiscus.models import User, UserSettings
 from tests.conftest import Env
 
@@ -95,6 +95,11 @@ def test_the_default_tabs_and_the_menu(env: Env) -> None:
     for s in nav.SCREENS:
         assert f'href="{s.href}"' in menu.group(0)
     assert 'action="/auth/logout"' in menu.group(0)
+    # The version, in the menu on a phone and the sidebar on a wide screen.
+    sidebar = re.search(r'<nav class="sidebar".*?</nav>', page, re.S)
+    assert sidebar is not None
+    for part in (menu.group(0), sidebar.group(0)):
+        assert f'Fiscus {__version__}</p>' in part
     # The page it falls back to lists them too.
     more = client.get('/more').text
     assert all(f'href="{s.href}"' in more for s in nav.SCREENS)

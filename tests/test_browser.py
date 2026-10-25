@@ -591,3 +591,101 @@ def test_menu_tabs_and_slides(server: tuple[str, Any], browser: Any) -> None:
 
     assert errors == [], errors
     context.close()
+
+
+def test_scenarios_ticked_together(server: tuple[str, Any], browser: Any) -> None:
+    """The forecast's scenarios are a list to tick: each tick redraws the
+    forecast with every one ticked laid over it, and the list stays open for
+    the next (D69)."""
+    base, ctx = server
+    with ctx.sessions() as db:
+        alex = create_user(db, ctx.clock, 'alex', 'Alex', is_admin=True)
+        token = auth_service.start_session(
+            db, ctx.settings, ctx.clock, alex, 'test', '127.0.0.1', 'pytest'
+        )
+        db.commit()
+    context = browser.new_context(
+        viewport={'width': 390, 'height': 844}, is_mobile=True, has_touch=True
+    )
+    context.add_cookies([{'name': ctx.settings.session_cookie, 'value': token, 'url': base}])
+    page = context.new_page()
+    errors: list[str] = []
+    page.on('console', lambda m: errors.append(m.text) if m.type == 'error' else None)
+    page.on('pageerror', lambda e: errors.append(str(e)))
+
+    def poll(js: str) -> None:
+        # Polled from here: the page's CSP refuses wait_for_function's eval.
+        for _ in range(50):
+            if page.evaluate(js):
+                return
+            page.wait_for_timeout(50)
+        raise AssertionError(js)
+
+    page.goto(f'{base}/')
+    csrf = next(c['value'] for c in context.cookies() if c['name'] == ctx.settings.csrf_cookie)
+
+    def post(path: str, form: dict[str, str]) -> str:
+        resp = page.request.post(
+            f'{base}{path}', form=form, headers={'X-CSRF-Token': csrf}, max_redirects=0
+        )
+        assert resp.status == 303, (path, resp.status)
+        return str(resp.headers['location'])
+
+    acct = post('/accounts', {'name': 'Everyday', 'type': 'transaction', 'opening_balance': '2500'})
+    acct_id = acct.rsplit('/', 1)[1]
+    # Long enough that the two together would run off a phone's legend.
+    rent = 'Room for rent to a friend from work, weekly'
+    for name, kind, amount in ((rent, 'new_income', '250'), ('Gym', 'new_bill', '30')):
+        sc = post('/scenarios', {'name': name})
+        post(
+            f'{sc}/adjustments',
+            {
+                'kind': kind,
+                'name': name,
+                'amount': amount,
+                'frequency': 'weekly',
+                'start_date': '2026-10-05',
+                'account_id': acct_id,
+            },
+        )
+
+    # As a phone has it: innerWidth grows to fit a page too wide.
+    fits = 'document.documentElement.scrollWidth <= document.documentElement.clientWidth'
+    page.goto(f'{base}/forecast')
+    page.wait_for_selector('.uplot')
+    assert page.inner_text('.pick-label') == 'No scenario'
+    page.tap('#scenario-pick summary')
+    poll("document.getElementById('scenario-pick').open")
+    # Open on a phone, it stays on the screen and nothing scrolls sideways.
+    box = page.locator('.pick-panel').bounding_box()
+    assert box is not None and box['x'] >= 0 and box['x'] + box['width'] <= 390, box
+    assert page.evaluate(fits)
+
+    for ticked, label in ((rent, rent), ('Gym', f'Gym + {rent}')):
+        with page.expect_response(lambda r: '/forecast?' in r.url):
+            page.tap(f'.pick-panel label:has-text("{ticked}")')
+        page.wait_for_selector(f'.pick-label:text-is("{label}")')
+        poll("document.getElementById('scenario-pick').open")
+        assert page.evaluate("document.activeElement.name === 'scenario_id'")
+        page.wait_for_selector(f'.u-legend .u-label:text-is("{label}")')
+        assert page.evaluate(fits), label
+    assert page.url.count('scenario_id=') == 2
+
+    # A tap outside closes it, as does Escape.
+    page.tap('h1')
+    poll("!document.getElementById('scenario-pick').open")
+    page.tap('#scenario-pick summary')
+    poll("document.getElementById('scenario-pick').open")
+    page.focus('.pick-panel input')
+    page.keyboard.press('Escape')
+    poll("!document.getElementById('scenario-pick').open")
+    assert page.evaluate("document.activeElement.tagName === 'SUMMARY'")
+
+    # Unticking one leaves the other.
+    page.tap('#scenario-pick summary')
+    with page.expect_response(lambda r: '/forecast?' in r.url):
+        page.tap(f'.pick-panel label:has-text("{rent}")')
+    page.wait_for_selector('.pick-label:text-is("Gym")')
+
+    assert errors == [], errors
+    context.close()

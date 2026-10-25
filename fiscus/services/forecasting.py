@@ -249,15 +249,16 @@ def base(db: Session, clock: Clock, user: User, months: int | None = None) -> Fo
 
 
 def scenario(
-    db: Session, clock: Clock, user: User, sc: Scenario, months: int | None = None
+    db: Session, clock: Clock, user: User, scs: list[Scenario], months: int | None = None
 ) -> ForecastResult:
-    """A what-if run. Reads real data, writes nothing."""
+    """A what-if run, one scenario or several together, every change of each
+    laid over the same forecast (D69). Reads real data, writes nothing."""
     today = clock.today()
     if months is None:
         months = settings_for(db, user).forecast_months
     inp = build_input(db, user, today, min(24, max(1, months)))
-    adjusted = apply_scenario(inp, [(a.kind, dict(a.params)) for a in sc.adjustments])
-    return run(adjusted)
+    changes = [(a.kind, dict(a.params)) for sc in scs for a in sc.adjustments]
+    return run(apply_scenario(inp, changes))
 
 
 def still_to_spend(db: Session, user: User, today: date, days: int) -> list[int]:

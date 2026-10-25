@@ -391,6 +391,38 @@
     }
   });
 
+  // ------------------------------------------------------------ pick lists
+  // A box ticked in a pick list (the forecast's scenarios, D69) sends its
+  // form; the page comes back with the list still open, so another can be
+  // ticked. A tap outside it or Escape closes it.
+  let picking = null;
+  document.addEventListener('change', (e) => {
+    const pick = e.target.closest && e.target.closest('details.pick[id]');
+    if (pick) picking = { id: pick.id, value: e.target.value };
+  });
+  document.addEventListener('htmx:afterSettle', () => {
+    if (!picking) return;
+    const { id, value } = picking;
+    picking = null;
+    const pick = document.getElementById(id);
+    if (!pick || pick.tagName !== 'DETAILS') return;
+    pick.open = true;
+    const box = [...pick.querySelectorAll('input')].find((i) => i.value === value);
+    if (box) box.focus({ preventScroll: true });
+  });
+  document.addEventListener('click', (e) => {
+    document.querySelectorAll('details.pick[open]').forEach((d) => {
+      if (!d.contains(e.target)) d.open = false;
+    });
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const d = e.target.closest && e.target.closest('details.pick[open]');
+    if (!d) return;
+    d.open = false;
+    d.querySelector('summary').focus();
+  });
+
   // ------------------------------------- budget import: how often sets the amount
   // The amount is per How often. Changing How often keeps the yearly cost, so
   // $2,097.50 every year is $349.58 every 2 months. Cycles divide 12, so the

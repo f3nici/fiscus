@@ -303,13 +303,20 @@ def _i(params: dict[str, Any], key: str) -> int:
         raise ScenarioError(f'{key} must be a whole number') from exc
 
 
+def _takes_over(adjustment: tuple[str, dict[str, Any]]) -> date:
+    kind, p = adjustment
+    return _d(p, 'from_date') if kind in ('rate_change', 'income_change') else date.min
+
+
 def apply_scenario(
     inp: ForecastInput, adjustments: list[tuple[str, dict[str, Any]]]
 ) -> ForecastInput:
-    """A changed copy. The input object is never mutated."""
+    """A changed copy. The input object is never mutated. Rate and pay changes
+    apply in date order, so a later one takes over from its date whichever
+    scenario it came from (D69); the rest add to the forecast in any order."""
     out = copy.deepcopy(inp)
     end = out.today + timedelta(days=out.days)
-    for kind, p in adjustments:
+    for kind, p in sorted(adjustments, key=_takes_over):
         if kind == 'one_off':
             out.flows.append(
                 Flow(

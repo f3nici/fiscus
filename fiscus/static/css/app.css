@@ -200,6 +200,7 @@ html.drawer-open { overflow: hidden; }
   .sidebar .user { margin-top: auto; padding: 14px 12px 0; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .sidebar .user .who { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sidebar .user .btn-link { font-size: 13px; color: var(--muted); }
+  .sidebar .version { margin: 8px 12px 0; }
   .topbar { display: none; }
   .main { padding: 32px 32px 56px 20px; max-width: 1400px; }
   .bottom-nav { display: none; }
@@ -316,6 +317,21 @@ details > summary::-webkit-details-marker { display: none; }
 details > summary::after { content: ''; width: 6px; height: 6px; margin-top: -3px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); transform: rotate(45deg); transition: transform 0.15s; }
 details[open] > summary::after { margin-top: 3px; transform: rotate(-135deg); }
 details > summary:hover { text-decoration: underline; text-decoration-color: var(--control); text-underline-offset: 3px; }
+/* A pick list: a dropdown of boxes to tick, such as the forecast's scenarios
+   (D69). It drops under its own box, or across the form on a phone. */
+.pick-form { position: relative; }
+.pick { position: relative; }
+.pick > summary.input { width: auto; max-width: 18rem; justify-content: space-between; gap: 10px; font-weight: 400; }
+.pick > summary.input:hover { text-decoration: none; }
+.pick[open] > summary.input { border-color: var(--text); box-shadow: 0 0 0 1px var(--text); }
+.pick-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pick-panel { position: absolute; z-index: 10; top: calc(100% + 4px); right: 0; width: max-content; min-width: 100%; max-width: 320px; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--float-shadow); }
+.pick-panel .check { min-height: 40px; margin-bottom: 0; }
+.pick-panel p { margin: 4px 0 2px; }
+@media (max-width: 699px) {
+  .pick { position: static; }
+  .pick-panel { left: 0; width: auto; max-width: none; }
+}
 
 /* ---------------------------------------------------------------- pills and notes */
 
@@ -417,6 +433,8 @@ code { padding: 1px 4px; border-radius: 4px; background: var(--raised); }
 .uplot { font-family: inherit; }
 .uplot .u-legend { margin-top: 10px; font-size: 13px; color: var(--muted); text-align: left; }
 .uplot .u-legend th { padding: 0; border: none; color: var(--text); font-size: 13px; font-weight: 500; text-transform: none; letter-spacing: 0; }
+/* A long name (scenarios compared together, D69) wraps after its marker. */
+.uplot .u-legend .u-label { display: inline; white-space: normal; }
 .uplot .u-legend td { padding: 0 4px; border: none; font-variant-numeric: tabular-nums; }
 .uplot .u-legend .u-series { padding: 3px 6px; border-radius: var(--radius-chip); }
 .uplot .u-legend .u-series:hover { background: var(--raised); }

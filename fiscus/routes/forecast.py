@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
@@ -86,7 +86,7 @@ def chart_payload(
 def forecast_page(
     request: Request,
     months: int = 0,
-    scenario_id: int = 0,
+    scenario_id: list[int] = Query([]),
     user: User = Depends(current_user),
     db: Session = DB,
 ) -> Response:
@@ -95,8 +95,13 @@ def forecast_page(
     months = months or prefs.forecast_months
     months = max(1, min(24, months))
     base = forecasting.base(db, c.clock, user, months)
-    sc = maybe_owned(db, Scenario, scenario_id, user)
-    sc_result = forecasting.scenario(db, c.clock, user, sc, months) if sc else None
+    scenarios = db.execute(owned(Scenario, user).order_by(Scenario.name)).scalars().all()
+    # One scenario or several, compared together as one (D69). Another
+    # person's is a 404, as everywhere.
+    wanted = {get_owned(db, Scenario, i, user).id for i in scenario_id if i}
+    picked = [s for s in scenarios if s.id in wanted]
+    sc_name = ' + '.join(s.name for s in picked)
+    sc_result = forecasting.scenario(db, c.clock, user, picked, months) if picked else None
     accts = ledger.accounts(db, user)
     names = {a.id: a.name for a in accts}
     spare = forecasting.free_to_spend(db, user, c.clock.today(), base, accts)
@@ -111,10 +116,11 @@ def forecast_page(
             'months': months,
             'names': names,
             'month_end': month_end,
-            'sc': sc,
+            'picked': picked,
+            'sc_name': sc_name,
             'sc_result': sc_result,
             'sc_month_end': sc_month_end,
-            'scenarios': db.execute(owned(Scenario, user).order_by(Scenario.name)).scalars().all(),
+            'scenarios': scenarios,
             'goals_held': spare.goals_held,
             'to_spend': spare.to_spend,
             'free_on': dict(zip(base.dates, free, strict=True)) if free != base.combined else {},
@@ -122,7 +128,7 @@ def forecast_page(
                 base,
                 names,
                 sc_result,
-                sc.name if sc else '',
+                sc_name,
                 free,
                 forecasting.chart_lines(db, user),
             ),

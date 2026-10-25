@@ -4,14 +4,20 @@
 {% block content %}
   <div class="page-head">
     <h1>Forecast {{ estimate() }}</h1>
-    <form class="row" method="get" action="/forecast">
+    <form class="row pick-form" method="get" action="/forecast">
       <select class="input w-auto" id="months" name="months" aria-label="How far ahead" data-autosubmit>
         {% for m in [1, 3, 6, 12, 18, 24] %}<option value="{{ m }}" {{ 'selected' if m == months else '' }}>{{ m }} month{{ '' if m == 1 else 's' }}</option>{% endfor %}
       </select>
-      <select class="input w-auto" name="scenario_id" aria-label="Compare with a scenario" data-autosubmit>
-        <option value="0">No scenario</option>
-        {% for s in scenarios %}<option value="{{ s.id }}" {{ 'selected' if sc and sc.id == s.id else '' }}>{{ s.name }}</option>{% endfor %}
-      </select>
+      {% if scenarios %}
+        {# One scenario or several, compared together as one (D69). #}
+        <details class="pick" id="scenario-pick">
+          <summary class="input"><span class="pick-label">{{ sc_name or 'No scenario' }}</span></summary>
+          <div class="pick-panel" role="group" aria-label="Compare with scenarios">
+            {% for s in scenarios %}<label class="check"><input type="checkbox" name="scenario_id" value="{{ s.id }}" {{ 'checked' if s in picked else '' }} data-autosubmit> {{ s.name }}</label>{% endfor %}
+            <p class="text-xs muted">Tick more than one to see them together.</p>
+          </div>
+        </details>
+      {% endif %}
       <a class="btn btn-sm" href="/scenarios">Scenarios</a>
     </form>
   </div>
@@ -24,20 +30,20 @@
     <div class="alert alert-ok">No account is projected to fall below {{ prefs.low_balance_cents | money }} in the next {{ months }} months.</div>
   {% endif %}
   {% if sc_result and sc_result.low_balance and not base.low_balance %}
-    <div class="alert alert-warn">With "{{ sc.name }}", {{ sc_result.low_balance.account }} would fall to {{ sc_result.low_balance.balance | money }} on {{ sc_result.low_balance.date | d }}.</div>
+    <div class="alert alert-warn">With "{{ sc_name }}", {{ sc_result.low_balance.account }} would fall to {{ sc_result.low_balance.balance | money }} on {{ sc_result.low_balance.date | d }}.</div>
   {% endif %}
 
   <div class="card">
     <div class="chart" data-forecast-chart data-chart="{{ chart }}" data-threshold="{{ prefs.low_balance_cents }}"></div>
     {% set t = base.trend %}
-    <p class="text-xs muted mt-sm">The straight lines are trends. All accounts: {{ 'up' if t.per_month >= 0 else 'down' }} about {{ t.per_month | abs | money }} a month.{% if sc_result %}{% set st = sc_result.trend %} With "{{ sc.name }}": {{ 'up' if st.per_month >= 0 else 'down' }} about {{ st.per_month | abs | money }} a month.{% endif %}{% if free_on %} Free to spend is <a href="/budget">Free in accounts now</a> from the budget, day by day: your accounts less {% if goals_held %}the {{ goals_held | money }} your <a href="/goals">goals</a> keep aside and {% endif %}what is still budgeted for the rest of each budget month ({{ to_spend | money }} today). It steps down when a budget month starts.{% endif %} The dashed red line is your low-balance threshold, set in <a href="/settings">Settings</a>.</p>
+    <p class="text-xs muted mt-sm">The straight lines are trends. All accounts: {{ 'up' if t.per_month >= 0 else 'down' }} about {{ t.per_month | abs | money }} a month.{% if sc_result %}{% set st = sc_result.trend %} With "{{ sc_name }}": {{ 'up' if st.per_month >= 0 else 'down' }} about {{ st.per_month | abs | money }} a month.{% endif %}{% if free_on %} Free to spend is <a href="/budget">Free in accounts now</a> from the budget, day by day: your accounts less {% if goals_held %}the {{ goals_held | money }} your <a href="/goals">goals</a> keep aside and {% endif %}what is still budgeted for the rest of each budget month ({{ to_spend | money }} today). It steps down when a budget month starts.{% endif %} The dashed red line is your low-balance threshold, set in <a href="/settings">Settings</a>.</p>
   </div>
 
   <div class="card mt" id="month-end">
     <h2>Month-end balances</h2>
     <div class="table-wrap">
       <table class="stack-table cols-3">
-        <thead><tr><th>Month end</th>{% for aid, name in names.items() %}<th class="num">{{ name }}</th>{% endfor %}<th class="num">All</th>{% if free_on %}<th class="num">Free to spend</th>{% endif %}{% if sc_result %}<th class="num">{{ sc.name }}</th>{% endif %}</tr></thead>
+        <thead><tr><th>Month end</th>{% for aid, name in names.items() %}<th class="num">{{ name }}</th>{% endfor %}<th class="num">All</th>{% if free_on %}<th class="num">Free to spend</th>{% endif %}{% if sc_result %}<th class="num">{{ sc_name }}</th>{% endif %}</tr></thead>
         <tbody>
           {% for m in month_end %}
             <tr>
@@ -45,7 +51,7 @@
               {% for aid in names %}<td class="num" data-label="{{ names[aid] }}">{{ money_cell(m.accounts.get(aid | string, 0)) }}</td>{% endfor %}
               <td class="num" data-label="All"><strong>{{ money_cell(m.combined) }}</strong></td>
               {% if free_on %}<td class="num" data-label="Free to spend">{{ money_cell(free_on[m.date]) }}</td>{% endif %}
-              {% if sc_result %}<td class="num" data-label="{{ sc.name }}">{{ money_cell(sc_month_end.get(m.date, 0)) }}</td>{% endif %}
+              {% if sc_result %}<td class="num" data-label="{{ sc_name }}">{{ money_cell(sc_month_end.get(m.date, 0)) }}</td>{% endif %}
             </tr>
           {% endfor %}
         </tbody>

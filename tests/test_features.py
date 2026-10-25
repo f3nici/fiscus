@@ -284,6 +284,74 @@ def test_the_forecast_free_to_spend_and_a_new_income(env: Env) -> None:
     assert compared['combined'] == data['combined']
 
 
+def test_scenarios_compared_together(env: Env) -> None:
+    """Scenarios ticked together are laid over one forecast (D69): a rate rise
+    and a room let out, with no scenario holding both."""
+    a, _alex, acct = setup_household(env)
+    resp = a.post(
+        '/loans',
+        data={
+            'name': 'Mortgage',
+            'principal': '500000',
+            'start_date': '2024-01-15',
+            'term_years': '30',
+            'initial_rate': '6.1',
+            'balance': '480000',
+            'balance_date': '2026-10-01',
+            'repayment_account_id': str(acct),
+        },
+    )
+    loan = int(resp.headers['location'].rsplit('/', 1)[1])
+
+    def scenario(name: str, change: dict[str, str]) -> int:
+        sid = int(a.post('/scenarios', data={'name': name}).headers['location'].rsplit('/', 1)[1])
+        assert a.post(f'/scenarios/{sid}/adjustments', data=change).status_code == 303
+        return sid
+
+    rent = scenario(
+        'Room for rent',
+        {
+            'kind': 'new_income',
+            'name': 'Board',
+            'amount': '250',
+            'frequency': 'weekly',
+            'start_date': '2026-10-05',
+            'account_id': str(acct),
+        },
+    )
+    rate = scenario(
+        'Rate up 1%',
+        {'kind': 'rate_change', 'loan_id': str(loan), 'from_date': '2026-10-01', 'rate': '7.1'},
+    )
+    base = chart_data(a.get('/forecast?months=3').text)['combined']
+    alone = {
+        sid: chart_data(a.get(f'/forecast?months=3&scenario_id={sid}').text)['scenario']
+        for sid in (rate, rent)
+    }
+    assert alone[rate]['combined'][-1] < base[-1] < alone[rent]['combined'][-1]
+    page = a.get(f'/forecast?months=3&scenario_id={rent}&scenario_id={rate}').text
+    both = chart_data(page)['scenario']
+    # Each day moves by what each moved it alone, added together.
+    assert both['combined'] == [
+        r + t - b
+        for b, r, t in zip(base, alone[rate]['combined'], alone[rent]['combined'], strict=True)
+    ]
+    assert both['trend'] == trend(both['combined']).line
+    # Named for both, in the order the list shows them, each ticked.
+    assert both['name'] == 'Rate up 1% + Room for rent'
+    assert 'With "Rate up 1% + Room for rent":' in page
+    assert '<th class="num">Rate up 1% + Room for rent</th>' in page
+    for sid in (rate, rent):
+        assert f'name="scenario_id" value="{sid}" checked' in page
+    # The same one twice counts once; none ticked is the real forecast alone.
+    twice = a.get(f'/forecast?months=3&scenario_id={rent}&scenario_id={rent}').text
+    assert chart_data(twice)['scenario'] == alone[rent]
+    page = a.get('/forecast?months=3&scenario_id=0').text
+    assert 'scenario' not in chart_data(page)
+    assert '<span class="pick-label">No scenario</span>' in page
+    assert ' checked' not in page.split('id="scenario-pick"')[1].split('</details>')[0]
+
+
 def test_free_to_spend_starts_where_the_budget_has_it(env: Env) -> None:
     a, alex, acct = setup_household(env)
     a.post(

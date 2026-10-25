@@ -223,6 +223,7 @@ READS = [
     '/loans/{loan}/edit',
     '/scenarios/{scenario}',
     '/forecast?scenario_id={scenario}',
+    '/forecast?scenario_id=0&scenario_id={scenario}',
     '/pay?edit={schedule}',
     '/pay?slip={payslip}',
     '/pay?payday={schedule}:2026-10-02',
