@@ -75,7 +75,7 @@ Check it is up:
 
 ```bash
 curl https://fiscus.home.example.com/readyz
-# {"status":"ready","version":"1.2.0","build":"...","checks":{"database":true,"migrations":true,"data_dir_writable":true}}
+# {"status":"ready","version":"1.3.0","build":"...","checks":{"database":true,"migrations":true,"data_dir_writable":true}}
 ```
 
 ## First run: the bootstrap link
