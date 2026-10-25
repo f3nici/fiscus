@@ -200,6 +200,7 @@ html.drawer-open { overflow: hidden; }
   .sidebar .user { margin-top: auto; padding: 14px 12px 0; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .sidebar .user .who { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sidebar .user .btn-link { font-size: 13px; color: var(--muted); }
+  .sidebar .version { margin: 8px 12px 0; }
   .topbar { display: none; }
   .main { padding: 32px 32px 56px 20px; max-width: 1400px; }
   .bottom-nav { display: none; }
