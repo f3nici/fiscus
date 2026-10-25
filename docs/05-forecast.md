@@ -77,13 +77,15 @@ the person (`user_settings.chart_lines`, D50); the rest show as drawn.
 
 ## Scenarios
 
-`apply_scenario` deep-copies the input and applies adjustments in order:
+`apply_scenario` deep-copies the input and applies adjustments:
 `one_off`, `income_change` (new net or a delta, from a date, one schedule or
 all), `rate_change`, `new_bill`, `new_income` (net, recurring, its own kind of
 flow so an income change to every schedule leaves it alone), `extra_repayment`
-(one-off or recurring).
+(one-off or recurring). Rate and pay changes apply in date order, so a later
+one takes over from its date; the rest add up in any order.
 Real rows are never written. The forecast page runs base and scenario and
-draws both.
+draws both. Several scenarios ticked together are one run with all their
+changes, named for them all (D69).
 
 ## Caching
 

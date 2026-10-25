@@ -366,6 +366,29 @@ def test_scenario_rate_change_and_extra_repayment() -> None:
     assert extra.accounts[2][-1] == base.accounts[2][-1] - 10_000_00
 
 
+def test_scenario_rate_and_pay_changes_take_over_in_date_order() -> None:
+    # Scenarios compared together (D69): a later change takes over from its
+    # date, whichever scenario came first.
+    loan = spec(balance_cents=400_000_00, balance_date=date(2026, 10, 1), account_id=1)
+    pay = [
+        Flow(date(2026, 10, 2), 1, 2_000_00, 'pay', 'Salary', 1),
+        Flow(date(2026, 10, 30), 1, 2_000_00, 'pay', 'Salary', 1),
+    ]
+    inp = base_input(loans=[loan], flows=pay, days=60)
+    rise = ('rate_change', {'loan_id': 1, 'from_date': '2026-10-10', 'rate': '7'})
+    fall = ('rate_change', {'loan_id': 1, 'from_date': '2026-11-01', 'rate': '5'})
+    rates = [(date(2026, 1, 15), Decimal('6')), (date(2026, 10, 10), Decimal('7'))]
+    rates.append((date(2026, 11, 1), Decimal('5')))
+    assert apply_scenario(inp, [rise, fall]).loans[0].rates == rates
+    assert apply_scenario(inp, [fall, rise]).loans[0].rates == rates
+    # A new net pay from 1 Oct, then $300 less from 15 Oct.
+    new_net = ('income_change', {'from_date': '2026-10-01', 'new_net_cents': 2_500_00})
+    cut = ('income_change', {'from_date': '2026-10-15', 'delta_cents': -300_00})
+    for changes in ([new_net, cut], [cut, new_net]):
+        flows = apply_scenario(inp, changes).flows
+        assert [f.amount_cents for f in flows if f.kind == 'pay'] == [2_500_00, 2_200_00]
+
+
 # ------------------------------------------------------------------------ tax
 
 
