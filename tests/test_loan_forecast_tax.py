@@ -188,6 +188,44 @@ def test_a_rate_the_same_as_before_is_no_change() -> None:
     assert moved.scheduled_repayment() == L.repayment(622_000_00, Decimal('6.84'), left, weeks)
 
 
+def test_repayments_run_from_the_first_repayment_date() -> None:
+    # Settled Monday 26 Oct, the bank's first repayment Thursday 5 Nov (D71).
+    s = anz(first_repayment=date(2026, 11, 5))
+    got = L.repayments(s, date(2026, 10, 27), date(2026, 11, 20))
+    assert got == [
+        (date(2026, 11, 5), 914_63),
+        (date(2026, 11, 12), 914_63),
+        (date(2026, 11, 19), 914_63),
+    ]
+    assert s.next_repayment(date(2026, 10, 27)) == date(2026, 11, 5)
+    assert s.next_repayment(date(2026, 11, 6)) == date(2026, 11, 12)
+    assert s.next_repayment(date(2056, 10, 27)) is None
+    # Without one, a week after settlement.
+    assert [d for d, _ in L.repayments(anz(), date(2026, 10, 27), date(2026, 11, 20))] == [
+        date(2026, 11, 2),
+        date(2026, 11, 9),
+        date(2026, 11, 16),
+    ]
+    # Interest is charged on settlement's day of the month either way.
+    assert L.is_charge_day(s, date(2026, 11, 26)) and not L.is_charge_day(s, date(2026, 11, 5))
+
+
+def test_monthly_repayments_from_the_first_repayment_date() -> None:
+    # Settled 15 Jan 2026, repaid on the 1st from 1 Feb.
+    s = spec(first_repayment=date(2026, 2, 1))
+    days = s.repayment_days(date(2026, 1, 1), date(2026, 4, 30))
+    assert days == [date(2026, m, 1) for m in (2, 3, 4)]
+    # After 15 Feb: 1 Mar 2026 to 1 Jan 2056, before maturity on 15 Jan 2056.
+    assert s.periods_between(date(2026, 2, 15)) == 359
+    # Without one, the anniversary keeps its day: 31 Jan, 28 Feb, 31 Mar.
+    end_of_month = spec(start_date=date(2026, 1, 31), balance_date=date(2026, 1, 31))
+    assert end_of_month.repayment_days(date(2026, 1, 1), date(2026, 4, 30)) == [
+        date(2026, 2, 28),
+        date(2026, 3, 31),
+        date(2026, 4, 30),
+    ]
+
+
 def test_interest_saved_hand_calculated() -> None:
     days = {date(2026, 9, d): 50_000_00 for d in range(1, 31)}
     # $50,000 x 6 % / 365 x 30 = $246.58

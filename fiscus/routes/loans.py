@@ -6,7 +6,8 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
-from fiscus.forms import FormError, choice, money, rate, req_date, text
+from fiscus.domain.recurrence import add_months
+from fiscus.forms import FormError, choice, money, opt_date, rate, req_date, text
 from fiscus.models import Account, Loan, LoanRate, User
 from fiscus.services import ledger, loans
 from fiscus.services.access import get_owned, maybe_owned, owned
@@ -72,17 +73,25 @@ def save_loan(
     balance: str = Form(...),
     balance_date: str = Form(...),
     repayment_override: str = Form(''),
+    first_repayment_date: str = Form(''),
     repayment_account_id: int = Form(0),
     user: User = Depends(current_user),
     db: Session = DB,
 ) -> Response:
     loan = get_owned(db, Loan, loan_id, user) if loan_id else None
     try:
+        start = req_date(start_date, 'Start date')
+        term_months = max(1, min(40, term_years)) * 12
+        first = opt_date(first_repayment_date, 'First repayment')
+        if first is not None and first <= start:
+            raise FormError('The first repayment is on or before the start date')
+        if first is not None and first > add_months(start, term_months):
+            raise FormError('The first repayment is after the end of the term')
         values = dict(
             name=text(name, 'Name', 80),
             principal_cents=money(principal, 'Amount borrowed', allow_negative=False),
-            start_date=req_date(start_date, 'Start date'),
-            term_months=max(1, min(40, term_years)) * 12,
+            start_date=start,
+            term_months=term_months,
             repayment_frequency=choice(repayment_frequency, LOAN_FREQS, 'Repayments'),
             balance_cents=money(balance, 'Balance owing', allow_negative=False),
             balance_date=req_date(balance_date, 'Balance as at'),
@@ -92,6 +101,7 @@ def save_loan(
                 if repayment_override.strip()
                 else None
             ),
+            first_repayment_date=first,
         )
         first_rate = rate(initial_rate, 'Interest rate') if loan is None else None
     except FormError as exc:

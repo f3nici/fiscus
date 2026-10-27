@@ -15,6 +15,10 @@ anchor. A bill's "next due" is its anchor.
   year. Weekly and fortnightly count a year as 365.25 days, 52.18 weeks or
   26.09 fortnights, so a 30-year weekly loan is 1,565.36 repayments, as ANZ
   works it (D70).
+- **Repayment days** recur from the first repayment, as the bank set it, or
+  one period after the start date when none is given (D71). They go through
+  `recurrence.occurrences`, so a monthly loan from the 31st keeps the 31st
+  where a month has one. The loan page shows the next one.
 - **Interest**: every day, `max(0, balance - offset) x rate / 365` accrues,
   with fractions of a cent carried. The accrual is charged to the balance on
   the monthly anniversary of the start date (clamped). A typed-in balance

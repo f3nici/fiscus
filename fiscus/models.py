@@ -436,6 +436,8 @@ class Loan(Base, Owned):
     balance_cents: Mapped[int] = mapped_column(Integer)
     balance_date: Mapped[date] = mapped_column(Date)
     repayment_override_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # As the bank set it; None is one period after the start (D71).
+    first_repayment_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     repayment_account_id: Mapped[int | None] = mapped_column(
         ForeignKey('accounts.id', ondelete='SET NULL', use_alter=True), nullable=True
     )

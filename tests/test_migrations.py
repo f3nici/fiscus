@@ -979,3 +979,44 @@ def test_bills_start_not_varying_and_keep_their_payments(tmp_path: Path) -> None
     with engine.connect() as c:
         assert c.execute(text('SELECT amount_cents FROM bill_payments')).scalar_one() == 31250
     engine.dispose()
+
+
+def test_loans_start_without_a_first_repayment_and_keep_their_rates(tmp_path: Path) -> None:
+    """0034 (D71) adds a loan's first repayment, empty for every loan; going
+    back drops it and leaves the rates that point at loans."""
+    url = f'sqlite:///{tmp_path / "fiscus.db"}'
+    cfg = alembic_config(url)
+    command.upgrade(cfg, '0033')
+    engine = create_engine(url)
+    with engine.begin() as c:
+        c.execute(
+            text(
+                'INSERT INTO users (id, username, display_name, is_admin, is_active,'
+                " user_handle, data_version, created_at) VALUES (1, 'alex', 'Alex', 1, 1, :h,"
+                " 0, '2026-01-01')"
+            ),
+            {'h': bytes([1]) * 64},
+        )
+        c.execute(
+            text(
+                'INSERT INTO loans (id, user_id, name, principal_cents, start_date,'
+                ' term_months, repayment_frequency, balance_cents, balance_date)'
+                " VALUES (1, 1, 'Home', 62377490, '2026-10-26', 360, 'weekly', 62377490,"
+                " '2026-10-26')"
+            )
+        )
+        c.execute(
+            text(
+                'INSERT INTO loan_rates (id, user_id, loan_id, effective_date, rate)'
+                " VALUES (1, 1, 1, '2026-10-26', '6.59')"
+            )
+        )
+    command.upgrade(cfg, '0034')
+    with engine.connect() as c:
+        assert c.execute(text('SELECT first_repayment_date FROM loans')).scalar_one() is None
+    command.downgrade(cfg, '0033')
+    cols = {col['name'] for col in inspect(engine).get_columns('loans')}
+    assert 'first_repayment_date' not in cols
+    with engine.connect() as c:
+        assert c.execute(text('SELECT rate FROM loan_rates')).scalar_one() == '6.59'
+    engine.dispose()

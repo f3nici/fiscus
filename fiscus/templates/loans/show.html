@@ -13,7 +13,7 @@
     </div>
   </div>
   <div class="kpis {{ 'cols-4' if s.started else 'cols-3' }}">
-    <div class="stat"><div class="label">Repayment</div><div class="value">{{ s.repayment_cents | money }}</div><span class="text-sm muted">{{ loan.repayment_frequency }}{{ ' (set by you)' if loan.repayment_override_cents else '' }}</span></div>
+    <div class="stat"><div class="label">Repayment</div><div class="value">{{ s.repayment_cents | money }}</div><span class="text-sm muted">{{ loan.repayment_frequency }}{{ ' (set by you)' if loan.repayment_override_cents else '' }}{% if s.next_repayment %}, next {{ s.next_repayment.strftime('%a') }} {{ s.next_repayment | d('dm') }}{% endif %}</span></div>
     <div class="stat"><div class="label">Offset balance</div><div class="value">{{ s.offset_balance_cents | money }}</div><span class="text-sm muted">{{ offsets | length }} account{{ '' if offsets | length == 1 else 's' }}</span></div>
     {% if s.started %}
       <div class="stat"><div class="label">Saved this month {{ estimate() }}</div><div class="value">{{ s.saved_month_cents | money }}</div>{% if s.saved_month_from %}<span class="text-sm muted">since {{ s.saved_month_from | d('dm') }}, when the offset's balance was first entered</span>{% endif %}</div>

@@ -11,6 +11,10 @@ until the charge, which is how an Australian lender's statement adds up.
 A variable-rate change recalculates the repayment over the remaining term from
 the balance on that day, as lenders do, unless the repayment is fixed by hand.
 A rate the same as the one before it changes nothing.
+
+Repayments fall every period from the first, as the bank set it, or one
+period after settlement when it is not given (D71). Interest is charged on
+settlement's day of the month either way.
 """
 
 from __future__ import annotations
@@ -20,7 +24,7 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
-from fiscus.domain.recurrence import add_months, nth
+from fiscus.domain.recurrence import add_months, next_on_or_after, nth, occurrences
 
 STEP_DAYS = {'weekly': 7, 'fortnightly': 14}
 # Repayments a year: weekly and fortnightly over a year of 365.25 days (D70).
@@ -75,6 +79,8 @@ class LoanSpec:
     balance_date: date
     rates: list[tuple[date, Decimal]]
     repayment_override_cents: int | None = None
+    # The first repayment as the bank set it; None is a period after settlement.
+    first_repayment: date | None = None
     account_id: int | None = None
     offset_account_ids: tuple[int, ...] = ()
     # (date, cents, from account) applied on top of the scheduled repayment
@@ -88,6 +94,35 @@ class LoanSpec:
     def per_year(self) -> Decimal:
         return PERIODS_PER_YEAR[self.frequency]
 
+    @property
+    def repayment_anchor(self) -> date:
+        # Monthly from settlement keeps its day: 31 Jan, 28 Feb, then 31 Mar.
+        return self.first_repayment or self.start_date
+
+    @property
+    def first_repayment_day(self) -> date:
+        return self.first_repayment or nth(self.start_date, self.frequency, 1)
+
+    def repayment_days(self, start: date, end: date) -> list[date]:
+        """Scheduled repayment days in [start, end], after maturity too while
+        anything is still owed."""
+        return list(
+            occurrences(
+                self.repayment_anchor,
+                self.frequency,
+                start,
+                end,
+                not_before=self.first_repayment_day,
+            )
+        )
+
+    def next_repayment(self, day: date) -> date | None:
+        """The scheduled repayment on or after `day`, until maturity."""
+        found = next_on_or_after(
+            self.repayment_anchor, self.frequency, max(day, self.first_repayment_day)
+        )
+        return found if found is not None and found <= self.maturity else None
+
     def periods_between(self, day: date) -> Decimal:
         """Repayments still to come after `day` until maturity.
 
@@ -96,17 +131,7 @@ class LoanSpec:
         """
         if self.frequency in STEP_DAYS:
             return Decimal(max(0, (self.maturity - day).days)) / STEP_DAYS[self.frequency]
-        n = 0
-        k = 1
-        while True:
-            d = nth(self.start_date, self.frequency, k)
-            if d > self.maturity:
-                return Decimal(n)
-            if d > day:
-                n += 1
-            k += 1
-            if k > 5000:
-                return Decimal(n)
+        return Decimal(len(self.repayment_days(day + timedelta(days=1), self.maturity)))
 
     def scheduled_repayment(self) -> int:
         """The repayment as at the balance date.
@@ -161,11 +186,7 @@ def repayments(
 
 
 def is_repayment_day(spec: LoanSpec, day: date) -> bool:
-    if day <= spec.start_date:
-        return False
-    if spec.frequency == 'monthly':
-        return nth(spec.start_date, 'monthly', _months_between(spec.start_date, day)) == day
-    return (day - spec.start_date).days % STEP_DAYS[spec.frequency] == 0
+    return bool(spec.repayment_days(day, day))
 
 
 def is_charge_day(spec: LoanSpec, day: date) -> bool:
