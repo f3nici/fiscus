@@ -13,6 +13,7 @@
       <div class="field"><label class="label" for="repayment_frequency">Repayments</label>
         <select class="input" id="repayment_frequency" name="repayment_frequency">{% for f in freqs %}<option value="{{ f }}" {{ 'selected' if loan and loan.repayment_frequency == f else '' }}>{{ f | capitalize }}</option>{% endfor %}</select>
       </div>
+      <div class="field"><label class="label" for="first_repayment_date">First repayment (optional)</label><input class="input" type="date" id="first_repayment_date" name="first_repayment_date" value="{{ loan.first_repayment_date.isoformat() if loan and loan.first_repayment_date else '' }}"><small>As your bank set it; the rest follow from it. Leave blank for one repayment period after the start date.</small></div>
       {% if not loan %}
         <div class="field"><label class="label" for="initial_rate">Interest rate (% a year)</label><input class="input" id="initial_rate" name="initial_rate" inputmode="decimal" required placeholder="6.24"></div>
       {% endif %}

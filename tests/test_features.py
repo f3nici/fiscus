@@ -27,7 +27,15 @@ from fiscus.models import (
     User,
 )
 from fiscus.money import fmt
-from fiscus.services import bills, budgeting, forecasting, ledger, reminders, taxes
+from fiscus.services import (
+    bills,
+    budgeting,
+    calendar_events,
+    forecasting,
+    ledger,
+    reminders,
+    taxes,
+)
 from tests.conftest import CsrfClient, Env
 from tests.test_bills import ANZ_SEPT, add_transactions, create_bill, make_account
 from tests.test_budget_import import upload as _upload
@@ -196,6 +204,52 @@ def test_backdated_rate_change_reprices_the_repayment(env: Env) -> None:
         r = forecasting.base(db, env.clock, db.get(User, _alex.id), 1)  # type: ignore[arg-type]
     idx = r.dates.index(date(2026, 10, 10))
     assert r.accounts[acct][idx - 1] - r.accounts[acct][idx] == expected
+
+
+def test_repayments_follow_the_first_repayment_date(env: Env) -> None:
+    """Settled on a Monday, repaid on Thursdays as the bank set it (D71)."""
+    a, alex, acct = setup_household(env)
+    form = {
+        'name': 'ANZ',
+        'principal': '623774.90',
+        'start_date': '2026-09-28',
+        'term_years': '30',
+        'repayment_frequency': 'weekly',
+        'initial_rate': '6.59',
+        'balance': '623774.90',
+        'balance_date': '2026-09-28',
+        'repayment_account_id': str(acct),
+    }
+    for first, error in (
+        ('2026-09-28', 'on or before the start date'),
+        ('2056-10-05', 'after the end of the term'),
+    ):
+        resp = a.post('/loans', data={**form, 'first_repayment_date': first})
+        assert resp.status_code == 400 and error in resp.text
+    resp = a.post('/loans', data={**form, 'first_repayment_date': '2026-10-08'})
+    loan = int(resp.headers['location'].rsplit('/', 1)[1])
+    page = a.get(f'/loans/{loan}').text
+    assert '$914.63' in page and 'weekly, next Thu 8 Oct' in page
+    assert 'value="2026-10-08"' in a.get(f'/loans/{loan}/edit').text
+
+    def repaid() -> list[date]:
+        with env.db() as db:
+            user = db.get(User, alex.id)
+            assert user is not None
+            found = calendar_events.events(
+                db, user, date(2026, 10, 1), date(2026, 10, 31), date(2026, 10, 1)
+            )
+        return [e.date for e in found if e.kind == 'loan']
+
+    assert repaid() == [date(2026, 10, d) for d in (8, 15, 22, 29)]
+    # Interest is still charged on settlement's day of the month.
+    with env.db() as db:
+        spec = forecasting.loan_spec(db, db.get(Loan, loan))  # type: ignore[arg-type]
+    assert L.is_charge_day(spec, date(2026, 10, 28))
+    # Blank again: a week after the start, on Mondays.
+    a.post(f'/loans/{loan}', data={**form, 'first_repayment_date': ''})
+    assert repaid() == [date(2026, 10, d) for d in (5, 12, 19, 26)]
+    assert 'weekly, next Mon 5 Oct' in a.get(f'/loans/{loan}').text
 
 
 # ------------------------------------------------------------------ forecast

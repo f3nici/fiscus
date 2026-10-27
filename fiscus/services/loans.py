@@ -31,6 +31,7 @@ class LoanSummary:
     saved_year_from: date | None
     with_offset: loan_math.Payoff
     without_offset: loan_math.Payoff
+    next_repayment: date | None = None
     # False until settlement: there is no interest, so nothing saved yet.
     started: bool = True
 
@@ -86,6 +87,7 @@ def summarise(db: Session, user: User, loan: Loan, today: date) -> LoanSummary:
         saved_year_from=year_from,
         with_offset=with_offset,
         without_offset=without,
+        next_repayment=spec.next_repayment(today) if loan.balance_cents > 0 else None,
         started=loan.start_date <= today,
     )
 

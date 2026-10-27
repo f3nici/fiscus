@@ -15,7 +15,7 @@ filed under a category, one that varies expecting the average of its last
 three paid (D66); pay schedules and payslips (listed ten a page); the
 calendar (the month by default, D54); home loan and offset (one loan opens
 straight into it; weekly repayments over a year of 365.25 days, as ANZ
-works them, D70); forecasting with scenarios, several ticked together
+works them, from the first repayment the bank set, D70, D71); forecasting with scenarios, several ticked together
 (D69), its trend and what is free to spend as the budget has it, lines
 turned off staying off (D46, D47, D50, D51); the budget (each line its
 bills plus an estimate on top, D64; a line's entries in its Edit panel);

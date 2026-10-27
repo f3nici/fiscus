@@ -85,6 +85,7 @@ def loan_spec(db: Session, loan: Loan) -> LoanSpec:
         balance_date=loan.balance_date,
         rates=rates,
         repayment_override_cents=loan.repayment_override_cents,
+        first_repayment=loan.first_repayment_date,
         account_id=loan.repayment_account_id,
         offset_account_ids=tuple(offsets),
     )
