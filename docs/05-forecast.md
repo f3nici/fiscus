@@ -11,7 +11,10 @@ anchor. A bill's "next due" is its anchor.
 ## Loans
 
 - **Repayment**: the annuity `P r / (1 - (1 + r)^-n)` with `r` the annual rate
-  over repayments per year.
+  over repayments per year and `n` the term in repayments. Monthly is 12 a
+  year. Weekly and fortnightly count a year as 365.25 days, 52.18 weeks or
+  26.09 fortnights, so a 30-year weekly loan is 1,565.36 repayments, as ANZ
+  works it (D70).
 - **Interest**: every day, `max(0, balance - offset) x rate / 365` accrues,
   with fractions of a cent carried. The accrual is charged to the balance on
   the monthly anniversary of the start date (clamped). A typed-in balance
@@ -21,7 +24,9 @@ anchor. A bill's "next due" is its anchor.
   then the evening's interest on the balance and the offset accounts' balances
   as they now stand.
 - **Rate changes** reprice the repayment over the remaining term from the
-  balance that day, unless the repayment is fixed by hand. A change dated
+  balance that day, unless the repayment is fixed by hand. The remaining term
+  is the monthly repayments left, or the days left over 7 or 14. A rate the
+  same as the one before it is no change. A change dated
   before the loan's balance date reprices from that balance, so a backdated
   change still moves the repayment. The calendar and the loan page step the
   same simulation (`loan.repayments`), with today's offset held steady.

@@ -29,8 +29,10 @@ def test_standard_repayment() -> None:
     assert L.repayment(500_000_00, Decimal('6'), 360, 12) == 2_997_75
     # Zero rate is principal over periods.
     assert L.repayment(120_000_00, Decimal('0'), 120, 12) == 1_000_00
-    # $300,000 at 5.5 % over 25 years fortnightly: r = 0.055 / 26, n = 650.
-    assert L.repayment(300_000_00, Decimal('5.5'), 650, 26) == 849_79
+    # $300,000 at 5.5 % over 25 years fortnightly, a year of 365.25 days (D70):
+    # r = 0.055 x 14 / 365.25, n = 25 x 365.25 / 14 = 652.23.
+    fortnights = L.PERIODS_PER_YEAR['fortnightly']
+    assert L.repayment(300_000_00, Decimal('5.5'), 25 * fortnights, fortnights) == 846_88
 
 
 def spec(**kw: object) -> L.LoanSpec:
@@ -124,6 +126,66 @@ def test_payoff_without_offset_runs_the_full_term_and_offset_shortens_it() -> No
     assert abs((without.paid_off - date(2056, 1, 15)).days) <= 31
     assert with_offset.paid_off < without.paid_off - timedelta(days=365 * 7)
     assert with_offset.total_interest < without.total_interest
+
+
+def anz(**kw: object) -> L.LoanSpec:
+    # ANZ's weekly minimum on this was $914.63 (D70).
+    base: dict[str, object] = dict(
+        principal_cents=623_774_90,
+        start_date=date(2026, 10, 26),
+        frequency='weekly',
+        balance_cents=623_774_90,
+        balance_date=date(2026, 10, 26),
+        rates=[(date(2026, 10, 26), Decimal('6.59'))],
+    )
+    base.update(kw)
+    return spec(**base)
+
+
+def test_weekly_repayment_is_worked_on_a_year_of_365_25_days() -> None:
+    # r = 0.0659 x 7 / 365.25, n = 30 x 365.25 / 7 = 1,565.36 weeks, not
+    # 0.0659 / 52 over 1,560 ($917.77).
+    assert anz().scheduled_repayment() == 914_63
+    assert anz(principal_cents=624_000_00).scheduled_repayment() == 914_96
+    # Daily interest charged monthly pays it off within weeks of the term,
+    # where 52 weeks a year was five months early.
+    paid_off = L.project_payoff(anz(), date(2026, 10, 26), lambda _d: 0).paid_off
+    assert paid_off is not None
+    assert date(2056, 8, 26) < paid_off <= date(2056, 10, 26)
+
+
+def test_weekly_rate_change_reprices_over_the_days_left() -> None:
+    s = anz(rates=[(date(2026, 10, 26), Decimal('6.59')), (date(2027, 1, 1), Decimal('6.34'))])
+    sim = L.LoanSim(s)
+    day = s.balance_date
+    while day < date(2027, 1, 1):
+        day += timedelta(days=1)
+        sim.repayments_due(day)
+        sim.end_of_day(day, 0)
+    # 1 Jan 2027 to 26 Oct 2056 is 10,891 days.
+    assert s.periods_between(date(2027, 1, 1)) == Decimal(10_891) / 7
+    weeks = L.PERIODS_PER_YEAR['weekly']
+    assert sim.payment == L.repayment(sim.balance, Decimal('6.34'), Decimal(10_891) / 7, weeks)
+    assert sim.payment < 914_63
+
+
+def test_a_rate_the_same_as_before_is_no_change() -> None:
+    # Entered the day after settlement at the same rate: a later balance does
+    # not reprice the repayment from it.
+    s = anz(
+        rates=[(date(2026, 10, 27), Decimal('6.59'))],
+        balance_cents=622_000_00,
+        balance_date=date(2026, 11, 20),
+    )
+    assert s.scheduled_repayment() == 914_63
+    moved = anz(
+        rates=[(date(2026, 10, 26), Decimal('6.59')), (date(2026, 11, 1), Decimal('6.84'))],
+        balance_cents=622_000_00,
+        balance_date=date(2026, 11, 20),
+    )
+    weeks = L.PERIODS_PER_YEAR['weekly']
+    left = moved.periods_between(date(2026, 11, 20))
+    assert moved.scheduled_repayment() == L.repayment(622_000_00, Decimal('6.84'), left, weeks)
 
 
 def test_interest_saved_hand_calculated() -> None:
