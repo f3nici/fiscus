@@ -1,13 +1,16 @@
 """Home loan maths.
 
 Repayment: the standard annuity, P x r / (1 - (1 + r)^-n), with r the annual
-rate over the repayments per year. Interest: accrued daily on (balance - offset)
-at rate / 365, never below zero, and charged to the balance once a month on
-the loan's anniversary day. Fractions of a cent carry until the charge, which
-is how an Australian lender's statement adds up.
+rate over the repayments per year and n the term in repayments. A year is 12
+monthly repayments, or 365.25 days of weekly or fortnightly ones (52.18 and
+26.09, so n is fractional), as ANZ works it out (D70). Interest: accrued daily
+on (balance - offset) at rate / 365, never below zero, and charged to the
+balance once a month on the loan's anniversary day. Fractions of a cent carry
+until the charge, which is how an Australian lender's statement adds up.
 
 A variable-rate change recalculates the repayment over the remaining term from
 the balance on that day, as lenders do, unless the repayment is fixed by hand.
+A rate the same as the one before it changes nothing.
 """
 
 from __future__ import annotations
@@ -19,7 +22,14 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from fiscus.domain.recurrence import add_months, nth
 
-PERIODS_PER_YEAR = {'weekly': 52, 'fortnightly': 26, 'monthly': 12}
+STEP_DAYS = {'weekly': 7, 'fortnightly': 14}
+# Repayments a year: weekly and fortnightly over a year of 365.25 days (D70).
+PERIODS_PER_YEAR = {
+    'weekly': Decimal('365.25') / 7,
+    'fortnightly': Decimal('365.25') / 14,
+    'monthly': Decimal(12),
+}
+# Interest a day is a 365th of the rate (D9).
 DAYS_PER_YEAR = Decimal(365)
 ONE = Decimal(1)
 CENT = Decimal('1')
@@ -29,7 +39,9 @@ def cents(value: Decimal) -> int:
     return int(value.quantize(CENT, rounding=ROUND_HALF_UP))
 
 
-def repayment(principal_cents: int, annual_rate_pct: Decimal, periods: int, per_year: int) -> int:
+def repayment(
+    principal_cents: int, annual_rate_pct: Decimal, periods: Decimal | int, per_year: Decimal | int
+) -> int:
     if periods <= 0:
         return principal_cents
     if principal_cents <= 0:
@@ -73,39 +85,50 @@ class LoanSpec:
         return add_months(self.start_date, self.term_months)
 
     @property
-    def per_year(self) -> int:
+    def per_year(self) -> Decimal:
         return PERIODS_PER_YEAR[self.frequency]
 
-    def periods_between(self, day: date) -> int:
-        """Repayments still to come after `day` until maturity."""
+    def periods_between(self, day: date) -> Decimal:
+        """Repayments still to come after `day` until maturity.
+
+        Monthly counts the repayment days. Weekly and fortnightly are the days
+        left over 7 or 14, part of a repayment included, as the term is.
+        """
+        if self.frequency in STEP_DAYS:
+            return Decimal(max(0, (self.maturity - day).days)) / STEP_DAYS[self.frequency]
         n = 0
         k = 1
         while True:
             d = nth(self.start_date, self.frequency, k)
             if d > self.maturity:
-                return n
+                return Decimal(n)
             if d > day:
                 n += 1
             k += 1
             if k > 5000:
-                return n
+                return Decimal(n)
 
     def scheduled_repayment(self) -> int:
         """The repayment as at the balance date.
 
         At settlement's rate on the amount borrowed, unless the rate has changed
         since: then repriced from the known balance over the remaining term, as
-        the lender would have done when it changed.
+        the lender would have done when it changed. A rate dated after
+        settlement that is the same as the one before it is no change.
         """
         if self.repayment_override_cents:
             return self.repayment_override_cents
-        changed = any(self.start_date < eff <= self.balance_date for eff, _ in self.rates)
+        changed = any(
+            self.start_date < eff <= self.balance_date
+            and rate != rate_on(self.rates, eff - timedelta(days=1))
+            for eff, rate in self.rates
+        )
         if changed:
             rate = rate_on(self.rates, self.balance_date)
             remaining = self.periods_between(self.balance_date)
-            return repayment(self.balance_cents, rate, max(remaining, 1), self.per_year)
+            return repayment(self.balance_cents, rate, max(remaining, ONE), self.per_year)
         rate = rate_on(self.rates, self.start_date)
-        periods = self.term_months * self.per_year // 12
+        periods = Decimal(self.term_months) / 12 * self.per_year
         return repayment(self.principal_cents, rate, periods, self.per_year)
 
 
@@ -142,8 +165,7 @@ def is_repayment_day(spec: LoanSpec, day: date) -> bool:
         return False
     if spec.frequency == 'monthly':
         return nth(spec.start_date, 'monthly', _months_between(spec.start_date, day)) == day
-    step = 7 if spec.frequency == 'weekly' else 14
-    return (day - spec.start_date).days % step == 0
+    return (day - spec.start_date).days % STEP_DAYS[spec.frequency] == 0
 
 
 def is_charge_day(spec: LoanSpec, day: date) -> bool:
@@ -213,7 +235,9 @@ class LoanSim:
             self.rate = rate
             if not self.spec.repayment_override_cents:
                 remaining = self.spec.periods_between(day)
-                self.payment = repayment(self.balance, rate, max(remaining, 1), self.spec.per_year)
+                self.payment = repayment(
+                    self.balance, rate, max(remaining, ONE), self.spec.per_year
+                )
 
     def repayments_due(self, day: date) -> list[tuple[int, int | None]]:
         """Money leaving accounts today for this loan, as (cents, account)."""
