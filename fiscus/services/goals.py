@@ -148,6 +148,24 @@ def remove_spend(db: Session, user: User, spend: BudgetSpend) -> None:
     db.flush()
 
 
+def put_aside_spends(db: Session, user: User) -> set[int]:
+    """The budget spends put aside into a goal, by id: they write no
+    transaction, as the money stays in its account (D49)."""
+    q = select(GoalMove.spend_id).where(GoalMove.user_id == user.id, GoalMove.spend_id.is_not(None))
+    return {sid for sid in db.execute(q).scalars() if sid is not None}
+
+
+def follow_spend(db: Session, user: User, spend: BudgetSpend, was: Category, cat: Category) -> None:
+    """Keep the goal move put aside with `spend` in step once the spend is
+    changed (D72): its amount and day, and its note if it named the line."""
+    for row in db.execute(owned(GoalMove, user).where(GoalMove.spend_id == spend.id)).scalars():
+        row.amount_cents = spend.amount_cents
+        row.date = spend.date
+        if row.note == f'From {was.name} budget':
+            row.note = f'From {cat.name} budget'
+    db.flush()
+
+
 def by_category(db: Session, user: User) -> dict[int, Goal]:
     """Open goals saved from a budget line, by the line's category."""
     open_ = {g.id: g for g in goals(db, user)}

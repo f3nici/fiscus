@@ -350,6 +350,19 @@ def test_passkey_signup_browse_and_offline(server: tuple[str, Any], browser: Any
     page.click('button[aria-label="Move Car registration up"]')
     page.wait_for_selector('tr:has-text("Car registration") + tr:has-text("Insurance")')
     stays(top_js, before)
+    # An entry taken off the wrong line opens in its line's panel to be moved
+    # (D72). Fuel's budget went with the import; its entry keeps it listed.
+    fuel = page.locator('tr:has(input[name=name][value="Fuel"])')
+    fuel.locator('summary:has-text("Set")').click()
+    fuel.locator('.spent-list summary:has-text("Ampol")').click()
+    fuel.locator('select[id^="spend-cat-"]').select_option(label='Groceries')
+    fuel.locator('form[action^="/budget/spend/"]:not([action$="/delete"]) button').click()
+    page.wait_for_selector(
+        '[data-flash]:has-text("$65.50 moved from Fuel to Groceries")', state='attached'
+    )
+    groceries = 'tr:has(input[name=name][value="Groceries"])'
+    page.wait_for_selector(f'{groceries} [id^="spent-"] li:has-text("Ampol")', state='attached')
+    assert page.locator('tr:has(input[name=name][value="Fuel"])').count() == 0
     page.goto(f'{base}/accounts')
     assert 'Unallocated $2,250.00' in page.inner_text('main table')
 

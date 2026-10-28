@@ -283,6 +283,7 @@ WRITES: list[tuple[str, dict[str, Any]]] = [
     ('/budget', {'category_id': '{category}', 'amount': '1'}),
     ('/budget/spend', {'category_id': '{category}', 'amount': '1'}),
     ('/forecast/lines', {'key': 'account:{account}', 'shown': 'false'}),
+    ('/budget/spend/{spend}', {'category_id': '{category}', 'amount': '1'}),
     ('/budget/spend/{spend}/delete', {}),
     ('/budget/{category}/remove', {}),
     ('/budget/{category}/move', {'direction': 'up'}),
@@ -427,6 +428,17 @@ def test_b_cannot_add_a_to_their_rows(
         assert (
             db.execute(select(BudgetSpend).where(BudgetSpend.user_id == blake.id)).first() is None
         )
+    # Nor can B move an entry of B's own onto A's line or A's account.
+    b.post('/budget', data={'category_id': str(b_cat), 'amount': '50'})
+    b.post('/budget/spend', data={'category_id': str(b_cat), 'amount': '1'})
+    with env.db() as db:
+        b_spend = db.execute(select(BudgetSpend.id).where(BudgetSpend.user_id == blake.id)).scalar()
+    for onto in ({'category_id': str(ids.category)}, {'account_id': str(ids.account)}):
+        form = {'category_id': str(b_cat), 'amount': '2', **onto}
+        assert b.post(f'/budget/spend/{b_spend}', data=form).status_code == 404
+    with env.db() as db:
+        row = db.get(BudgetSpend, b_spend)
+        assert row is not None and (row.category_id, row.amount_cents) == (b_cat, 100)
 
 
 def test_forecast_and_tax_use_only_own_data(

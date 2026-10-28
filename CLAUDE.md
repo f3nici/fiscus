@@ -18,7 +18,8 @@ straight into it; weekly repayments over a year of 365.25 days, as ANZ
 works them, from the first repayment the bank set, D70, D71); forecasting with scenarios, several ticked together
 (D69), its trend and what is free to spend as the budget has it, lines
 turned off staying off (D46, D47, D50, D51); the budget (each line its
-bills plus an estimate on top, D64; a line's entries in its Edit panel);
+bills plus an estimate on top, D64; a line's entries in its Edit panel,
+moved or changed there, D72);
 bill import; the tax estimate, each job taxed on its own figures (D38); the
 dashboard; ntfy reminders through ntfy.sh or a server of the person's own
 (D53), payslips to put in among them; backups, downloaded from Settings;

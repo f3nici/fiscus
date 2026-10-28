@@ -283,14 +283,46 @@
                   {% if taken %}
                     <div class="mt-sm" id="spent-{{ r.category.id }}">
                       <div class="label">Taken off this month</div>
-                      <ul class="list">
+                      <p class="text-xs muted">Open one to move it to another category or change it.</p>
+                      {% set open_ids = spend_accts | map(attribute='id') | list %}
+                      <ul class="list spent-list">
                         {% for s in taken %}
+                          {% set paid = spent_from.get(s.id) %}
                           <li>
-                            <span class="grow">
-                              <span class="title">{{ s.note or 'Spent' }}</span>
-                              <span class="text-xs muted">{{ s.date | d('dm') }}{% if s.id in spent_from %} · {{ spent_from[s.id] }}{% endif %}</span>
-                            </span>
-                            <span class="num">{{ s.amount_cents | money }}</span>
+                            <details>
+                              <summary aria-label="Change {{ s.note or 'Spent' }}, {{ s.amount_cents | money }}">
+                                <span class="grow">
+                                  <span class="title">{{ s.note or 'Spent' }}</span>
+                                  <span class="text-xs muted">{{ s.date | d('dm') }}{% if paid %} · {{ paid.name }}{% endif %}</span>
+                                </span>
+                                <span class="num">{{ s.amount_cents | money }}</span>
+                              </summary>
+                              <form method="post" action="/budget/spend/{{ s.id }}" class="mt-sm">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <input type="hidden" name="back" value="{{ back }}">
+                                <label class="label" for="spend-cat-{{ s.id }}">Category</label>
+                                <select class="input" id="spend-cat-{{ s.id }}" name="category_id">
+                                  {% if r.category not in spend_cats %}<option value="{{ r.category.id }}" selected>{{ r.category.name }}</option>{% endif %}
+                                  {% for c in spend_cats %}<option value="{{ c.id }}" {{ 'selected' if c.id == s.category_id else '' }}>{{ c.name }}</option>{% endfor %}
+                                </select>
+                                <label class="label mt-sm" for="spend-amount-{{ s.id }}">Amount spent</label>
+                                <input class="input" id="spend-amount-{{ s.id }}" name="amount" inputmode="decimal" required value="{{ s.amount_cents | money_plain }}">
+                                <label class="label mt-sm" for="spend-note-{{ s.id }}">Note (optional)</label>
+                                <input class="input" id="spend-note-{{ s.id }}" name="note" maxlength="120" value="{{ s.note }}">
+                                <label class="label mt-sm" for="spend-on-{{ s.id }}">Date</label>
+                                <input class="input" type="date" id="spend-on-{{ s.id }}" name="on" required value="{{ s.date.isoformat() }}">
+                                {% if spend_accts and s.id not in put_aside %}
+                                  {# An account since closed: it goes through the spending account, as `ledger.paid_into` has it. #}
+                                  {% set from_id = ((paid.id if paid.id in open_ids else spend_from) if paid else 0) %}
+                                  <label class="label mt-sm" for="spend-account-{{ s.id }}">Paid from</label>
+                                  <select class="input" id="spend-account-{{ s.id }}" name="account_id">
+                                    {% for a in spend_accts %}<option value="{{ a.id }}" {{ 'selected' if a.id == from_id else '' }}>{{ a.name }}</option>{% endfor %}
+                                    <option value="0" {{ 'selected' if from_id == 0 else '' }}>No account (cash)</option>
+                                  </select>
+                                {% endif %}
+                                <button class="btn btn-sm btn-primary mt-sm" type="submit">Save</button>
+                              </form>
+                            </details>
                             <form class="inline" method="post" action="/budget/spend/{{ s.id }}/delete" data-confirm="Remove this entry?">
                               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                               <input type="hidden" name="back" value="{{ back }}">

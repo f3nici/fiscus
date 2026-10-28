@@ -7,7 +7,7 @@ from datetime import date
 from sqlalchemy import func, select
 
 from fiscus.domain import goals as calc
-from fiscus.models import Account, BudgetSpend, Category, Goal, GoalMove
+from fiscus.models import Account, BudgetSpend, Category, Goal, GoalMove, Transaction
 from tests.conftest import Env
 from tests.test_bills import make_account
 
@@ -219,6 +219,42 @@ def test_putting_aside_from_a_budget_line_spends_it_and_keeps_it_aside(env: Env)
         g = db.get(Goal, goal)
         assert g is not None and db.get(Category, cid) is None
         assert sum(m.amount_cents for m in g.moves) == -200_00 + 50_00
+
+
+def test_a_put_aside_changed_on_the_budget_keeps_its_goal_in_step(env: Env) -> None:
+    a = env.login(env.user('alex'))
+    main = make_account(a, 'Main', 'transaction', '5000')
+    ids = {}
+    for name in ('Utilities', 'Rates'):
+        a.post('/budget', data={'new_category': name, 'amount': '250'})
+        with env.db() as db:
+            ids[name] = db.execute(select(Category.id).where(Category.name == name)).scalar_one()
+    goal = _goal(a, name='Bills', account_id=str(main), category_id=str(ids['Utilities']))
+    a.post(f'/goals/{goal}/move', data={'amount': '250', 'as_spent': 'true'})
+    with env.db() as db:
+        spend = db.execute(select(BudgetSpend.id)).scalar_one()
+    # It writes no transaction (D49), so it has no account to change.
+    page = a.get('/budget').text
+    assert f'id="spend-cat-{spend}"' in page and f'id="spend-account-{spend}"' not in page
+
+    def change(amount: str) -> str:
+        form = {'category_id': str(ids['Rates']), 'amount': amount, 'on': '2026-10-03'}
+        form |= {'note': 'Into Bills', 'account_id': str(main)}
+        return a.post(f'/budget/spend/{spend}', data=form, follow_redirects=True).text
+
+    assert '$200.00 moved from Utilities to Rates' in change('200')
+    with env.db() as db:
+        move = db.execute(select(GoalMove)).scalar_one()
+        assert (move.amount_cents, move.date, move.note) == (
+            200_00,
+            date(2026, 10, 3),
+            'From Rates budget',
+        )
+        assert db.execute(select(func.count(Transaction.id))).scalar() == 0
+    # Money into a goal is never a refund.
+    assert 'Amount: Amount cannot be negative' in change('-50')
+    with env.db() as db:
+        assert db.execute(select(GoalMove.amount_cents)).scalar_one() == 200_00
 
 
 def test_one_goal_saves_from_several_lines(env: Env) -> None:
