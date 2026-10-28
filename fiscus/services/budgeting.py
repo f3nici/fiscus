@@ -365,13 +365,13 @@ def spends(db: Session, user: User, start: date, end: date) -> list[BudgetSpend]
     )
 
 
-def spent_from(db: Session, user: User, start: date, end: date) -> dict[int, str]:
+def spent_from(db: Session, user: User, start: date, end: date) -> dict[int, Account]:
     """The account each spend in [start, end] came off (D49), by its id. A spend
     from before that, or from no account, is not in it."""
     return {
-        sid: name
-        for sid, name in db.execute(
-            select(Transaction.budget_spend_id, Account.name)
+        sid: acct
+        for sid, acct in db.execute(
+            select(Transaction.budget_spend_id, Account)
             .join(Account, Account.id == Transaction.account_id)
             .join(BudgetSpend, BudgetSpend.id == Transaction.budget_spend_id)
             .where(

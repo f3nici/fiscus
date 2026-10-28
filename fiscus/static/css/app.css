@@ -496,6 +496,14 @@ button.btn-link .title { color: var(--text); font-weight: 500; }
 .budget-table .cell-actions > details[open] { display: block; margin-top: 6px; }
 .budget-table .cell-actions details[open] { min-width: 300px; }
 .budget-table td .text-xs { margin-top: 4px; line-height: 1.4; }
+/* An entry taken off a line opens to be changed (D72); its remove stays beside it. */
+.spent-list li:has(> details[open]) { align-items: flex-start; }
+.spent-list details { flex: 1; min-width: 0; }
+.budget-table .cell-actions .spent-list details[open] { min-width: 0; }
+.spent-list summary { display: flex; gap: 12px; width: 100%; }
+.spent-list summary:hover { text-decoration: none; }
+.spent-list summary:hover .title { text-decoration: underline; text-decoration-color: var(--control); text-underline-offset: 3px; }
+.spent-list summary .num { font-weight: 500; }
 /* Budget groups: a heading row with the group's totals, then its lines. */
 .lines-head { margin-bottom: 4px; }
 .lines-head h2 { margin: 0; }

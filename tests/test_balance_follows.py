@@ -8,8 +8,8 @@ from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import select
 
-from fiscus.models import Category, Goal, Transaction, User
-from fiscus.services import forecasting, ledger
+from fiscus.models import BudgetSpend, Category, Goal, Transaction, User
+from fiscus.services import budgeting, forecasting, ledger
 from tests.conftest import NOW, CsrfClient, Env
 from tests.test_bills import create_bill
 from tests.test_features import _groceries, chart_data
@@ -417,3 +417,71 @@ def test_spending_a_typed_balance_already_has_moves_nothing(env: Env) -> None:
         data={'amount': '50', 'as_spent': 'true', 'category_id': str(groceries)},
     )
     assert balance(env, alex, acct) == 1000_00
+
+
+def test_an_entry_on_the_wrong_line_is_moved_and_its_money_follows(env: Env) -> None:
+    alex = env.user('alex')
+    a = env.login(alex)
+    env.clock.set(SEPT_30)
+    everyday = typed_account(a)
+    card = typed_account(a, 'Visa', '-200', 'credit_card')
+    env.clock.set(NOW)
+    groceries = _groceries(env, alex)
+    a.post('/budget', data={'category_id': str(groceries), 'amount': '400'})
+    a.post('/budget', data={'new_category': 'Dining out', 'amount': '100'})
+    with env.db() as db:
+        dining = db.execute(select(Category.id).where(Category.name == 'Dining out')).scalar_one()
+    a.post(
+        '/budget/spend',
+        data={'category_id': str(groceries), 'amount': '60', 'note': 'Pizza'},
+    )
+    with env.db() as db:
+        spend = db.execute(select(BudgetSpend.id)).scalar_one()
+    assert f'action="/budget/spend/{spend}"' in a.get('/budget').text
+
+    def change(**data: str) -> str:
+        form = {'category_id': str(dining), 'amount': '60', 'note': 'Pizza', 'on': '2026-10-01'}
+        resp = a.post(f'/budget/spend/{spend}', data={**form, **data}, follow_redirects=True)
+        assert resp.status_code == 200
+        return resp.text
+
+    # Moved to the line it belongs in: still off the same account, once.
+    page = change(account_id=str(everyday))
+    assert '$60.00 moved from Groceries to Dining out' in page
+    with env.db() as db:
+        u = db.get(User, alex.id)
+        assert u is not None
+        spent = budgeting.spent_by_category(db, u, date(2026, 10, 1), date(2026, 10, 31))
+        assert spent == {dining: 60_00}
+    [txn] = moves(env)
+    assert (txn.account_id, txn.amount_cents, txn.category_id, txn.description) == (
+        everyday,
+        -60_00,
+        dining,
+        'Dining out · Pizza',
+    )
+    assert balance(env, alex, everyday) == 940_00
+    # Its amount and account put right.
+    page = change(amount='45.50', account_id=str(card))
+    assert 'Entry saved. Everyday is now $1,000.00, Visa is now -$245.50' in page
+    # Paid in cash after all, then back on the card; left out, it stays there.
+    change(amount='45.50', account_id='0')
+    assert moves(env) == [] and balance(env, alex, card) == -200_00
+    change(amount='45.50', account_id=str(card))
+    change(amount='45.50', note='')
+    [txn] = moves(env)
+    assert (txn.account_id, txn.description) == (card, 'Dining out')
+    # Dated a day the typed balance already has, it moves nothing.
+    page = change(amount='45.50', on='2026-09-29')
+    assert 'The balance typed in for Visa on 30 Sep already has it' in page
+    assert balance(env, alex, card) == -200_00
+    # Nothing is saved from a form that cannot be.
+    assert 'Enter an amount' in change(amount='0')
+    with env.db() as db:
+        row = db.get(BudgetSpend, spend)
+        assert row is not None
+        assert (row.category_id, row.amount_cents, row.date) == (
+            dining,
+            45_50,
+            date(2026, 9, 29),
+        )

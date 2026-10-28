@@ -56,7 +56,7 @@ def budget_page(
         loan_paid_cents=sum(x.paid_cents for x in loan_lines),
     )
     cats = ledger.categories(db, user)
-    # A line's entries this month sit in its Edit panel, to remove a mistake.
+    # A line's entries this month sit in its Edit panel, to put a mistake right.
     spends: dict[int, list[BudgetSpend]] = {}
     for sp in budgeting.spends(db, user, start, end):
         spends.setdefault(sp.category_id, []).append(sp)
@@ -90,6 +90,7 @@ def budget_page(
             'spend_accts': accts,
             'spend_from': ledger.spending_account(db, user, accts),
             'spent_from': budgeting.spent_from(db, user, start, end),
+            'put_aside': goals.put_aside_spends(db, user),
             'spendable': spendable,
             'has_accounts': bool(accts),
             'unbudgeted': [cat for cat in cats if cat.id not in budgeted and not cat.is_transfer],
@@ -408,6 +409,78 @@ def add_spend(
     if has is not None:
         flash += f'. The balance typed in for {has[0]} on {has[1].strftime("%d %b")} already has it'
     return redirect(target, flash=flash, request=request)
+
+
+@router.post('/budget/spend/{spend_id}')
+def change_spend(
+    spend_id: int,
+    request: Request,
+    category_id: int = Form(...),
+    amount: str = Form(...),
+    note: str = Form(''),
+    on: str = Form(''),
+    # As on the Take off form; left out, it stays where it was.
+    account_id: int | None = Form(None),
+    back: str = Form('/budget'),
+    user: User = Depends(current_user),
+    db: Session = DB,
+) -> Response:
+    """Put right an entry taken off a budget (D72): the line it belongs in, or
+    its amount, note, date or account. Its transaction and any goal move it
+    was put aside with follow it."""
+    spend = get_owned(db, BudgetSpend, spend_id, user)
+    cat = get_owned(db, Category, category_id, user)
+    was = get_owned(db, Category, spend.category_id, user)
+    txn = ledger.linked(db, user, spend)
+    if account_id is None:
+        account_id = txn.account_id if txn else 0
+    acct = maybe_owned(db, Account, account_id, user)
+    aside = spend.id in goals.put_aside_spends(db, user)
+    target = _back(back, f'line-{was.id}')
+    c = ctx(request)
+    today = c.clock.today()
+    try:
+        # A put aside is money into a goal, so it is never a refund.
+        cents = money(amount, 'Amount', allow_negative=not aside)
+        if cents == 0:
+            raise FormError('Enter an amount')
+        when = req_date(on, 'Date') if on else spend.date
+    except FormError as exc:
+        return redirect(target, flash=str(exc), request=request)
+    before = ledger.balances(db, user, today)
+    spend.category_id = cat.id
+    spend.amount_cents = cents
+    spend.date = when
+    spend.note = note.strip()[:120]
+    db.flush()
+    if aside:
+        goals.follow_spend(db, user, spend, was, cat)
+    elif account_id == 0:
+        if txn is not None:
+            db.delete(txn)
+            db.flush()
+    else:
+        ledger.follow(
+            db,
+            c.clock,
+            user,
+            spend,
+            account_id=acct.id if acct else None,
+            day=when,
+            cents=cents if cat.is_income else -cents,
+            description=f'{cat.name} · {spend.note}' if spend.note else cat.name,
+            category_id=cat.id,
+        )
+    flash = (
+        f'{fmt(abs(cents))} moved from {was.name} to {cat.name}'
+        if cat.id != was.id
+        else 'Entry saved'
+    )
+    flash += ledger.now_at(db, user, before, today)
+    has = ledger.held(db, user, spend, today)
+    if has is not None:
+        flash += f'. The balance typed in for {has[0]} on {has[1].strftime("%d %b")} already has it'
+    return redirect(_back(back, f'line-{cat.id}'), flash=flash, request=request)
 
 
 @router.post('/budget/spend/{spend_id}/delete')
