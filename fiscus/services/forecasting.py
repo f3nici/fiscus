@@ -111,10 +111,12 @@ def estimates(db: Session, user: User, today: date) -> list[Estimate]:
             or t.bill_payment_id
             or t.payslip_id
             or t.budget_spend_id
+            or t.goal_move_id
             or t.dedup_hash.startswith(ledger.KEPT)
         ):
             # Bills and pay are forecast from their schedules, and spending
-            # taken off a budget from the budget, not from their history.
+            # taken off a budget from the budget, not from their history; a
+            # goal's money spent was saved up for, not a cost every month.
             continue
         cat = cats.get(t.category_id) if t.category_id else None
         if cat is not None and cat.is_transfer:

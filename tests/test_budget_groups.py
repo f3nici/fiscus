@@ -123,6 +123,34 @@ def test_a_group_folds_to_its_totals(env: Env) -> None:
         assert db.get(BudgetGroup, gid).collapsed is False  # type: ignore[union-attr]
 
 
+def test_spent_so_far_and_each_group_say_how_far_over(env: Env) -> None:
+    """The lines over are added up: on Spent so far for the month, and on each
+    group's heading for the lines under it, folded or not."""
+    a = env.login(env.user('alex'))
+    for name, amount in (('Power', '200'), ('Water', '100'), ('Fun', '50')):
+        a.post('/budget', data={'new_category': name, 'amount': amount})
+    a.post('/budget/groups', data={'name': 'Utilities'})
+    with env.db() as db:
+        gid = db.execute(select(BudgetGroup.id)).scalar_one()
+    for name, amount in (('Power', '200'), ('Water', '100')):
+        a.post(
+            '/budget',
+            data={'category_id': str(_cat(env, name)), 'amount': amount, 'group_id': str(gid)},
+        )
+    page = a.get('/budget').text
+    assert 'nothing over' in page and ' over in ' not in page
+    # Power 30 over and Water 15 under in Utilities; Fun 20 over on its own.
+    for name, spent in (('Power', '230'), ('Water', '85'), ('Fun', '70')):
+        a.post('/budget/spend', data={'category_id': str(_cat(env, name)), 'amount': spent})
+    page = a.get('/budget').text
+    assert '$50.00 over in all, across 2 categories' in page
+    # Water being under does not hide what Power is over.
+    assert '-$15.00' in page and '$30.00 over in 1 line' in page
+    assert '$20.00 over in 1 line' in page
+    a.post(f'/budget/groups/{gid}/fold', data={'collapsed': 'true'})
+    assert '$30.00 over in 1 line' in a.get('/budget').text
+
+
 def test_a_group_needs_a_name(env: Env) -> None:
     a = env.login(env.user('alex'))
     resp = a.post('/budget/groups', data={'name': '  '}, follow_redirects=True)

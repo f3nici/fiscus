@@ -9,8 +9,8 @@ bootstrap link and CLI recovery links, other sessions ended by revoking a
 passkey or using a recovery link (D56);
 one person, with no users page, nothing shared and no password (D52);
 accounts with balances typed in and kept by day (D39), moved by bills marked
-paid, payslips and spending taken off the budget until the next is typed in
-(D42, D45, D49); categories; bills with states, each paid from an account and
+paid, payslips, spending taken off the budget and money taken out of goals
+until the next is typed in (D42, D45, D49, D73); categories; bills with states, each paid from an account and
 filed under a category, one that varies expecting the average of its last
 three paid (D66); pay schedules and payslips (listed ten a page); the
 calendar (the month by default, D54); home loan and offset (one loan opens
@@ -34,8 +34,9 @@ hand (D35); bottom tabs the person chooses, every screen in a menu that
 slides in, and pages sliding between screens (D67); an ink ledger on a blue-grey ground,
 light or dark as the device is set (D68). Since D25 the budget is kept by hand (spending taken off,
 balances typed in); the transactions, statement import, rules and matching
-screens went in D37 and Square sync in D55. Bills marked paid, payslips and
-budget spends still write transactions; rows those features left stay. Next
+screens went in D37 and Square sync in D55. Bills marked paid, payslips,
+budget spends and money taken out of goals still write transactions; rows
+those features left stay. Next
 steps are in `docs/10-decisions.md` §3.
 
 ## Read before building

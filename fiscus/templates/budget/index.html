@@ -35,7 +35,7 @@
     <div class="stat">
       <div class="label">Spent so far</div>
       <div class="value {{ 'neg' if summary.over else '' }}">{{ summary.spent_cents | money }}</div>
-      <span class="text-sm muted">{% if summary.over %}<span class="neg">{{ summary.over }} categor{{ 'y' if summary.over == 1 else 'ies' }} over</span>{% else %}nothing over{% endif %}</span>
+      <span class="text-sm muted">{% if summary.over %}<span class="neg">{{ summary.over_cents | money }} over in all, across {{ summary.over }} categor{{ 'y' if summary.over == 1 else 'ies' }}</span>{% else %}nothing over{% endif %}</span>
     </div>
     <div class="stat">
       <div class="label">Still to spend</div>
@@ -146,7 +146,7 @@
                 <span class="group-count">{{ sec.rows | length }} line{{ '' if sec.rows | length == 1 else 's' }}{{ ', hidden' if folded and sec.rows else '' }}</span>
               </th>
               <th class="num {{ 'neg' if sec.remaining_cents < 0 else '' }}" data-label="Left">{{ sec.remaining_cents | money }}{% if sec.saved_cents %}<div class="text-xs muted fw-normal">incl. {{ sec.saved_cents | money }} saved up</div>{% endif %}</th>
-              <th class="num" data-label="Spent">{{ sec.spent_cents | money }}</th>
+              <th class="num" data-label="Spent">{{ sec.spent_cents | money }}{% if sec.over %}<div class="text-xs neg fw-normal">{{ sec.over_cents | money }} over in {{ sec.over }} line{{ '' if sec.over == 1 else 's' }}</div>{% endif %}</th>
               <th class="num" data-label="Budget">{{ sec.budget_cents | money }}</th>
               <th class="cell-full cell-actions">
                 {% if sec.group %}

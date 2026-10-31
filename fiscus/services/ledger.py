@@ -17,6 +17,7 @@ from fiscus.models import (
     Budget,
     BudgetSpend,
     Category,
+    GoalMove,
     Payslip,
     Transaction,
     User,
@@ -169,7 +170,7 @@ def paid_into(db: Session, user: User, account_id: int | None) -> int | None:
     return spending_account(db, user, accts)
 
 
-type Link = Payslip | BillPayment | BudgetSpend
+type Link = Payslip | BillPayment | BudgetSpend | GoalMove
 
 
 def _link(link: Link) -> tuple[InstrumentedAttribute[int | None], str]:
@@ -178,6 +179,8 @@ def _link(link: Link) -> tuple[InstrumentedAttribute[int | None], str]:
         return Transaction.payslip_id, 'payslip'
     if isinstance(link, BillPayment):
         return Transaction.bill_payment_id, 'bill-payment'
+    if isinstance(link, GoalMove):
+        return Transaction.goal_move_id, 'goal-move'
     return Transaction.budget_spend_id, 'budget-spend'
 
 
@@ -200,7 +203,8 @@ def follow(
     category_id: int | None = None,
 ) -> None:
     """Move an account's balance with a payslip, a bill marked paid by hand
-    (D42) or spending taken off a budget (D49): one transaction linked to it,
+    (D42), spending taken off a budget (D49) or money taken out of a goal
+    (D73): one transaction linked to it,
     changed when it is and deleted with it (the foreign key cascades). It goes
     into `paid_into(account_id)`. Nothing is written for a zero amount or a
     person with no accounts."""
@@ -228,8 +232,8 @@ def follow(
 
 def held(db: Session, user: User, link: Link, today: date) -> tuple[str, date] | None:
     """The account and day of the balance typed in that already has the
-    payslip's, bill's or spend's transaction, so it moved nothing; None if it
-    counts, is still to come, or wrote nothing."""
+    transaction of a payslip, bill, spend or goal move, so it moved nothing;
+    None if it counts, is still to come, or wrote nothing."""
     col, _prefix = _link(link)
     txn = linked(db, user, link)
     if txn is None or txn.date > today:
@@ -325,7 +329,8 @@ class _Running:
 
 
 # The dedup key of a spend's transaction kept when its category was deleted
-# (D58). Like the spend's own, it stays out of the spending average.
+# (D58), or of money taken out of a goal kept when the goal was (D73). Like
+# their own, it stays out of the spending average.
 KEPT = 'kept-spend:'
 
 
@@ -344,6 +349,19 @@ def keep_spent(db: Session, user: User, cat: Category) -> int:
         txn.dedup_hash = f'{KEPT}{txn.id}'
     db.flush()
     return len(kept)
+
+
+def keep_taken_out(db: Session, user: User, goal_id: int) -> None:
+    """Unlink the transactions of money taken out of the goal, so deleting it
+    (and its moves with it) leaves what was spent off its accounts (D73), as
+    deleting a category does (D58)."""
+    moves = select(GoalMove.id).where(GoalMove.goal_id == goal_id)
+    for txn in db.execute(
+        owned(Transaction, user).where(Transaction.goal_move_id.in_(moves))
+    ).scalars():
+        txn.goal_move_id = None
+        txn.dedup_hash = f'{KEPT}{txn.id}'
+    db.flush()
 
 
 def categories(db: Session, user: User) -> list[Category]:

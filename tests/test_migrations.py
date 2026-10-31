@@ -1020,3 +1020,83 @@ def test_loans_start_without_a_first_repayment_and_keep_their_rates(tmp_path: Pa
     with engine.connect() as c:
         assert c.execute(text('SELECT rate FROM loan_rates')).scalar_one() == '6.59'
     engine.dispose()
+
+
+def test_transactions_rebuilt_for_goal_moves_keep_their_links(tmp_path: Path) -> None:
+    """0035 (D73) links a transaction to a goal move, cascading; the rebuild
+    keeps a bill payment matched to its transaction, and going back drops the
+    goal moves' transactions only."""
+    url = f'sqlite:///{tmp_path / "fiscus.db"}'
+    cfg = alembic_config(url)
+    command.upgrade(cfg, '0034')
+    engine = create_engine(url)
+    with engine.begin() as c:
+        c.execute(
+            text(
+                'INSERT INTO users (id, username, display_name, is_admin, is_active,'
+                " user_handle, data_version, created_at) VALUES (1, 'alex', 'Alex', 1, 1, :h,"
+                " 0, '2026-01-01')"
+            ),
+            {'h': bytes([1]) * 64},
+        )
+        c.execute(
+            text(
+                'INSERT INTO accounts (id, user_id, name, type, opening_balance_cents,'
+                " is_set_aside, archived, created_at) VALUES (1, 1, 'Everyday', 'transaction',"
+                " 0, 0, 0, '2026-01-01')"
+            )
+        )
+        c.execute(
+            text(
+                'INSERT INTO transactions (id, user_id, account_id, date, amount_cents,'
+                " description, dedup_hash, created_at) VALUES (1, 1, 1, '2026-09-15', -12140,"
+                " 'ORIGIN ENERGY', 'h', '2026-09-15')"
+            )
+        )
+        c.execute(
+            text(
+                'INSERT INTO bills (id, user_id, name, amount_cents, frequency, next_due,'
+                " active, varies, created_at) VALUES (1, 1, 'Power', 12140, 'monthly',"
+                " '2026-09-15', 1, 0, '2026-01-01')"
+            )
+        )
+        c.execute(
+            text(
+                'INSERT INTO bill_payments (id, bill_id, user_id, due_date, paid_on,'
+                " amount_cents, transaction_id, created_at) VALUES (1, 1, 1, '2026-09-15',"
+                " '2026-09-15', 12140, 1, '2026-09-15')"
+            )
+        )
+    command.upgrade(cfg, '0035')
+    fks = {fk['referred_table']: fk for fk in inspect(engine).get_foreign_keys('transactions')}
+    assert fks['goal_moves']['options'] == {'ondelete': 'CASCADE'}
+    with engine.begin() as c:
+        assert c.execute(text('SELECT transaction_id FROM bill_payments')).scalar_one() == 1
+        assert c.execute(text('SELECT goal_move_id FROM transactions')).scalar_one() is None
+        c.execute(
+            text(
+                'INSERT INTO goals (id, user_id, name, account_id, keep_aside, archived,'
+                " is_tax, created_at) VALUES (1, 1, 'Japan', 1, 1, 0, 0, '2026-01-01')"
+            )
+        )
+        c.execute(
+            text(
+                'INSERT INTO goal_moves (id, user_id, goal_id, date, amount_cents, note,'
+                " created_at) VALUES (1, 1, 1, '2026-10-01', -30000, '', '2026-10-01')"
+            )
+        )
+        c.execute(
+            text(
+                'INSERT INTO transactions (id, user_id, account_id, date, amount_cents,'
+                ' description, dedup_hash, created_at, goal_move_id) VALUES'
+                " (2, 1, 1, '2026-10-01', -30000, 'Out of Japan', 'goal-move:1', '2026-10-01', 1)"
+            )
+        )
+    command.downgrade(cfg, '0034')
+    cols = {col['name'] for col in inspect(engine).get_columns('transactions')}
+    assert 'goal_move_id' not in cols
+    with engine.connect() as c:
+        assert c.execute(text('SELECT id FROM transactions')).scalars().all() == [1]
+        assert c.execute(text('SELECT transaction_id FROM bill_payments')).scalar_one() == 1
+        assert c.execute(text('SELECT amount_cents FROM goal_moves')).scalar_one() == -30000
+    engine.dispose()

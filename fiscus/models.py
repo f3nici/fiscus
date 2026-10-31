@@ -308,8 +308,9 @@ class Transaction(Base, Owned):
     )
     dedup_hash: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime)
-    # Written for a bill marked paid by hand, a payslip or spending taken off a
-    # budget, so the account's balance moves with it (D42, D49). Deleted with it.
+    # Written for a bill marked paid by hand, a payslip, spending taken off a
+    # budget or money taken out of a goal, so the account's balance moves with
+    # it (D42, D49, D73). Deleted with it.
     bill_payment_id: Mapped[int | None] = mapped_column(
         ForeignKey('bill_payments.id', ondelete='CASCADE', use_alter=True),
         nullable=True,
@@ -320,6 +321,9 @@ class Transaction(Base, Owned):
     )
     budget_spend_id: Mapped[int | None] = mapped_column(
         ForeignKey('budget_spends.id', ondelete='CASCADE'), nullable=True, unique=True
+    )
+    goal_move_id: Mapped[int | None] = mapped_column(
+        ForeignKey('goal_moves.id', ondelete='CASCADE'), nullable=True, unique=True
     )
 
 

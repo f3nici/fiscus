@@ -52,6 +52,15 @@ class Section:
         more than a month's budget."""
         return sum(max(0, r.remaining_cents) for r in self.spending if r.saving)
 
+    @property
+    def over(self) -> int:
+        return sum(1 for r in self.spending if r.state == 'over')
+
+    @property
+    def over_cents(self) -> int:
+        """How far its lines over are over, added up."""
+        return sum(r.over_cents for r in self.spending)
+
 
 def sections(db: Session, user: User, rows: list[BudgetRow]) -> list[Section]:
     """Each group in order with its lines, then the lines in no group. Empty

@@ -597,7 +597,8 @@ def test_spending_is_taken_off_the_budget_by_hand(env: Env) -> None:
     assert '$120.00 off Groceries' in resp.text
     a.post('/budget/spend', data={'category_id': str(groceries), 'amount': '330'})
     page = a.get('/budget?month=2026-10').text
-    assert '$450.00' in page and '-$50.00' in page and '1 category over' in page
+    assert '$450.00' in page and '-$50.00' in page
+    assert '$50.00 over in all, across 1 category' in page
     # A refund puts money back.
     a.post('/budget/spend', data={'category_id': str(groceries), 'amount': '-60'})
     page = a.get('/budget?month=2026-10').text
@@ -975,7 +976,7 @@ def test_a_quarterly_bill_paid_comes_out_of_what_is_saved(env: Env) -> None:
     assert _saved(env, alex, date(2026, 11, 1))['Housing'] == (-100_00, 'over')
     assert _saved(env, alex, date(2027, 1, 1))['Housing'] == (100_00, 'ok')
     nov = a.get('/budget?month=2026-11').text
-    assert '1 category over' in nov
+    assert '$100.00 over in all, across 1 category' in nov
 
 
 def test_a_saved_up_line_says_whether_it_will_hold_its_next_bill(env: Env) -> None:
