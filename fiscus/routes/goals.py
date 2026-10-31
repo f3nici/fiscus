@@ -230,8 +230,15 @@ def add_move(
                 flash=f'{goal.name} holds {fmt(max(0, held))}, so that is the most to take out',
                 request=request,
             )
-        service.move(db, c.clock, user, goal, -cents, when, note)
-        msg = f'{fmt(cents)} out of {goal.name}'
+        today = c.clock.today()
+        before = ledger.balances(db, user, today)
+        row = service.take_out(db, c.clock, user, goal, cents, when, note)
+        msg = f'{fmt(cents)} out of {goal.name}{ledger.now_at(db, user, before, today)}'
+        has = ledger.held(db, user, row, today)
+        if has is not None:
+            msg += (
+                f'. The balance typed in for {has[0]} on {has[1].strftime("%d %b")} already has it'
+            )
     elif as_spent and line is not None:
         service.put_aside(db, c.clock, user, goal, line, cents, when, note)
         msg = f'{fmt(cents)} put aside into {goal.name}, spent from {line.name}'

@@ -1,5 +1,5 @@
-"""A bill marked paid, a payslip or a budget spend moves its account's balance
-(D42, D49)."""
+"""A bill marked paid, a payslip, a budget spend or money taken out of a goal
+moves its account's balance (D42, D49, D73)."""
 
 from __future__ import annotations
 
@@ -485,3 +485,93 @@ def test_an_entry_on_the_wrong_line_is_moved_and_its_money_follows(env: Env) -> 
             45_50,
             date(2026, 9, 29),
         )
+
+
+def _goal_id(env: Env) -> int:
+    with env.db() as db:
+        return int(db.execute(select(Goal.id)).scalar_one())
+
+
+def test_money_taken_out_of_a_goal_comes_off_its_account(env: Env) -> None:
+    alex = env.user('alex')
+    a = env.login(alex)
+    env.clock.set(SEPT_30)
+    offset = typed_account(a, 'Offset', '5000', 'offset')
+    env.clock.set(NOW)
+    a.post(
+        '/goals',
+        data={'name': 'Japan', 'account_id': str(offset), 'saved': '1000', 'keep_aside': 'true'},
+    )
+    goal = _goal_id(env)
+    assert '$4,000.00 in accounts (after $1,000.00 kept in' in a.get('/budget').text
+
+    resp = a.post(
+        f'/goals/{goal}/move',
+        data={'amount': '300', 'direction': 'out', 'note': 'Flights', 'back': '/budget'},
+        follow_redirects=True,
+    )
+    assert '$300.00 out of Japan. Offset is now $4,700.00' in resp.text
+    # Spent: the goal and the account both drop, so free in accounts is as it was.
+    assert '$4,000.00 in accounts (after $700.00 kept in' in resp.text
+    [txn] = moves(env)
+    assert (txn.account_id, txn.date, txn.amount_cents, txn.description) == (
+        offset,
+        date(2026, 10, 1),
+        -300_00,
+        'Japan · Flights',
+    )
+    assert txn.goal_move_id is not None and txn.category_id is None
+    page = a.get(f'/accounts/{offset}').text
+    assert 'Japan · Flights' in page and 'out of a goal' in page
+    # It was saved up for, not spending to forecast every month.
+    with env.db() as db:
+        u = db.get(User, alex.id)
+        assert u is not None
+        assert forecasting.estimates(db, u, env.clock.today()) == []
+
+    # Removing the entry puts it back in the goal and the account.
+    a.post(f'/goals/{goal}/moves/{txn.goal_move_id}/delete')
+    assert moves(env) == [] and balance(env, alex, offset) == 5000_00
+    # Holds now frees money without spending it: no account moves.
+    a.post(
+        f'/goals/{goal}',
+        data={'name': 'Japan', 'account_id': str(offset), 'holds': '800', 'keep_aside': 'true'},
+    )
+    assert moves(env) == [] and balance(env, alex, offset) == 5000_00
+    # Putting money in moves no account either.
+    a.post(f'/goals/{goal}/move', data={'amount': '100'})
+    assert moves(env) == []
+
+    # Deleting the goal leaves what was spent from it off the account (as D58).
+    a.post(f'/goals/{goal}/move', data={'amount': '250', 'direction': 'out'})
+    [txn] = moves(env)
+    assert txn.description == 'Out of Japan'
+    a.post(f'/goals/{goal}/delete')
+    [kept] = moves(env)
+    assert kept.id == txn.id and kept.goal_move_id is None
+    assert kept.dedup_hash == f'{ledger.KEPT}{kept.id}'
+    assert balance(env, alex, offset) == 4750_00
+
+
+def test_a_goal_in_no_account_spends_from_the_spending_account(env: Env) -> None:
+    alex = env.user('alex')
+    a = env.login(alex)
+    env.clock.set(SEPT_30)
+    everyday = typed_account(a)
+    savings = typed_account(a, 'Savings', '5000', 'savings')
+    env.clock.set(NOW)
+    a.post('/goals', data={'name': 'Rainy day', 'saved': '400', 'keep_aside': 'true'})
+    goal = _goal_id(env)
+    resp = a.post(
+        f'/goals/{goal}/move', data={'amount': '100', 'direction': 'out'}, follow_redirects=True
+    )
+    assert '$100.00 out of Rainy day. Everyday is now $900.00' in resp.text
+    assert balance(env, alex, savings) == 5000_00
+    # Dated a day the typed balance already has, it moves nothing.
+    resp = a.post(
+        f'/goals/{goal}/move',
+        data={'amount': '50', 'direction': 'out', 'on': '2026-09-29'},
+        follow_redirects=True,
+    )
+    assert 'The balance typed in for Everyday on 30 Sep already has it' in resp.text
+    assert balance(env, alex, everyday) == 900_00

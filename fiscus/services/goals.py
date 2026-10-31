@@ -13,7 +13,7 @@ from fiscus.clock import Clock, utcnow_naive
 from fiscus.domain import goals as calc
 from fiscus.models import Account, BudgetSpend, Category, Goal, GoalMove, User
 from fiscus.money import fmt
-from fiscus.services import budgeting
+from fiscus.services import budgeting, ledger
 from fiscus.services.access import maybe_owned, owned
 
 
@@ -70,6 +70,27 @@ def move(
     )
     db.add(row)
     db.flush()
+    return row
+
+
+def take_out(
+    db: Session, clock: Clock, user: User, goal: Goal, cents: int, day: date, note: str = ''
+) -> GoalMove:
+    """Money taken out of the goal is spent (flights, the bill it saved for),
+    so it comes off the goal's account, else the spending account, as spending
+    taken off a budget does (D73). Holds now (`set_held`) corrects what a goal
+    holds without moving any account."""
+    row = move(db, clock, user, goal, -cents, day, note)
+    ledger.follow(
+        db,
+        clock,
+        user,
+        row,
+        account_id=goal.account_id,
+        day=day,
+        cents=-cents,
+        description=f'{goal.name} · {row.note}' if row.note else f'Out of {goal.name}',
+    )
     return row
 
 
@@ -131,7 +152,9 @@ def remove_move(db: Session, user: User, row: GoalMove) -> None:
 
 def delete_goal(db: Session, user: User, goal: Goal) -> None:
     """Delete a goal and what was put aside into it from budget lines: both
-    halves of each go, as when one entry is removed (D34)."""
+    halves of each go, as when one entry is removed (D34). What was taken out
+    of it stays off its accounts (D73)."""
+    ledger.keep_taken_out(db, user, goal.id)
     for row in list(goal.moves):
         spend = maybe_owned(db, BudgetSpend, row.spend_id, user)
         if spend is not None:

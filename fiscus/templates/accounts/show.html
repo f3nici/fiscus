@@ -30,11 +30,11 @@
   {% if moves %}
     <div class="card mt">
       <h2>Since {{ account.balance_updated_on | d }}</h2>
-      <p class="muted text-sm">Bills marked paid, payslips and spending taken off the budget since you typed the balance in have moved it. Typing it in again starts afresh from what the bank shows.</p>
+      <p class="muted text-sm">Bills marked paid, payslips, spending taken off the budget and money taken out of goals since you typed the balance in have moved it. Typing it in again starts afresh from what the bank shows.</p>
       <ul class="list">
         {% for t in moves %}
           <li>
-            <span class="grow"><span class="title">{{ t.description }}</span><span class="text-xs muted">{{ t.date | d }}{{ ' · bill paid' if t.bill_payment_id else ' · pay' if t.payslip_id else ' · spent' if t.budget_spend_id else '' }}</span></span>
+            <span class="grow"><span class="title">{{ t.description }}</span><span class="text-xs muted">{{ t.date | d }}{{ ' · bill paid' if t.bill_payment_id else ' · pay' if t.payslip_id else ' · spent' if t.budget_spend_id else ' · out of a goal' if t.goal_move_id else '' }}</span></span>
             {{ money_cell(t.amount_cents) }}
           </li>
         {% endfor %}
@@ -53,7 +53,7 @@
         {% endfor %}
         <li><span class="title grow">Unallocated</span><span class="num {{ 'neg' if split.unallocated_cents < 0 else '' }}">{{ split.unallocated_cents | money }}</span></li>
       </ul>
-      {% if split.unallocated_cents < 0 %}<p class="text-sm neg mt-sm">Your goals here add up to more than the account holds. Update the balance or take some out of a goal.</p>{% endif %}
+      {% if split.unallocated_cents < 0 %}<p class="text-sm neg mt-sm">Your goals here add up to more than the account holds. Update the balance, or change what a goal holds.</p>{% endif %}
     {% else %}
       <p class="muted text-sm">All of it is unallocated. Split it into goals (a trip, savings) to keep track of what each part is for.</p>
     {% endif %}

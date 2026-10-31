@@ -90,7 +90,7 @@
         </div>
       {% endif %}
       <button class="btn btn-primary" type="submit">Save</button>
-      <p class="muted text-xs mt">The money does not move between accounts here: it is marked as set aside inside {{ account.name if account else 'your accounts' }}. Taking it out (for flights, say) frees it to spend.</p>
+      <p class="muted text-xs mt">Putting money in marks it as set aside inside {{ account.name if account else 'your accounts' }}; it does not move between accounts. Taking it out is spending it (flights, say): it comes off {{ account.name if account else 'your spending account' }} too, until you next type that balance in. To free money without spending it, change Holds now below.</p>
     </form>
   {% endif %}
 
@@ -130,7 +130,7 @@
       <div class="field">
         <label class="label" for="holds">Holds now</label>
         <input class="input" id="holds" name="holds" inputmode="decimal" value="{{ v.held_cents | money_plain }}">
-        <small>Change it to correct what is set aside. The difference is recorded below.</small>
+        <small>Change it to correct what is set aside, or to free money without spending it. The difference is recorded below; no account moves.</small>
       </div>
       <div class="full">
         <label class="check"><input type="checkbox" name="keep_aside" value="true" {{ 'checked' if goal.keep_aside else '' }}> Keep this money out of what is free to spend</label>

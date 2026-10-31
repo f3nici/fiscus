@@ -138,6 +138,11 @@ class BudgetRow:
             return 'near'
         return 'ok'
 
+    @property
+    def over_cents(self) -> int:
+        """How far the line is over its budget; nothing when it is not."""
+        return -self.remaining_cents if self.state == 'over' else 0
+
 
 @dataclass(frozen=True)
 class Summary:
@@ -149,6 +154,7 @@ class Summary:
     over: int
     saved_cents: int = 0  # the part of to_spend held by saved-up lines
     bills_cents: int = 0  # the part of budget_cents that is bills
+    over_cents: int = 0  # how far the lines over are over, added up
 
     @property
     def unbudgeted_cents(self) -> int:
@@ -696,4 +702,5 @@ def summary(
         over=sum(1 for r in spend if r.state == 'over'),
         saved_cents=sum(max(0, r.saved_cents or 0) for r in spend if r.has_budget),
         bills_cents=sum(r.bills_cents for r in spend if r.has_budget),
+        over_cents=sum(r.over_cents for r in spend),
     )
