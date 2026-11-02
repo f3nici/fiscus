@@ -785,3 +785,61 @@ def test_irregular_pay_on_a_phone(server: tuple[str, Any], browser: Any) -> None
         page.screenshot(path=f'{shots}/budget.png')
     assert errors == [], errors
     context.close()
+
+
+def test_bas_payment_on_a_phone(server: tuple[str, Any], browser: Any) -> None:
+    """A BAS payment (D75) put in on the Tax page out of the tax goal, on a
+    phone, with nothing scrolling sideways and a clean console."""
+    base, ctx = server
+    with ctx.sessions() as db:
+        alex = create_user(db, ctx.clock, 'alex', 'Alex', is_admin=True)
+        token = auth_service.start_session(
+            db, ctx.settings, ctx.clock, alex, 'test', '127.0.0.1', 'pytest'
+        )
+        db.commit()
+    context = browser.new_context(
+        viewport={'width': 390, 'height': 844}, is_mobile=True, has_touch=True
+    )
+    context.add_cookies([{'name': ctx.settings.session_cookie, 'value': token, 'url': base}])
+    page = context.new_page()
+    errors: list[str] = []
+    page.on('console', lambda m: errors.append(m.text) if m.type == 'error' else None)
+    page.on('pageerror', lambda e: errors.append(str(e)))
+    fits = 'document.documentElement.scrollWidth <= document.documentElement.clientWidth'
+    shots = os.environ.get('FISCUS_SHOTS')
+
+    page.goto(f'{base}/tax')
+    csrf = next(c['value'] for c in context.cookies() if c['name'] == ctx.settings.csrf_cookie)
+
+    def post(path: str, form: dict[str, str]) -> str:
+        resp = page.request.post(
+            f'{base}{path}', form=form, headers={'X-CSRF-Token': csrf}, max_redirects=0
+        )
+        assert resp.status == 303, (path, resp.status)
+        return str(resp.headers['location'])
+
+    acct = post('/accounts', {'name': 'ANZ', 'type': 'offset', 'opening_balance': '9000'})
+    acct_id = acct.rsplit('/', 1)[1]
+    post(
+        '/goals',
+        {
+            'name': 'FFC Tax',
+            'account_id': acct_id,
+            'keep_aside': 'true',
+            'is_tax': 'true',
+            'saved': '2500',
+        },
+    )
+
+    page.goto(f'{base}/tax')
+    page.fill('#bas-amount', '850')
+    page.click('#bas-form button[type=submit]')
+    page.wait_for_selector('[data-flash]:has-text("$850.00 paid with your BAS")', state='attached')
+    page.wait_for_selector('#bas .list li:has-text("out of FFC Tax")')
+    assert page.evaluate(fits)
+    if shots:
+        page.locator('#bas').screenshot(path=f'{shots}/bas.png')
+    page.goto(f'{base}/goals')
+    assert '$1,650.00' in page.content()
+    assert errors == [], errors
+    context.close()

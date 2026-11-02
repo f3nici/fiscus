@@ -6,15 +6,17 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
 
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from fiscus.clock import Clock, utcnow_naive
 from fiscus.domain import pay as pay_domain
 from fiscus.domain import tax
 from fiscus.domain.pay import OpenPayday
-from fiscus.models import Account, Goal, Payslip, TaxDeduction, User
+from fiscus.models import Account, Goal, GoalMove, Payslip, TaxDeduction, TaxPayment, User
 from fiscus.money import round_div
 from fiscus.services import goals, ledger, pay
-from fiscus.services.access import owned
+from fiscus.services.access import maybe_owned, owned
 
 
 @dataclass(frozen=True)
@@ -35,13 +37,16 @@ class TaxView:
 
     @property
     def year_end_set_aside_cents(self) -> int:
-        """Projected tax still to pay at 30 June, beyond what withholding covers."""
+        """Projected tax still to pay at 30 June, beyond what withholding and
+        the BAS payments for the year cover."""
         return max(0, self.projected.owing_cents)
 
     @property
     def should_set_aside_cents(self) -> int:
-        """The year-end amount saved evenly over the year, as far as today."""
-        return round_div(self.year_end_set_aside_cents * self.days_elapsed, self.days_in_year)
+        """What withholding will not cover, saved evenly over the year, as far
+        as today, less what was paid with a BAS for the year (D75)."""
+        evenly = round_div(max(0, self.projected.due_cents) * self.days_elapsed, self.days_in_year)
+        return max(0, evenly - self.projected.paid_cents)
 
     @property
     def left_to_save_per_week_cents(self) -> int:
@@ -130,8 +135,10 @@ def view(db: Session, user: User, today: date, tax_dir: Path | None = None) -> T
             untaxed.append(ps.name)
     elapsed = (today - fy_start).days + 1
     total_days = (fy_end - fy_start).days + 1
-    projected = tax.position(year, proj_gross, proj_tax, deductions)
-    ytd = tax.share_of(projected, gross, withheld)
+    projected = tax.position(
+        year, proj_gross, proj_tax, deductions, paid_for(db, user, fy_start, fy_end)
+    )
+    ytd = tax.share_of(projected, gross, withheld, paid_for(db, user, fy_start, fy_end, today))
     bal = ledger.balances(db, user, today)
     set_aside = db.execute(
         owned(Account, user).where(Account.is_set_aside.is_(True), Account.archived.is_(False))
@@ -174,3 +181,129 @@ def _recent_slips(db: Session, user: User, today: date) -> dict[int, tuple[int, 
         g, w, n = out.get(s.schedule_id, (0, 0, 0))
         out[s.schedule_id] = (g + s.gross_cents, w + s.tax_withheld_cents, n + s.net_cents)
     return out
+
+
+# ------------------------------------------------------------ BAS payments
+
+
+def paid_for(
+    db: Session, user: User, fy_start: date, fy_end: date, as_of: date | None = None
+) -> int:
+    """Tax paid with a BAS for the quarters of a financial year (D75), paid
+    by the end of `as_of` when given."""
+    q = select(func.coalesce(func.sum(TaxPayment.amount_cents), 0)).where(
+        TaxPayment.user_id == user.id,
+        TaxPayment.quarter >= fy_start,
+        TaxPayment.quarter <= fy_end,
+    )
+    if as_of is not None:
+        q = q.where(TaxPayment.date <= as_of)
+    return int(db.scalar(q) or 0)
+
+
+def payments(db: Session, user: User, since: date) -> list[TaxPayment]:
+    """BAS payments for the quarters from `since`, the latest quarter first."""
+    return list(
+        db.execute(
+            owned(TaxPayment, user)
+            .where(TaxPayment.quarter >= since)
+            .order_by(TaxPayment.quarter.desc(), TaxPayment.date.desc(), TaxPayment.id.desc())
+        ).scalars()
+    )
+
+
+def taken_from(db: Session, user: User, row: TaxPayment) -> Goal | Account | None:
+    """Where a BAS payment came from: the goal it was taken out of, the
+    account it came off, or neither."""
+    move = maybe_owned(db, GoalMove, row.goal_move_id, user)
+    if move is not None:
+        return db.get(Goal, move.goal_id)
+    txn = ledger.linked(db, user, row)
+    return db.get(Account, txn.account_id) if txn is not None else None
+
+
+def goal_room(db: Session, user: User, goal: Goal, row: TaxPayment | None) -> int:
+    """The most a BAS payment can take out of `goal`: what it holds, and what
+    this payment took out of it already."""
+    room = goals.held(db, user).get(goal.id, 0)
+    move = maybe_owned(db, GoalMove, row.goal_move_id if row else None, user)
+    if move is not None and move.goal_id == goal.id:
+        room -= move.amount_cents
+    return room
+
+
+def new_payment(
+    db: Session, clock: Clock, user: User, *, cents: int, day: date, quarter: date
+) -> TaxPayment:
+    row = TaxPayment(
+        user_id=user.id,
+        date=day,
+        quarter=quarter,
+        amount_cents=cents,
+        created_at=utcnow_naive(clock),
+    )
+    db.add(row)
+    db.flush()
+    return row
+
+
+def pay_tax(
+    db: Session,
+    clock: Clock,
+    user: User,
+    row: TaxPayment,
+    *,
+    cents: int,
+    day: date,
+    quarter: date,
+    goal: Goal | None,
+    account: Account | None,
+) -> None:
+    """Record a BAS payment, new or changed (D75). Out of `goal` it is a goal
+    move taking the money out, which comes off the goal's account (D73); from
+    `account` it writes a transaction there; with neither it moves nothing.
+    A changed one keeps its goal move or transaction, and so when it was put
+    in (D45), while it stays where it was. A new `row` is in the session
+    already (`new_payment`)."""
+    row.date, row.quarter, row.amount_cents = day, quarter, cents
+    db.flush()
+    what = f'BAS {tax.quarter_label(quarter)}'
+    move = maybe_owned(db, GoalMove, row.goal_move_id, user)
+    if move is not None and (goal is None or move.goal_id != goal.id):
+        row.goal_move_id = None
+        db.delete(move)
+        db.flush()
+        move = None
+    if goal is None:
+        ledger.follow(
+            db,
+            clock,
+            user,
+            row,
+            account_id=account.id if account else None,
+            day=day,
+            cents=-cents if account else 0,
+            description=what,
+        )
+        return
+    ledger.follow(db, clock, user, row, account_id=None, day=day, cents=0, description=what)
+    if move is None:
+        move = goals.take_out(db, clock, user, goal, cents, day, what)
+        row.goal_move_id = move.id
+        db.flush()
+        return
+    move.date, move.amount_cents, move.note = day, -cents, what
+    ledger.follow(
+        db, clock, user, move, account_id=goal.account_id, day=day, cents=-cents, description=what
+    )
+
+
+def unpay_tax(db: Session, user: User, row: TaxPayment) -> None:
+    """Remove a BAS payment, with the goal move or transaction it made."""
+    move = maybe_owned(db, GoalMove, row.goal_move_id, user)
+    row.goal_move_id = None
+    db.flush()
+    if move is not None:
+        db.delete(move)
+    db.delete(row)
+    db.flush()

@@ -19,6 +19,7 @@ from fiscus.models import (
     Category,
     GoalMove,
     Payslip,
+    TaxPayment,
     Transaction,
     User,
 )
@@ -170,7 +171,7 @@ def paid_into(db: Session, user: User, account_id: int | None) -> int | None:
     return spending_account(db, user, accts)
 
 
-type Link = Payslip | BillPayment | BudgetSpend | GoalMove
+type Link = Payslip | BillPayment | BudgetSpend | GoalMove | TaxPayment
 
 
 def _link(link: Link) -> tuple[InstrumentedAttribute[int | None], str]:
@@ -181,6 +182,8 @@ def _link(link: Link) -> tuple[InstrumentedAttribute[int | None], str]:
         return Transaction.bill_payment_id, 'bill-payment'
     if isinstance(link, GoalMove):
         return Transaction.goal_move_id, 'goal-move'
+    if isinstance(link, TaxPayment):
+        return Transaction.tax_payment_id, 'tax-payment'
     return Transaction.budget_spend_id, 'budget-spend'
 
 
@@ -203,8 +206,9 @@ def follow(
     category_id: int | None = None,
 ) -> None:
     """Move an account's balance with a payslip, a bill marked paid by hand
-    (D42), spending taken off a budget (D49) or money taken out of a goal
-    (D73): one transaction linked to it,
+    (D42), spending taken off a budget (D49), money taken out of a goal
+    (D73) or tax paid with a BAS from an account (D75): one transaction
+    linked to it,
     changed when it is and deleted with it (the foreign key cascades). It goes
     into `paid_into(account_id)`. Nothing is written for a zero amount or a
     person with no accounts."""

@@ -52,6 +52,33 @@ def fy_bounds(day: date) -> tuple[date, date]:
     return date(start, 7, 1), date(start + 1, 6, 30)
 
 
+# ---------------------------------------------------------------- quarters
+
+QUARTER_MONTHS = {
+    1: 'January to March',
+    4: 'April to June',
+    7: 'July to September',
+    10: 'October to December',
+}
+
+
+def quarter_of(day: date) -> date:
+    """The first day of the BAS quarter holding `day`."""
+    return date(day.year, (day.month - 1) // 3 * 3 + 1, 1)
+
+
+def quarter_before(day: date, n: int = 1) -> date:
+    """The quarter `n` quarters before the one holding `day`."""
+    q = quarter_of(day)
+    months = q.year * 12 + q.month - 1 - 3 * n
+    return date(months // 12, months % 12 + 1, 1)
+
+
+def quarter_label(quarter: date) -> str:
+    """'July to September 2026'."""
+    return f'{QUARTER_MONTHS[quarter.month]} {quarter.year}'
+
+
 def _dec(v: Any) -> Decimal:
     return Decimal(str(v))
 
@@ -148,28 +175,37 @@ class Position:
     withheld_cents: int
     deductions_cents: int
     total: TaxEstimate
+    # Paid ahead with a BAS (PAYG instalments) for the year (D75).
+    paid_cents: int = 0
+
+    @property
+    def due_cents(self) -> int:
+        """The tax that withholding does not cover: total less what was withheld."""
+        return self.total.total_cents - self.withheld_cents
 
     @property
     def owing_cents(self) -> int:
-        """Estimated tax still to pay: total on taxable income less what was withheld."""
-        return self.total.total_cents - self.withheld_cents
+        """Estimated tax still to pay: what withholding does not cover, less
+        what was paid with a BAS."""
+        return self.due_cents - self.paid_cents
 
 
-def position(year: TaxYear, income: int, withheld: int, deductions: int) -> Position:
+def position(year: TaxYear, income: int, withheld: int, deductions: int, paid: int = 0) -> Position:
     taxable = max(0, income - deductions)
-    return Position(income, withheld, deductions, estimate(year, taxable))
+    return Position(income, withheld, deductions, estimate(year, taxable), paid)
 
 
-def share_of(year: Position, income: int, withheld: int) -> Position:
+def share_of(year: Position, income: int, withheld: int, paid: int = 0) -> Position:
     """The part of a whole year's position that `income` so far accounts for:
-    that share of the deductions and of the year's tax.
+    that share of the deductions and of the year's tax, with what was
+    withheld and paid with a BAS so far.
 
     Tax worked on the income so far alone would give it the whole tax-free
     threshold and the low brackets, and show early in the year a refund the
     full year takes back.
     """
     if year.income_cents <= 0:
-        return Position(income, withheld, 0, TaxEstimate(0, 0, 0, 0))
+        return Position(income, withheld, 0, TaxEstimate(0, 0, 0, 0), paid)
 
     def part(cents: int) -> int:
         return round_div(cents * income, year.income_cents)
@@ -181,6 +217,7 @@ def share_of(year: Position, income: int, withheld: int) -> Position:
         withheld,
         part(year.deductions_cents),
         TaxEstimate(part(t.taxable_cents), it, mc, it + mc),
+        paid,
     )
 
 

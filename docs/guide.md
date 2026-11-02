@@ -10,6 +10,7 @@ the short version.
 - [Budget import from a spreadsheet](#budget-import-from-a-spreadsheet)
 - [Importing bills from a file](#importing-bills-from-a-file)
 - [Irregular pay](#irregular-pay)
+- [Tax paid with your BAS](#tax-paid-with-your-bas)
 - [Reminders with ntfy](#reminders-with-ntfy)
 - [Backup and restore](#backup-and-restore)
 - [Configuration](#configuration)
@@ -293,6 +294,24 @@ on** under the pay schedules lists the last year's, with those its name
 matches ticked. A payslip put in with **Match to a payday by date** goes on it
 when no payday matches and the employer names it (or an earlier payment's
 employer does), and a payslip PDF does the same.
+
+## Tax paid with your BAS
+
+If you pay PAYG instalments on a BAS, put each one in on the Tax page under
+**Tax paid with your BAS**: what you paid, the quarter it is for, the day you
+paid it and where from. It is income tax paid ahead, so it comes off what the
+tax estimate says you will owe at 30 June, and off what you should have set
+aside by today. Leave out any GST.
+
+It counts in the financial year of the quarter it is for, not the day it was
+paid: April to June, paid in July, counts in the year before, as the ATO
+counts it. The quarter offered first is the one just gone.
+
+Paid out of your tax goal, it is taken out of the goal, and comes off the
+goal's account, so what you have set aside and what you owe drop together.
+Removing that entry on the goal's page removes the payment too. Paid from an
+account, it comes off that account until you next type its balance in. Not
+through Fiscus moves no balance, for one a balance you typed in already has.
 
 ## Reminders with ntfy
 
