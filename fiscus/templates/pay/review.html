@@ -10,7 +10,7 @@
     <a class="btn" href="/pay">Back to pay</a>
   </div>
   {% if saved %}<div class="alert alert-ok" id="bulk-saved">{{ saved }}. The ones below need fixing.</div>{% endif %}
-  <p class="muted">Each ticked payslip is added. One matched to a payday replaces that payday's expected pay; a one-off is extra. Change any figure or payday first; nothing is saved until you press Add.</p>
+  <p class="muted">Each ticked payslip is added. One matched to a payday replaces that payday's expected pay, one on irregular pay is a payment of it, and a one-off is extra. Change any figure or payday first; nothing is saved until you press Add.</p>
   {% if errors %}
     <div class="alert alert-warn" id="bulk-errors">
       {% for name, why in errors %}{% if not loop.first %}<br>{% endif %}<strong>{{ name }}</strong>: {{ why }}{% endfor %}
@@ -41,7 +41,7 @@
                   <td class="num" data-label="Gross"><input class="input num w-money" name="gross" inputmode="decimal" value="{{ f.gross }}" aria-label="Gross for {{ r.file_name }}"></td>
                   <td class="num" data-label="Tax"><input class="input num w-money" name="tax_withheld" inputmode="decimal" value="{{ f.tax_withheld }}" aria-label="Tax withheld for {{ r.file_name }}"></td>
                   <td class="num" data-label="Net"><input class="input num w-money" name="net" inputmode="decimal" value="{{ f.net }}" aria-label="Net for {{ r.file_name }}"></td>
-                  <td class="cell-full" data-label="Which pay">{{ payday_select('payday-' ~ r.index, options, f.payday, true) }}</td>
+                  <td class="cell-full" data-label="Which pay">{{ payday_select('payday-' ~ r.index, options, f.payday, true, irregular=irregular) }}</td>
                 </tr>
               {% endfor %}
             </tbody>

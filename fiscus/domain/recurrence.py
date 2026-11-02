@@ -6,6 +6,9 @@ reminders, so the four can never disagree about when something is due.
 Monthly, bimonthly (every two months), quarterly and yearly keep the
 anchor's day of month and clamp to the last day of a shorter month: an anchor
 on 31 January falls on 28 or 29 February, then back on 31 March.
+
+Irregular pay (D74) has no dates of its own: it is paid whenever it comes, so
+it never occurs here.
 """
 
 from __future__ import annotations
@@ -16,6 +19,8 @@ from datetime import date, timedelta
 
 DAYS = {'weekly': 7, 'fortnightly': 14}
 MONTHS = {'monthly': 1, 'bimonthly': 2, 'quarterly': 3, 'yearly': 12}
+# Paid whenever it comes, so no dates (D74).
+IRREGULAR = 'irregular'
 
 # Occurrences per year, for normalising amounts to a month.
 PER_YEAR = {
@@ -66,7 +71,7 @@ def occurrences(
     floor = anchor if not_before is None else not_before
     lo = max(start, floor)
     hi = end if until is None else min(end, until)
-    if lo > hi:
+    if lo > hi or frequency == IRREGULAR:
         return
     if frequency == 'one_off':
         if lo <= anchor <= hi:

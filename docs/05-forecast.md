@@ -50,8 +50,9 @@ anchor. A bill's "next due" is its anchor.
 today with real balances. Each later day applies:
 
 1. flows: pay (net, from `services/pay.items`: each schedule payday, or the
-   payslip recording it on that payslip's date, and one-off payslips),
-   bills, planned transfers (both
+   payslip recording it on that payslip's date, irregular pay's payments and
+   one-off payslips), irregular pay's typical month a day at a time
+   (`domain/pay.spread`, D74), bills, planned transfers (both
    legs), scenario one-offs. Unpaid bills overdue within the last 62 days
    (`bills.OVERDUE_CARRY_DAYS`) are assumed to go out tomorrow; the agenda
    lists them above today;
@@ -88,7 +89,8 @@ the person (`user_settings.chart_lines`, D50); the rest show as drawn.
 
 `apply_scenario` deep-copies the input and applies adjustments:
 `one_off`, `income_change` (new net or a delta, from a date, one schedule or
-all), `rate_change`, `new_bill`, `new_income` (net, recurring, its own kind of
+all; a change is per payday, so irregular pay, which has none, is left as it
+is, D74), `rate_change`, `new_bill`, `new_income` (net, recurring, its own kind of
 flow so an income change to every schedule leaves it alone), `extra_repayment`
 (one-off or recurring). Rate and pay changes apply in date order, so a later
 one takes over from its date; the rest add up in any order.

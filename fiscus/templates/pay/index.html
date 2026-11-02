@@ -36,17 +36,48 @@
       <ul class="list">
         {% for s in schedules %}
           <li>
-            <span class="grow">
-              <span class="title">{{ s.name }}</span>
-              <span class="text-xs muted">{{ s.frequency | capitalize }} · next {{ next[s.id] | d if next[s.id] else 'none' }}{% if s.end_date %} · ends {{ s.end_date | d }}{% endif %}{% if s.varies %} · varies, {{ 'recent average' if expected[s.id] != s.net_cents else 'your typical pay' }}{% endif %}</span>
-            </span>
-            <span class="num pos">{% if s.varies %}~{% endif %}{{ expected[s.id] | money }}</span>
+            {% if s.frequency == 'irregular' %}
+              <span class="grow">
+                <span class="title">{{ s.name }}</span>
+                <span class="text-xs muted">Irregular · a typical month, {{ 'the last year\'s average' if paid_any[s.id] else 'as you put it' }}{% if s.end_date %} · ends {{ s.end_date | d }}{% endif %}</span>
+              </span>
+              <span class="num pos">~{{ expected[s.id] | money }}</span>
+            {% else %}
+              <span class="grow">
+                <span class="title">{{ s.name }}</span>
+                <span class="text-xs muted">{{ s.frequency | capitalize }} · next {{ next[s.id] | d if next[s.id] else 'none' }}{% if s.end_date %} · ends {{ s.end_date | d }}{% endif %}{% if s.varies %} · varies, {{ 'recent average' if expected[s.id] != s.net_cents else 'your typical pay' }}{% endif %}</span>
+              </span>
+              <span class="num pos">{% if s.varies %}~{% endif %}{{ expected[s.id] | money }}</span>
+            {% endif %}
             <a class="btn btn-sm" href="/pay?edit={{ s.id }}">Edit</a>
+            {% if s.frequency == 'irregular' %}<a class="btn btn-sm btn-primary add-payment" href="/pay?payday=pay:{{ s.id }}#slip-form">Add a payment</a>{% endif %}
           </li>
         {% else %}
           <li class="muted">No pay schedules yet.</li>
         {% endfor %}
       </ul>
+      {% if one_offs %}
+        <details class="mt" id="take-one-offs">
+          <summary>Put one-offs on {{ irregular[0].name if irregular | length == 1 else 'irregular pay' }} ({{ one_offs | length }})</summary>
+          <form method="post" action="/pay/payments">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <p class="muted text-xs">One-off payments from the last year. Ticked ones become payments of it, so they count in its typical month and in the budget month each came in.</p>
+            {% if irregular | length == 1 %}
+              <input type="hidden" name="schedule_id" value="{{ irregular[0].schedule_id }}">
+            {% else %}
+              <div class="field"><label class="label" for="take-pay">Put them on</label>
+                <select class="input" id="take-pay" name="schedule_id">{% for w in irregular %}<option value="{{ w.schedule_id }}">{{ w.name }}</option>{% endfor %}</select>
+              </div>
+            {% endif %}
+            <ul class="list">
+              {% for p, named in one_offs %}
+                <li><label class="check grow"><input type="checkbox" name="slip_id" value="{{ p.id }}" {{ 'checked' if named else '' }}> {{ p.date | d }} · {{ p.source or 'No employer' }}</label><span class="num">{{ p.net_cents | money }}</span></li>
+              {% endfor %}
+            </ul>
+            <button class="btn btn-sm" type="submit">Put ticked ones on it</button>
+          </form>
+        </details>
+      {% endif %}
       {% set e = edit %}
       <h3 class="mt">{{ 'Edit ' ~ e.name if e else 'Add a pay schedule' }}</h3>
       <form method="post" action="{{ '/pay/schedules/' ~ e.id if e else '/pay/schedules' }}">
@@ -54,10 +85,10 @@
         <div class="form-grid">
           <div class="field"><label class="label" for="ps-name">Name</label><input class="input" id="ps-name" name="name" required maxlength="80" value="{{ e.name if e else 'Salary' }}"></div>
           <div class="field"><label class="label" for="ps-freq">How often</label>
-            <select class="input" id="ps-freq" name="frequency">{% for f in freqs %}<option value="{{ f }}" {{ 'selected' if (e and e.frequency == f) or (not e and f == 'fortnightly') else '' }}>{{ f | capitalize }}</option>{% endfor %}</select>
+            <select class="input" id="ps-freq" name="frequency">{% for f in freqs %}<option value="{{ f }}" {{ 'selected' if (e and e.frequency == f) or (not e and f == 'fortnightly') else '' }}>{{ 'Irregular (whenever it comes)' if f == 'irregular' else f | capitalize }}</option>{% endfor %}</select>
           </div>
-          <div class="field"><label class="label" for="ps-anchor">A payday</label><input class="input" type="date" id="ps-anchor" name="anchor_date" required value="{{ e.anchor_date.isoformat() if e else today.isoformat() }}"></div>
-          <div class="field"><label class="label" for="ps-net">Net pay (a typical pay, if it varies)</label><input class="input" id="ps-net" name="net" inputmode="decimal" required value="{{ e.net_cents | money_plain if e else '' }}"></div>
+          <div class="field"><label class="label" for="ps-anchor">A payday (irregular: when it started)</label><input class="input" type="date" id="ps-anchor" name="anchor_date" required value="{{ e.anchor_date.isoformat() if e else today.isoformat() }}"></div>
+          <div class="field"><label class="label" for="ps-net">Net pay (a typical pay if it varies, a month if irregular)</label><input class="input" id="ps-net" name="net" inputmode="decimal" required value="{{ e.net_cents | money_plain if e else '' }}"></div>
           <div class="field"><label class="label" for="ps-gross">Gross pay (optional, for tax)</label><input class="input" id="ps-gross" name="gross" inputmode="decimal" value="{{ e.gross_cents | money_plain if e and e.gross_cents is not none else '' }}"></div>
           <div class="field"><label class="label" for="ps-tax">Tax withheld (optional)</label><input class="input" id="ps-tax" name="tax_withheld" inputmode="decimal" value="{{ e.tax_withheld_cents | money_plain if e and e.tax_withheld_cents is not none else '' }}"></div>
           <div class="field"><label class="label" for="ps-account">Paid into</label>
@@ -66,6 +97,7 @@
           <div class="field"><label class="label" for="ps-end">Ends (optional)</label><input class="input" type="date" id="ps-end" name="end_date" value="{{ e.end_date.isoformat() if e and e.end_date else '' }}"></div>
           <label class="check full"><input type="checkbox" name="varies" {{ 'checked' if e and e.varies else '' }}> The amount varies (casual or shift work)</label>
           <p class="muted text-xs full">Gross and tax are for the tax estimate. Left blank, it uses this job's payslips once there are some, and until then counts the pay as having no tax taken out, as for contract work.</p>
+          <p class="muted text-xs full">Irregular is for pay with no set days, such as pay from your own business. Put in each payment as it comes. The budget, forecast and tax estimate expect a typical month: the average of the last year, or what you put here until it has paid anything.</p>
         </div>
         <div class="row">
           <button class="btn btn-primary" type="submit">Save</button>
@@ -94,7 +126,7 @@
         </div>
         <button class="btn" type="submit">Read payslips</button>
       </form>
-      <h3 class="mt" id="slip-heading">{{ 'Edit payslip' if slip else ('Payslip for ' ~ (options | selectattr('key', 'equalto', f.payday) | map(attribute='name') | first) if putting_in else 'Add a payslip or one-off payment') }}</h3>
+      <h3 class="mt" id="slip-heading">{{ 'Edit payslip' if slip else ('Payslip for ' ~ chosen.get(f.payday, 'your pay') if putting_in else 'Add a payslip or one-off payment') }}</h3>
       <form method="post" action="{{ '/payslips/' ~ slip.id if slip else '/payslips' }}" id="slip-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         {% if f.error %}<div class="alert alert-error" id="slip-error">{{ f.error }}</div>{% endif %}
@@ -107,18 +139,18 @@
         <div class="form-grid">
           <div class="field"><label class="label" for="slip-date">Pay date</label><input class="input" type="date" id="slip-date" name="date" required value="{{ f.date or today.isoformat() }}"></div>
           <div class="field"><label class="label" for="slip-source">Employer</label><input class="input" id="slip-source" name="source" maxlength="120" value="{{ f.source }}"></div>
-          <div class="field"><label class="label" for="slip-gross">Gross</label><input class="input" id="slip-gross" name="gross" inputmode="decimal" required value="{{ f.gross }}"></div>
-          <div class="field"><label class="label" for="slip-tax">Tax withheld</label><input class="input" id="slip-tax" name="tax_withheld" inputmode="decimal" required value="{{ f.tax_withheld }}"></div>
+          <div class="field"><label class="label" for="slip-gross">Gross</label><input class="input" id="slip-gross" name="gross" inputmode="decimal" value="{{ f.gross }}"></div>
+          <div class="field"><label class="label" for="slip-tax">Tax withheld</label><input class="input" id="slip-tax" name="tax_withheld" inputmode="decimal" value="{{ f.tax_withheld }}"></div>
           <div class="field"><label class="label" for="slip-net">Net</label><input class="input" id="slip-net" name="net" inputmode="decimal" required value="{{ f.net }}"></div>
           <div class="field"><label class="label" for="slip-account">Paid into</label>
             <select class="input" id="slip-account" name="account_id"><option value="0">Same as its pay schedule</option>{% for a in accounts %}<option value="{{ a.id }}" {{ 'selected' if f.account_id == a.id else '' }}>{{ a.name }}</option>{% endfor %}</select>
           </div>
           <div class="field full"><label class="label" for="slip-payday">Which pay</label>
             {% from "pay/_payday.html" import payday_select %}
-            {{ payday_select('slip-payday', options, f.payday, schedules) }}
+            {{ payday_select('slip-payday', options, f.payday, schedules, irregular=irregular) }}
           </div>
         </div>
-        <p class="muted text-xs">A payslip for a payday replaces that payday's expected pay. A one-off, such as a bonus or back pay, is extra; date it when it will be paid and, if that is after today, it goes into your forecast, calendar and tax estimate.</p>
+        <p class="muted text-xs">A payslip for a payday replaces that payday's expected pay. A one-off, such as a bonus or back pay, is extra; date it when it will be paid and, if that is after today, it goes into your forecast, calendar and tax estimate. A payment of irregular pay can leave gross and tax blank: nothing withheld, and gross the same as net.</p>
         <div class="row">
           <button class="btn btn-primary" type="submit">{{ 'Save payslip' if slip else 'Add payslip' }}</button>
           {% if slip or putting_in %}<a class="btn" href="/pay">Cancel</a>{% endif %}
@@ -138,7 +170,7 @@
             <tr>
               <td class="cell-date nowrap">{{ p.date | d }}</td>
               <td class="cell-full">{{ p.source }}{% if p.date > today %} <span class="pill">Expected</span>{% endif %}
-                <div class="text-xs muted">{% if p.schedule_id and p.payday %}{{ names.get(p.schedule_id, 'Pay') }}, {{ p.payday | d('dm') }}{% if p.net_cents == 0 and p.gross_cents == 0 %} · no pay{% endif %}{% else %}One-off{% endif %}</div>
+                <div class="text-xs muted">{% if p.schedule_id and p.payday %}{{ names.get(p.schedule_id, 'Pay') }}, {{ p.payday | d('dm') }}{% if p.net_cents == 0 and p.gross_cents == 0 %} · no pay{% endif %}{% elif p.schedule_id %}{{ names.get(p.schedule_id, 'Pay') }}, irregular{% else %}One-off{% endif %}</div>
               </td>
               <td class="num" data-label="Gross">{{ p.gross_cents | money }}</td><td class="num" data-label="Tax">{{ p.tax_withheld_cents | money }}</td><td class="num" data-label="Net">{{ p.net_cents | money }}</td>
               <td class="nowrap cell-full cell-actions">

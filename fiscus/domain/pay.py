@@ -8,6 +8,10 @@ so a job that began recently is not averaged over weeks it did not exist.
 
 A payslip can record a payday of a schedule. It then stands in for that
 payday's expected pay everywhere (D27).
+
+Irregular pay (D74), from a business say, has no paydays: each payment is a
+payslip on it, whatever the day, and it is expected to bring in a typical
+month, the average of the last year.
 """
 
 from __future__ import annotations
@@ -15,6 +19,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
+from fractions import Fraction
 
 from fiscus.domain import recurrence
 from fiscus.money import round_div
@@ -53,6 +58,42 @@ def expected_pay(
     return round_div(sum(c for _d, c in seen), max(paydays, 1))
 
 
+def typical_month(
+    start: date, paid: Iterable[tuple[date, int]], today: date, fallback_cents: int
+) -> int:
+    """What irregular pay brings in a typical month (D74): what it paid over
+    the last year, today included, a month's share of it. The year starts no
+    earlier than the pay did (its start, or its first payment if that came
+    first), and counts as a month at least, so one payment soon after it
+    starts is a month's pay rather than thirty. Until it has paid anything in
+    the year, `fallback_cents`, the typical month typed in."""
+    window_start = today - timedelta(days=LONG_WINDOW_DAYS)
+    seen = [(d, c) for d, c in paid if window_start < d <= today]
+    if not any(c > 0 for _d, c in seen):
+        return fallback_cents
+    first = max(window_start + timedelta(days=1), min([start, *(d for d, _c in seen)]))
+    days = (today - first).days + 1
+    return round_div(sum(c for _d, c in seen) * 365, max(days * 12, 365))
+
+
+def spread(monthly_cents: int, first: date, last: date) -> list[tuple[date, int]]:
+    """A month's amount over each day from `first` to `last`, a twelfth of a
+    365-day year a day, fractions of a cent carried so the days add up. Days
+    that come to nothing are left out."""
+    per_day = Fraction(monthly_cents * 12, 365)
+    carry = Fraction(0)
+    out: list[tuple[date, int]] = []
+    day = first
+    while day <= last:
+        carry += per_day
+        whole = round_div(carry.numerator, carry.denominator)
+        if whole:
+            carry -= whole
+            out.append((day, whole))
+        day += timedelta(days=1)
+    return out
+
+
 # ------------------------------------------------------------------ payslips
 
 # Paydays this far back without a payslip are asked for; older ones are not.
@@ -77,13 +118,26 @@ class OpenPayday:
 
 
 @dataclass(frozen=True)
+class IrregularPay:
+    """Irregular pay a payslip can go on, on any day (D74)."""
+
+    schedule_id: int
+    name: str
+    employers: tuple[str, ...] = ()
+
+    @property
+    def key(self) -> str:
+        return f'pay:{self.schedule_id}'
+
+
+@dataclass(frozen=True)
 class Unsure:
     """Several jobs are paid around a payslip's date and its employer names none."""
 
     choices: tuple[OpenPayday, ...]
 
 
-def _names(employer: str, op: OpenPayday) -> bool:
+def _names(employer: str, op: OpenPayday | IrregularPay) -> bool:
     emp = employer.casefold().strip()
     for n in (op.name, *op.employers):
         name = n.casefold().strip()
@@ -127,3 +181,11 @@ def match_paydays(
         out[i] = open_paydays[j]
         used.add(j)
     return out
+
+
+def match_irregular(employer: str, pays: Sequence[IrregularPay]) -> IrregularPay | None:
+    """The irregular pay a payslip no payday matched is for: the one its
+    employer names, or an earlier payment's employer does. None when none
+    does, or more than one, so a bonus is not taken for business pay."""
+    named = [p for p in pays if _names(employer, p)]
+    return named[0] if len(named) == 1 else None

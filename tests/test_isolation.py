@@ -227,6 +227,7 @@ READS = [
     '/pay?edit={schedule}',
     '/pay?slip={payslip}',
     '/pay?payday={schedule}:2026-10-02',
+    '/pay?payday=pay:{schedule}',
     '/bills/import/{staged}',
     '/goals/{goal}',
 ]
@@ -261,6 +262,8 @@ WRITES: list[tuple[str, dict[str, Any]]] = [
         },
     ),
     ('/pay/schedules/{schedule}/no-pay', {'payday': '2026-10-02'}),
+    ('/pay/payments', {'schedule_id': '{schedule}', 'slip_id': '{payslip}'}),
+    ('/payslips', {'date': '2026-10-02', 'net': '1', 'payday': 'pay:{schedule}'}),
     (
         '/loans/{loan}',
         {

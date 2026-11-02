@@ -97,6 +97,7 @@ def budget_page(
             'cycles': budgeting.CYCLES,
             'bill_cycles': budgeting.bill_cycles(db, user, start),
             'spread_pay': budgeting.spread_pay(db, user, start, end, today),
+            'irregular': budgeting.irregular_pay(db, user, start, end, today),
         },
     )
 

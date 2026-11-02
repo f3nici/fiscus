@@ -9,6 +9,7 @@ the short version.
 - [Installing the app on iOS and Android](#installing-the-app-on-ios-and-android)
 - [Budget import from a spreadsheet](#budget-import-from-a-spreadsheet)
 - [Importing bills from a file](#importing-bills-from-a-file)
+- [Irregular pay](#irregular-pay)
 - [Reminders with ntfy](#reminders-with-ntfy)
 - [Backup and restore](#backup-and-restore)
 - [Configuration](#configuration)
@@ -268,6 +269,30 @@ alone unless you tick the box, and then they are stopped rather than deleted,
 so their payment history stays. A file from an earlier version with
 shared_with and split_percent columns still imports: those are left out and
 each bill comes in at its full amount. So does a housing costs file.
+
+## Irregular pay
+
+Pay that comes on no set days and for no set amount, such as pay from your own
+business, is a pay schedule that is **Irregular (whenever it comes)**. Give
+it the day it started and what a typical month brings in. Each time money
+comes, press **Add a payment** beside it on the Pay page and put in what came
+and when. Gross and tax can be left blank: nothing withheld, and gross the same
+as net. The payment comes into its account straight away, as a payslip does.
+
+It has no paydays, so it never asks for a payslip. The budget, the forecast
+and the tax estimate expect a typical month: the average of what it paid over
+the last year (from when it started, at first), or the month you put in until
+it has paid anything. A budget month under way or still to come expects a
+typical month, or what came in when that is more, and Expected to earn says
+how much is in so far. A budget month gone by counts only what came in. The
+forecast spreads a typical month over every day, and the tax estimate adds a
+typical month for each month left to 30 June.
+
+One-off payslips already put in for it can be moved onto it: **Put one-offs
+on** under the pay schedules lists the last year's, with those its name
+matches ticked. A payslip put in with **Match to a payday by date** goes on it
+when no payday matches and the employer names it (or an earlier payment's
+employer does), and a payslip PDF does the same.
 
 ## Reminders with ntfy
 

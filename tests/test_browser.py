@@ -702,3 +702,86 @@ def test_scenarios_ticked_together(server: tuple[str, Any], browser: Any) -> Non
 
     assert errors == [], errors
     context.close()
+
+
+def test_irregular_pay_on_a_phone(server: tuple[str, Any], browser: Any) -> None:
+    """Irregular pay (D74): set up on the Pay page, a payment put in from its
+    button with gross and tax left blank, and the budget expecting a typical
+    month, on a phone with nothing scrolling sideways and a clean console."""
+    base, ctx = server
+    with ctx.sessions() as db:
+        alex = create_user(db, ctx.clock, 'alex', 'Alex', is_admin=True)
+        token = auth_service.start_session(
+            db, ctx.settings, ctx.clock, alex, 'test', '127.0.0.1', 'pytest'
+        )
+        db.commit()
+    context = browser.new_context(
+        viewport={'width': 390, 'height': 844}, is_mobile=True, has_touch=True
+    )
+    context.add_cookies([{'name': ctx.settings.session_cookie, 'value': token, 'url': base}])
+    page = context.new_page()
+    errors: list[str] = []
+    page.on('console', lambda m: errors.append(m.text) if m.type == 'error' else None)
+    page.on('pageerror', lambda e: errors.append(str(e)))
+    fits = 'document.documentElement.scrollWidth <= document.documentElement.clientWidth'
+    shots = os.environ.get('FISCUS_SHOTS')
+
+    page.goto(f'{base}/pay')
+    csrf = next(c['value'] for c in context.cookies() if c['name'] == ctx.settings.csrf_cookie)
+    resp = page.request.post(
+        f'{base}/accounts',
+        form={'name': 'Everyday', 'type': 'transaction', 'opening_balance': '2500'},
+        headers={'X-CSRF-Token': csrf},
+        max_redirects=0,
+    )
+    assert resp.status == 303
+    # A one-off from before, to put on it.
+    resp = page.request.post(
+        f'{base}/payslips',
+        form={
+            'date': '2026-09-14',
+            'gross': '800',
+            'tax_withheld': '0',
+            'net': '800',
+            'source': 'Fenici Design',
+            'payday': '',
+        },
+        headers={'X-CSRF-Token': csrf},
+        max_redirects=0,
+    )
+    assert resp.status == 303
+
+    page.goto(f'{base}/pay')
+    page.fill('#ps-name', 'Fenici Design')
+    page.select_option('#ps-freq', 'irregular')
+    page.fill('#ps-anchor', '2026-07-01')
+    page.fill('#ps-net', '4000')
+    page.click('#ps-net >> xpath=ancestor::form//button[@type="submit"]')
+    page.wait_for_selector('text=Irregular · a typical month')
+    assert page.evaluate(fits)
+    if shots:
+        page.screenshot(path=f'{shots}/pay.png', full_page=True)
+
+    page.click('#take-one-offs summary')
+    page.click('#take-one-offs button[type=submit]')
+    page.wait_for_selector(
+        '[data-flash]:has-text("1 one-off put on Fenici Design")', state='attached'
+    )
+
+    page.click('a:has-text("Add a payment")')
+    page.wait_for_selector('#slip-heading:has-text("Payslip for Fenici Design")')
+    assert page.input_value('#slip-source') == 'Fenici Design'
+    page.fill('#slip-net', '1500')
+    page.click('#slip-form button[type=submit]')
+    page.wait_for_selector(
+        '[data-flash]:has-text("Payment of Fenici Design saved")', state='attached'
+    )
+    assert page.evaluate(fits)
+
+    page.goto(f'{base}/budget')
+    page.wait_for_selector('text=Fenici Design: $1,500.00 in, a typical month is')
+    assert page.evaluate(fits)
+    if shots:
+        page.screenshot(path=f'{shots}/budget.png')
+    assert errors == [], errors
+    context.close()
