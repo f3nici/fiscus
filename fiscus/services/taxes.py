@@ -8,6 +8,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
+from fiscus.domain import pay as pay_domain
 from fiscus.domain import tax
 from fiscus.domain.pay import OpenPayday
 from fiscus.models import Account, Goal, Payslip, TaxDeduction, User
@@ -86,8 +87,9 @@ def view(db: Session, user: User, today: date, tax_dir: Path | None = None) -> T
     per_job = _recent_slips(db, user, today)
     proj_gross, proj_tax = gross, withheld
     untaxed: list[str] = []
+    expected = pay.schedules(db, user, today)
     # From today: a payday today with no payslip yet is expected, not missing.
-    for item in pay.items(db, user, today, fy_end, today):
+    for item in pay.items(db, user, today, fy_end, today, expected):
         if item.slip is not None:
             if item.slip.date <= today:
                 continue  # already in the year to date
@@ -99,6 +101,29 @@ def view(db: Session, user: User, today: date, tax_dir: Path | None = None) -> T
             continue
         figures = tax.PayFigures(ps.gross_cents, ps.tax_withheld_cents, ps.net_cents, ps.varies)
         g, w, known = tax.gross_and_tax(item.net_cents, figures, per_job.get(ps.id))
+        proj_gross += g
+        proj_tax += w
+        if not known and ps.name not in untaxed:
+            untaxed.append(ps.name)
+    # Irregular pay has no paydays: a typical month for each month left, from
+    # tomorrow, as the forecast has it; today's payments are in the year to
+    # date (D74). Its own gross and tax are for a typical month.
+    for ps, typical in expected:
+        if not pay.is_irregular(ps) or typical <= 0:
+            continue
+        last = fy_end if ps.end_date is None else min(fy_end, ps.end_date)
+        first = max(today + timedelta(days=1), ps.anchor_date)
+        net = sum(c for _d, c in pay_domain.spread(typical, first, last))
+        if not net:
+            continue
+        typed = ps.net_cents > 0
+        figures = tax.PayFigures(
+            ps.gross_cents if typed else None,
+            ps.tax_withheld_cents if typed else None,
+            ps.net_cents,
+            varies=True,
+        )
+        g, w, known = tax.gross_and_tax(net, figures, per_job.get(ps.id))
         proj_gross += g
         proj_tax += w
         if not known and ps.name not in untaxed:

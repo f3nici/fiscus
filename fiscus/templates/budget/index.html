@@ -20,7 +20,7 @@
     <div class="stat">
       <div class="label">Expected to earn</div>
       <div class="value">{{ summary.expected_cents | money }}</div>
-      <span class="text-sm muted">{% if summary.pay_cents %}{{ summary.pay_cents | money }} pay{% if summary.expected_cents != summary.pay_cents %}, {{ (summary.expected_cents - summary.pay_cents) | money }} other income{% endif %}{% else %}<a href="/pay">Add your pay</a>{% endif %}{% if spread_pay %}<br>includes {{ spread_pay | money }} a month of quarterly pay{% endif %}</span>
+      <span class="text-sm muted">{% if summary.pay_cents %}{{ summary.pay_cents | money }} pay{% if summary.expected_cents != summary.pay_cents %}, {{ (summary.expected_cents - summary.pay_cents) | money }} other income{% endif %}{% else %}<a href="/pay">Add your pay</a>{% endif %}{% if spread_pay %}<br>includes {{ spread_pay | money }} a month of quarterly pay{% endif %}{% for x in irregular %}<br>{{ x.schedule.name }}: {% if x.closed %}{{ x.received_cents | money }} came in{% elif x.received_cents %}{{ x.received_cents | money }} in, a typical month is {{ x.typical_cents | money }}{% else %}a typical month, {{ x.typical_cents | money }}{% endif %}{% endfor %}</span>
     </div>
     <div class="stat">
       <div class="label">Budgeted</div>

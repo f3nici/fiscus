@@ -12,7 +12,9 @@ accounts with balances typed in and kept by day (D39), moved by bills marked
 paid, payslips, spending taken off the budget and money taken out of goals
 until the next is typed in (D42, D45, D49, D73); categories; bills with states, each paid from an account and
 filed under a category, one that varies expecting the average of its last
-three paid (D66); pay schedules and payslips (listed ten a page); the
+three paid (D66); pay schedules and payslips (listed ten a page), pay
+from a business of one's own as irregular pay expecting a typical month
+(D74); the
 calendar (the month by default, D54); home loan and offset (one loan opens
 straight into it; weekly repayments over a year of 365.25 days, as ANZ
 works them, from the first repayment the bank set, D70, D71); forecasting with scenarios, several ticked together

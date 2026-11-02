@@ -31,7 +31,8 @@ from fiscus.db import Base
 
 ACCOUNT_TYPES = ('transaction', 'offset', 'savings', 'credit_card')
 FREQUENCIES = ('weekly', 'fortnightly', 'monthly', 'bimonthly', 'quarterly', 'yearly', 'one_off')
-PAY_FREQUENCIES = ('weekly', 'fortnightly', 'monthly', 'quarterly')
+# Irregular pay has no paydays: it is paid whenever it comes (D74).
+PAY_FREQUENCIES = ('weekly', 'fortnightly', 'monthly', 'quarterly', 'irregular')
 
 
 class Owned:
@@ -395,6 +396,9 @@ class PaySchedule(Base, Owned):
     )
     # Casual pay: expect the recent average of deposits whose description
     # contains match_text; net_cents is the guess until any arrive.
+    # Irregular pay (D74) has no paydays: net_cents is a typical month until
+    # it has paid anything, then the last year's average month, and
+    # anchor_date is when it started.
     varies: Mapped[bool] = mapped_column(Boolean, default=False)
     match_text: Mapped[str] = mapped_column(String(120), default='')
 
@@ -416,7 +420,8 @@ class Payslip(Base, Owned):
         ForeignKey('accounts.id', ondelete='SET NULL'), nullable=True
     )
     # The schedule payday this payslip records; it then stands in for that
-    # payday's expected pay. Both null for a one-off (bonus, back pay).
+    # payday's expected pay. Both null for a one-off (bonus, back pay). A
+    # payment of irregular pay (D74) has its schedule and no payday.
     schedule_id: Mapped[int | None] = mapped_column(
         ForeignKey('pay_schedules.id', ondelete='SET NULL'), nullable=True, index=True
     )

@@ -1,8 +1,10 @@
 """What each pay schedule is expected to pay, for the forecast, calendar and tax.
 
 `items` is the one list of pay: each schedule payday, replaced by its payslip
-when one records it, and one-off payslips. The forecast, calendar, budget and
-tax all read it, so they agree on what was and will be paid.
+when one records it, the payments of irregular pay (D74), and one-off
+payslips. The forecast, calendar, budget and tax all read it, so they agree
+on what was and will be paid. Irregular pay still to come has no dates, so
+each of them takes its typical month (`typical_month`) as it needs it.
 """
 
 from __future__ import annotations
@@ -15,8 +17,16 @@ from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from fiscus.clock import Clock
+from fiscus.domain import pay as pay_domain
 from fiscus.domain import recurrence
-from fiscus.domain.pay import ASK_DAYS, LINK_DAYS, OpenPayday, expected_pay, window_days
+from fiscus.domain.pay import (
+    ASK_DAYS,
+    LINK_DAYS,
+    IrregularPay,
+    OpenPayday,
+    expected_pay,
+    window_days,
+)
 from fiscus.models import PaySchedule, Payslip, Transaction, User
 from fiscus.services import ledger
 from fiscus.services.access import owned
@@ -72,7 +82,68 @@ def follow(db: Session, clock: Clock, user: User, slip: Payslip) -> None:
     )
 
 
+def is_irregular(ps: PaySchedule) -> bool:
+    """Paid whenever it comes, with no paydays (D74)."""
+    return ps.frequency == recurrence.IRREGULAR
+
+
+def payments(db: Session, user: User, ps: PaySchedule, start: date, end: date) -> list[Payslip]:
+    """An irregular pay's payments dated in [start, end], in date order."""
+    return list(
+        db.execute(
+            owned(Payslip, user)
+            .where(Payslip.schedule_id == ps.id, Payslip.date >= start, Payslip.date <= end)
+            .order_by(Payslip.date, Payslip.id)
+        ).scalars()
+    )
+
+
+def _last_year(db: Session, user: User, ps: PaySchedule, today: date) -> list[tuple[date, int]]:
+    since = today - timedelta(days=pay_domain.LONG_WINDOW_DAYS - 1)
+    return [(s.date, s.net_cents) for s in payments(db, user, ps, since, today)]
+
+
+def typical_month(db: Session, user: User, ps: PaySchedule, today: date) -> int:
+    """What an irregular pay brings in a typical month: the last year's
+    average, or the month typed in until it has paid anything (D74)."""
+    paid = _last_year(db, user, ps, today)
+    return pay_domain.typical_month(ps.anchor_date, paid, today, ps.net_cents)
+
+
+def averaged(db: Session, user: User, ps: PaySchedule, today: date) -> bool:
+    """Whether an irregular pay's typical month is its average yet, not the
+    month typed in."""
+    return any(c > 0 for _d, c in _last_year(db, user, ps, today))
+
+
+def runs(ps: PaySchedule, start: date, end: date) -> bool:
+    """Whether a pay schedule runs at some point in [start, end]."""
+    return ps.anchor_date <= end and (ps.end_date is None or ps.end_date >= start)
+
+
+def irregular(db: Session, user: User) -> list[IrregularPay]:
+    """Irregular pay a payslip can go on, with the employers on its payments."""
+    found = [
+        ps
+        for ps in db.execute(owned(PaySchedule, user).order_by(PaySchedule.name)).scalars()
+        if is_irregular(ps)
+    ]
+    employers: dict[int, set[str]] = {}
+    if found:
+        for slip in db.execute(
+            owned(Payslip, user).where(
+                Payslip.schedule_id.in_([ps.id for ps in found]), Payslip.source != ''
+            )
+        ).scalars():
+            if slip.schedule_id is not None:
+                employers.setdefault(slip.schedule_id, set()).add(slip.source)
+    return [IrregularPay(ps.id, ps.name, tuple(sorted(employers.get(ps.id, ())))) for ps in found]
+
+
 def net_per_pay(db: Session, user: User, ps: PaySchedule, today: date) -> int:
+    """What a payday is expected to pay; for irregular pay, a typical month."""
+    if is_irregular(ps):
+        return typical_month(db, user, ps, today)
     if not ps.varies:
         return ps.net_cents
     return expected_pay(
@@ -118,8 +189,10 @@ def items(
     today: date,
     expected: list[tuple[PaySchedule, int]] | None = None,
 ) -> list[PayItem]:
-    """Pay in [start, end] by the date it is paid, in date order."""
+    """Pay in [start, end] by the date it is paid, in date order: paydays
+    (their payslip's figures once in), irregular pay's payments and one-offs."""
     expected = schedules(db, user, today) if expected is None else expected
+    paid_whenever = {ps.id: ps for ps, _net in expected if is_irregular(ps)}
     pad = timedelta(days=LINK_DAYS)
     slips = db.execute(
         owned(Payslip, user).where(
@@ -145,10 +218,12 @@ def items(
             when = slip.date if slip else d
             if start <= when <= end:
                 out.append(PayItem(when, slip.net_cents if slip else net, ps, net, slip, d))
-    # One-offs, and payslips whose payday the schedule no longer has.
+    # Irregular pay's payments, one-offs, and payslips whose payday the
+    # schedule no longer has.
     for s in [*loose, *linked.values()]:
         if start <= s.date <= end:
-            out.append(PayItem(s.date, s.net_cents, None, s.net_cents, s))
+            whenever = paid_whenever.get(s.schedule_id) if s.schedule_id else None
+            out.append(PayItem(s.date, s.net_cents, whenever, s.net_cents, s))
     out.sort(key=lambda i: (i.when, i.label))
     return out
 

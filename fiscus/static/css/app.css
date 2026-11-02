@@ -598,6 +598,9 @@ tbody.group tr:not(.group-head) > td:first-child { padding-left: 12px; }
   /* What a bill that varies came to goes on a line of its own (D66). */
   .list li:has(> .paid-at) { flex-wrap: wrap; }
   .paid-at { flex-basis: 100%; justify-content: flex-end; }
+  /* So does irregular pay's Add a payment (D74). */
+  .list li:has(> .add-payment) { flex-wrap: wrap; }
+  .add-payment { flex-basis: 100%; }
   .ledger .day { grid-template-columns: 58px minmax(0, 1fr); gap: 0 10px; }
   .ledger .item .num { min-width: 0; }
 }

@@ -32,7 +32,7 @@ from fiscus.models import (
     ScenarioAdjustment,
     User,
 )
-from fiscus.services import forecasting, ledger
+from fiscus.services import forecasting, ledger, pay
 from fiscus.services.access import get_owned, maybe_owned, owned
 from fiscus.services.users import settings_for
 from fiscus.web import DB, ctx, current_user, redirect, render
@@ -255,7 +255,12 @@ def show_scenario(
             'kinds': SCENARIO_KINDS,
             'accounts': ledger.accounts(db, user),
             'loans': db.execute(owned(Loan, user)).scalars().all(),
-            'pays': db.execute(owned(PaySchedule, user)).scalars().all(),
+            # A pay change is per payday; irregular pay has none (D74).
+            'pays': [
+                ps
+                for ps in db.execute(owned(PaySchedule, user)).scalars()
+                if not pay.is_irregular(ps)
+            ],
             'freqs': FREQUENCIES,
             'names': {a.id: a.name for a in ledger.accounts(db, user, include_archived=True)},
         },

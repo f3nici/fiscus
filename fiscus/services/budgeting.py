@@ -37,6 +37,7 @@ from fiscus.models import (
     BudgetSpend,
     Category,
     GoalMove,
+    PaySchedule,
     Transaction,
     User,
 )
@@ -667,17 +668,53 @@ def spread_pay(db: Session, user: User, start: date, end: date, today: date) -> 
     )
 
 
+@dataclass(frozen=True)
+class Irregular:
+    """Irregular pay in a budget month (D74)."""
+
+    schedule: PaySchedule
+    received_cents: int  # its payments dated in the month
+    typical_cents: int  # a typical month, the last year's average
+    expected_cents: int  # what the month counts from it
+    closed: bool  # the month is over, or the pay is, so only what came counts
+
+
+def irregular_pay(db: Session, user: User, start: date, end: date, today: date) -> list[Irregular]:
+    """What each irregular pay gives a budget month (D74). A month still to
+    come, or under way, expects a typical month, or what came in when that
+    is more; a month gone by counts only what came in, so a lean one shows
+    as one. A pay that has ended, or not yet started, counts what came."""
+    out: list[Irregular] = []
+    for ps, typical in pay.schedules(db, user, today):
+        if not pay.is_irregular(ps):
+            continue
+        received = sum(s.net_cents for s in pay.payments(db, user, ps, start, end))
+        still = end >= today and pay.runs(ps, max(start, today), end)
+        if not received and not still:
+            continue
+        expected = max(received, typical) if still else received
+        out.append(Irregular(ps, received, typical, expected, not still))
+    return out
+
+
 def expected_pay(db: Session, user: User, start: date, end: date, today: date) -> int:
-    """Net pay in the period: every payday (its payslip's net once recorded), and
-    one-off payslips still to come. Past one-offs are left out: before paydays
-    were recorded, a past payslip was usually a regular pay already counted.
-    Quarterly pay counts a month's share each month (`spread_pay`)."""
-    return spread_pay(db, user, start, end, today) + sum(
+    """Net pay in the period: every payday (its payslip's net once recorded),
+    one-off payslips still to come and irregular pay (`irregular_pay`). Past
+    one-offs are left out: before paydays were recorded, a past payslip was
+    usually a regular pay already counted. Quarterly pay counts a month's
+    share each month (`spread_pay`)."""
+    paydays = sum(
         i.net_cents
         for i in pay.items(db, user, start, end, today)
-        if (i.schedule is not None and i.schedule.frequency not in SPREAD_PAY)
+        if (
+            i.schedule is not None
+            and i.schedule.frequency not in SPREAD_PAY
+            and not pay.is_irregular(i.schedule)
+        )
         or (i.schedule is None and i.when > today)
     )
+    whenever = sum(x.expected_cents for x in irregular_pay(db, user, start, end, today))
+    return spread_pay(db, user, start, end, today) + paydays + whenever
 
 
 def summary(

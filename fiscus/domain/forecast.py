@@ -30,7 +30,7 @@ class Flow:
     date: date
     account_id: int
     amount_cents: int
-    kind: str  # pay | bill | transfer | one_off | income
+    kind: str  # pay | irregular | bill | transfer | one_off | income
     label: str
     ref: int | None = None
 

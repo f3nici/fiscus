@@ -1,7 +1,8 @@
 """Pay schedules and payslips.
 
-A payslip records a payday of a schedule or is a one-off. Recent paydays
-without one are asked for; a PDF, or several, fill in the figures.
+A payslip records a payday of a schedule, is a payment of irregular pay
+(D74), or is a one-off. Recent paydays without one are asked for; a PDF, or
+several, fill in the figures.
 """
 
 from __future__ import annotations
@@ -18,7 +19,16 @@ from sqlalchemy.orm import Session
 
 from fiscus.domain import payslip as payslip_pdf
 from fiscus.domain import recurrence
-from fiscus.domain.pay import ASK_DAYS, LINK_DAYS, MATCH_DAYS, OpenPayday, Unsure, match_paydays
+from fiscus.domain.pay import (
+    ASK_DAYS,
+    LINK_DAYS,
+    MATCH_DAYS,
+    IrregularPay,
+    OpenPayday,
+    Unsure,
+    match_irregular,
+    match_paydays,
+)
 from fiscus.domain.tax import fy_bounds
 from fiscus.domain.uploads import MAX_BYTES, ImportError_
 from fiscus.forms import (
@@ -44,6 +54,9 @@ MAX_FILES = 40
 SLIPS_PER_PAGE = 10
 # Paydays offered for a payslip run this far ahead (a payslip often comes first).
 AHEAD_DAYS = 14
+# One-offs this far back can be put on irregular pay (D74): its typical month
+# looks back a year.
+TAKE_DAYS = 365
 
 
 @dataclass
@@ -56,7 +69,9 @@ class SlipForm:
     tax_withheld: str = ''
     net: str = ''
     account_id: int = 0
-    payday: str = 'auto'  # 'auto', '' for a one-off, or 'schedule_id:YYYY-MM-DD'
+    # 'auto', '' for a one-off, 'schedule_id:YYYY-MM-DD' for a payday, or
+    # 'pay:schedule_id' for a payment of irregular pay (D74).
+    payday: str = 'auto'
     file_name: str = ''
     notes: list[str] = field(default_factory=list)
     error: str = ''
@@ -95,8 +110,39 @@ def _parse_payday(db: Session, user: User, value: str) -> tuple[PaySchedule, Dat
     return ps, when
 
 
+def _parse_irregular(db: Session, user: User, value: str) -> PaySchedule | None:
+    """The irregular pay a 'pay:schedule_id' value names (D74)."""
+    kind, _, sid = value.partition(':')
+    if kind != 'pay':
+        return None
+    try:
+        ps = maybe_owned(db, PaySchedule, int(sid), user)
+    except ValueError:
+        return None
+    return ps if ps is not None and pay.is_irregular(ps) else None
+
+
+def _hit(found: tuple[PaySchedule, Date | None]) -> OpenPayday | IrregularPay:
+    ps, day = found
+    return OpenPayday(ps.id, day, ps.name) if day is not None else IrregularPay(ps.id, ps.name)
+
+
 def _prefill(db: Session, user: User, value: str, today: Date) -> SlipForm | None:
-    """The form for a payday still to put in: the schedule's expected figures."""
+    """The form for a payday still to put in, with the schedule's expected
+    figures, or for a payment of irregular pay, with its employer."""
+    whenever = _parse_irregular(db, user, value)
+    if whenever is not None:
+        last = db.execute(
+            owned(Payslip, user)
+            .where(Payslip.schedule_id == whenever.id, Payslip.source != '')
+            .order_by(Payslip.date.desc(), Payslip.id.desc())
+        ).scalar()
+        return SlipForm(
+            date=today.isoformat(),
+            source=last.source if last else whenever.name,
+            account_id=whenever.account_id or 0,
+            payday=value,
+        )
     found = _parse_payday(db, user, value)
     if found is None:
         return None
@@ -132,6 +178,8 @@ def pay_page(request: Request, user: User = Depends(current_user), db: Session =
             payday=(
                 f'{slip.schedule_id}:{slip.payday.isoformat()}'
                 if slip.schedule_id and slip.payday
+                else f'pay:{slip.schedule_id}'
+                if slip.schedule_id
                 else ''
             ),
         )
@@ -188,6 +236,28 @@ def _page(
         found = _parse_payday(db, user, form.payday)
         if found is not None:
             options = _with(options, [OpenPayday(found[0].id, found[1], found[0].name)])
+    whenever = pay.irregular(db, user)
+    paid_any = {
+        ps.id: pay.averaged(db, user, ps, today) for ps in schedules if pay.is_irregular(ps)
+    }
+    chosen = {o.key: o.name for o in options} | {o.key: o.name for o in whenever}
+    # One-offs from the last year, to put on irregular pay; those whose
+    # employer names it are ticked.
+    one_offs = (
+        db.execute(
+            owned(Payslip, user)
+            .where(
+                Payslip.schedule_id.is_(None),
+                Payslip.date > today - timedelta(days=TAKE_DAYS),
+                Payslip.date <= today,
+            )
+            .order_by(Payslip.date.desc(), Payslip.id.desc())
+        )
+        .scalars()
+        .all()
+        if whenever
+        else []
+    )
     return render(
         request,
         'pay/index.html',
@@ -201,6 +271,10 @@ def _page(
             'pages': pages,
             'names': {s.id: s.name for s in schedules},
             'freqs': PAY_FREQUENCIES,
+            'irregular': whenever,
+            'paid_any': paid_any,
+            'chosen': chosen,
+            'one_offs': [(s, match_irregular(s.source, whenever) is not None) for s in one_offs],
             'accounts': ledger.accounts(db, user),
             'ytd': {'gross': ytd[0], 'tax': ytd[1], 'net': ytd[2]},
             'edit': maybe_owned(db, PaySchedule, int_or(request.query_params.get('edit')), user),
@@ -238,28 +312,57 @@ def save_schedule(
     ps = get_owned(db, PaySchedule, schedule_id, user) if schedule_id else None
     try:
         anchor = req_date(anchor_date, 'A payday')
+        freq = choice(frequency, PAY_FREQUENCIES, 'Frequency')
+        # Irregular pay always takes its average (D74).
+        whenever = freq == recurrence.IRREGULAR
         values = dict(
             name=text(name, 'Name', 80),
-            frequency=choice(frequency, PAY_FREQUENCIES, 'Frequency'),
+            frequency=freq,
             anchor_date=anchor,
             net_cents=money(net, 'Net pay', allow_negative=False),
             gross_cents=_opt_positive(gross, 'Gross pay'),
             tax_withheld_cents=_opt_positive(tax_withheld, 'Tax withheld'),
             end_date=ends_after(anchor, opt_date(end_date, 'End date')),
-            varies=varies == 'on',
-            match_text=' '.join(match_text.split())[:120],
+            varies=varies == 'on' and not whenever,
+            match_text='' if whenever else ' '.join(match_text.split())[:120],
         )
     except FormError as exc:
         return redirect('/pay', flash=str(exc), request=request)
     acct = maybe_owned(db, Account, account_id, user)
+    flash = 'Pay schedule saved'
     if ps is None:
         ps = PaySchedule(user_id=user.id, **values)
         db.add(ps)
     else:
+        was = pay.is_irregular(ps)
         for k, v in values.items():
             setattr(ps, k, v)
+        if was != whenever:
+            flash += _switched(db, user, ps, whenever)
     ps.account_id = acct.id if acct else None
-    return redirect('/pay', flash='Pay schedule saved', request=request)
+    return redirect('/pay', flash=flash, request=request)
+
+
+def _switched(db: Session, user: User, ps: PaySchedule, whenever: bool) -> str:
+    """A schedule turned irregular takes its payslips as payments, whatever
+    their payday; one turned back from irregular leaves its payments as
+    one-offs, as they have no payday (D74)."""
+    found = db.execute(owned(Payslip, user).where(Payslip.schedule_id == ps.id)).scalars().all()
+    for slip in found:
+        if whenever:
+            slip.payday = None
+        elif slip.payday is None:
+            slip.schedule_id = None
+    n = len(found)
+    if not n:
+        return ''
+    if whenever:
+        return (
+            '. Its payslip is a payment of it now'
+            if n == 1
+            else f'. Its {n} payslips are payments of it now'
+        )
+    return '. Its payment is a one-off now' if n == 1 else f'. Its {n} payments are one-offs now'
 
 
 @router.post('/pay/schedules/{schedule_id}/delete')
@@ -281,11 +384,18 @@ def _link(
     source: str,
     except_slip: int | None,
     taken: set[str] | None = None,
-) -> tuple[PaySchedule, Date] | None:
-    """The payday a payslip records: chosen, matched by date, or none (a one-off)."""
+) -> tuple[PaySchedule, Date | None] | None:
+    """The payday a payslip records: chosen, matched by date, or none (a
+    one-off). Irregular pay has no payday: its payslip is a payment of it,
+    chosen, or matched by its employer when no payday is (D74)."""
     taken = taken or set()
     if value == '':
         return None
+    if value.startswith('pay:'):
+        whenever = _parse_irregular(db, user, value)
+        if whenever is None:
+            raise FormError('That pay is not one of your pay schedules')
+        return whenever, None
     if value == 'auto':
         near = [
             o
@@ -300,7 +410,8 @@ def _link(
         ]
         hit = match_paydays([(when, source)], near)[0]
         if hit is None:
-            return None
+            named = match_irregular(source, pay.irregular(db, user))
+            return (get_owned(db, PaySchedule, named.schedule_id, user), None) if named else None
         if isinstance(hit, Unsure):
             raise FormError(_unsure(hit))
         value = hit.key
@@ -340,13 +451,24 @@ def _fill(
 ) -> None:
     """Validate the form into the payslip. Raises FormError."""
     when = req_date(form.date, 'Date')
-    gross = money(form.gross, 'Gross', allow_negative=False)
-    withheld = money(form.tax_withheld, 'Tax withheld', allow_negative=False)
-    net = money(form.net, 'Net', allow_negative=False)
-    if withheld > gross:
-        raise FormError('Tax withheld is more than gross pay')
     source = form.source.strip()[:120]
     link = _link(db, user, form.payday, when, source, slip.id, taken)
+    # A payment of irregular pay can leave tax and gross blank: nothing
+    # withheld, and gross is net and tax (D74).
+    whenever = link is not None and link[1] is None
+    net = money(form.net, 'Net', allow_negative=False)
+    withheld = (
+        0
+        if whenever and not form.tax_withheld.strip()
+        else money(form.tax_withheld, 'Tax withheld', allow_negative=False)
+    )
+    gross = (
+        net + withheld
+        if whenever and not form.gross.strip()
+        else money(form.gross, 'Gross', allow_negative=False)
+    )
+    if withheld > gross:
+        raise FormError('Tax withheld is more than gross pay')
     slip.date = when
     slip.gross_cents, slip.tax_withheld_cents, slip.net_cents = gross, withheld, net
     slip.source = source
@@ -357,10 +479,12 @@ def _fill(
 
 
 def _saved_flash(slip: Payslip, today: Date, names: dict[int, str], moved: str = '') -> str:
+    name = names.get(slip.schedule_id or 0, 'your pay')
     what = (
-        f'Payslip saved for {names.get(slip.schedule_id, "your pay")} on '
-        f'{slip.payday.strftime("%d %b")}'
+        f'Payslip saved for {name} on {slip.payday.strftime("%d %b")}'
         if slip.schedule_id and slip.payday
+        else f'Payment of {name} saved'
+        if slip.schedule_id
         else 'Payslip saved as a one-off'
     )
     if slip.date > today:
@@ -403,6 +527,38 @@ def no_pay(
     return redirect('/pay', flash=f'{ps.name} on {day.strftime("%d %b")}: no pay', request=request)
 
 
+@router.post('/pay/payments')
+def take_one_offs(
+    request: Request,
+    schedule_id: int = Form(...),
+    slip_id: list[int] = Form([]),
+    user: User = Depends(current_user),
+    db: Session = DB,
+) -> Response:
+    """Put one-off payslips on irregular pay, as payments of it (D74)."""
+    ps = get_owned(db, PaySchedule, schedule_id, user)
+    found = [get_owned(db, Payslip, sid, user) for sid in slip_id]
+    if not pay.is_irregular(ps):
+        return redirect('/pay', flash=f'{ps.name} is not irregular pay', request=request)
+    clock = ctx(request).clock
+    today = clock.today()
+    before = ledger.balances(db, user, today)
+    taken = [s for s in found if s.schedule_id is None]
+    for slip in taken:
+        slip.schedule_id = ps.id
+        slip.payday = None
+        db.flush()
+        pay.follow(db, clock, user, slip)
+    n = len(taken)
+    moved = ledger.now_at(db, user, before, today)
+    flash = (
+        f'{n} one-off{"" if n == 1 else "s"} put on {ps.name}{moved}'
+        if n
+        else 'Tick the one-offs to put on it'
+    )
+    return redirect('/pay', flash=flash, request=request)
+
+
 @dataclass
 class ReadRow:
     index: int
@@ -431,7 +587,7 @@ def _form_from(
     user: User,
     name: str,
     slip: payslip_pdf.ReadPayslip,
-    hit: OpenPayday | Unsure | None,
+    hit: OpenPayday | IrregularPay | Unsure | None,
 ) -> SlipForm:
     when = slip.pay_date or slip.period_end
     notes = slip.notes()
@@ -457,7 +613,7 @@ def _form_from(
         gross=_plain(slip.gross_cents),
         tax_withheld=_plain(slip.tax_withheld_cents),
         net=_plain(slip.net_cents),
-        payday=hit.key if isinstance(hit, OpenPayday) else 'auto' if hit else '',
+        payday=hit.key if isinstance(hit, OpenPayday | IrregularPay) else 'auto' if hit else '',
         file_name=name,
         notes=notes,
         duplicate=duplicate,
@@ -486,15 +642,16 @@ async def read_payslips(
         name, result = read[0]
         if isinstance(result, str):
             return redirect('/pay', flash=result, request=request)
-        # Read for a payday the person chose to put in, else matched by date.
-        context = _parse_payday(db, user, payday) if payday else None
-        hit: OpenPayday | Unsure | None = (
-            OpenPayday(context[0].id, context[1], context[0].name)
-            if context is not None
-            else _match(db, user, [result])[0]
+        # Read for a payday (or irregular pay) the person chose to put in,
+        # else matched by date.
+        whenever = _parse_irregular(db, user, payday) if payday else None
+        context = _parse_payday(db, user, payday) if payday and whenever is None else None
+        chose = (whenever, None) if whenever is not None else context
+        hit: OpenPayday | IrregularPay | Unsure | None = (
+            _hit(chose) if chose is not None else _match(db, user, [result])[0]
         )
         form = _form_from(db, user, name, result, hit)
-        if isinstance(hit, OpenPayday):
+        if isinstance(hit, OpenPayday | IrregularPay):
             linked = maybe_owned(db, PaySchedule, hit.schedule_id, user)
             form.account_id = (linked.account_id or 0) if linked else 0
         return _page(request, user, db, form)
@@ -515,16 +672,23 @@ async def read_payslips(
 
 def _match(
     db: Session, user: User, slips: list[payslip_pdf.ReadPayslip]
-) -> list[OpenPayday | Unsure | None]:
+) -> list[OpenPayday | IrregularPay | Unsure | None]:
+    """Each payslip's payday by date, else the irregular pay its employer
+    names (D74), else none."""
     dated = [(s.pay_date or s.period_end, s.employer) for s in slips]
     known = [d for d, _e in dated if d is not None]
+    whenever = pay.irregular(db, user)
     if not known:
-        return [None] * len(slips)
+        return [match_irregular(e, whenever) for _d, e in dated]
     pad = timedelta(days=MATCH_DAYS)
     open_ = pay.open_paydays(db, user, min(known) - pad, max(known) + pad)
     hits = match_paydays([(d, e) for d, e in dated if d is not None], open_)
     it = iter(hits)
-    return [next(it) if d is not None else None for d, _e in dated]
+    out: list[OpenPayday | IrregularPay | Unsure | None] = []
+    for d, e in dated:
+        hit = next(it) if d is not None else None
+        out.append(hit if hit is not None else match_irregular(e, whenever))
+    return out
 
 
 def _review(
@@ -547,6 +711,7 @@ def _review(
             'rows': rows,
             'errors': errors,
             'options': options,
+            'irregular': pay.irregular(db, user),
             'accounts': ledger.accounts(db, user),
             'saved': saved,
         },
@@ -627,8 +792,9 @@ def save_payslip(
     request: Request,
     slip_id: int | None = None,
     date: str = Form(...),
-    gross: str = Form(...),
-    tax_withheld: str = Form(...),
+    # Blank only for a payment of irregular pay (D74).
+    gross: str = Form(''),
+    tax_withheld: str = Form(''),
     net: str = Form(...),
     source: str = Form(''),
     account_id: int = Form(0),
