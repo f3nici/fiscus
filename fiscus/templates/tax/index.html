@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import estimate %}
+{% from "_macros.html" import estimate, icon %}
 {% block title %}Tax{% endblock %}
 {% block content %}
   <div class="page-head">
@@ -21,10 +21,57 @@
   {% set gap = v.set_aside_gap_cents %}
   <div class="card {{ 'alert-error' if gap < 0 else 'alert-ok' }}">
     <h2>Set aside</h2>
-    <p>To have nothing to pay when you lodge, you need about <strong>{{ v.year_end_set_aside_cents | money }}</strong> saved by 30 June, from the projection below. Saved evenly, that is <strong>{{ v.should_set_aside_cents | money }}</strong> by today. You have <strong>{{ v.set_aside_actual_cents | money }}</strong> set aside for tax{% if v.goal %} ({{ v.goal_cents | money }} of it in your <a href="/goals/{{ v.goal.id }}">{{ v.goal.name }}</a> goal){% endif %}.</p>
+    <p>To have nothing to pay when you lodge, you need about <strong>{{ v.year_end_set_aside_cents | money }}</strong> saved by 30 June, from the projection below{% if v.projected.paid_cents %}, after the {{ v.projected.paid_cents | money }} paid with your BAS{% endif %}. Saved evenly, that is <strong>{{ v.should_set_aside_cents | money }}</strong> by today. You have <strong>{{ v.set_aside_actual_cents | money }}</strong> set aside for tax{% if v.goal %} ({{ v.goal_cents | money }} of it in your <a href="/goals/{{ v.goal.id }}">{{ v.goal.name }}</a> goal){% endif %}.</p>
     <p class="mb-0">{% if gap < 0 %}That is <strong>{{ (-gap) | money }} short</strong> today.{% else %}That covers it, with {{ gap | money }} to spare.{% endif %}
       {% if v.left_to_save_per_week_cents %}Putting away about <strong>{{ v.left_to_save_per_week_cents | money }} a week</strong> gets you there by 30 June.{% endif %}
       {% if not v.set_aside_actual_cents and not v.goal %}Mark a <a href="/goals">goal</a> as your tax money, or an account as your tax set-aside on the <a href="/accounts">Accounts</a> page.{% endif %}</p>
+  </div>
+
+  <div class="card mt" id="bas">
+    <h2>Tax paid with your BAS</h2>
+    <p class="muted text-sm">The PAYG instalment on each BAS: income tax for the year, paid ahead, so it comes off what you owe. It counts in the financial year of the quarter it is for, so April to June, paid in July, counts in the year before. Leave out any GST.</p>
+    <ul class="list">
+      {% for p, source, fy in payments %}
+        <li>
+          <span class="grow">
+            <span class="title">{{ quarter_label(p.quarter) }}</span>
+            <span class="text-xs muted">Paid {{ p.date | d }}, {{ source }}{% if fy != v.year.label %} · counts in {{ fy }}{% endif %}</span>
+          </span>
+          <span class="num">{{ p.amount_cents | money }}</span>
+          <a class="btn btn-sm" href="/tax?payment={{ p.id }}#bas">Edit</a>
+          <form class="inline" method="post" action="/tax/payments/{{ p.id }}/delete" data-confirm="Remove the BAS payment for {{ quarter_label(p.quarter) }}?">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="btn btn-sm btn-icon" type="submit" aria-label="Remove">{{ icon('x') }}</button>
+          </form>
+        </li>
+      {% else %}
+        <li class="muted">No BAS payments yet.</li>
+      {% endfor %}
+    </ul>
+    {% set e = editing %}
+    <h3 class="mt">{{ 'Change the payment for ' ~ quarter_label(e.quarter) if e else 'Add a BAS payment' }}</h3>
+    <form method="post" action="{{ '/tax/payments/' ~ e.id if e else '/tax/payments' }}" id="bas-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="form-grid">
+        <div class="field"><label class="label" for="bas-amount">Amount paid</label><input class="input" id="bas-amount" name="amount" inputmode="decimal" required value="{{ e.amount_cents | money_plain if e else '' }}"></div>
+        <div class="field"><label class="label" for="bas-quarter">For the quarter</label>
+          <select class="input" id="bas-quarter" name="quarter">{% for q in quarters %}<option value="{{ q.isoformat() }}" {{ 'selected' if q == default_quarter else '' }}>{{ quarter_label(q) }}</option>{% endfor %}</select>
+        </div>
+        <div class="field"><label class="label" for="bas-paid-on">Paid on</label><input class="input" type="date" id="bas-paid-on" name="paid_on" required value="{{ e.date.isoformat() if e else today.isoformat() }}"></div>
+        <div class="field"><label class="label" for="bas-from">Paid from</label>
+          <select class="input" id="bas-from" name="paid_from">
+            {% if tax_goal %}<option value="goal" {{ 'selected' if paid_from == 'goal' else '' }}>Out of {{ tax_goal.name }}, your tax goal</option>{% endif %}
+            {% for a in accounts %}<option value="account:{{ a.id }}" {{ 'selected' if paid_from == 'account:' ~ a.id else '' }}>From {{ a.name }}</option>{% endfor %}
+            <option value="" {{ 'selected' if paid_from == '' else '' }}>Not through Fiscus (no balance moves)</option>
+          </select>
+        </div>
+      </div>
+      <p class="muted text-xs">Out of your tax goal, it is taken out of the goal and comes off its account, so what you have set aside and what you owe both drop. From an account, it comes off that account until you next type its balance in.</p>
+      <div class="row">
+        <button class="btn btn-primary" type="submit">{{ 'Save' if e else 'Add payment' }}</button>
+        {% if e %}<a class="btn" href="/tax#bas">Cancel</a>{% endif %}
+      </div>
+    </form>
   </div>
 
   <form class="card mt row" method="post" action="/tax/deductions">
@@ -44,6 +91,7 @@
       <li><span>Medicare levy</span><span class="num">{{ p.total.medicare_cents | money }}</span></li>
       <li><strong>Total tax</strong><strong class="num">{{ p.total.total_cents | money }}</strong></li>
       <li><span>Already withheld</span><span class="num">-{{ p.withheld_cents | money }}</span></li>
+      {% if p.paid_cents %}<li><span>Paid with your BAS</span><span class="num">-{{ p.paid_cents | money }}</span></li>{% endif %}
       <li><strong>{{ 'Estimated owing' if p.owing_cents >= 0 else 'Estimated refund' }}</strong><strong class="num {{ 'neg' if p.owing_cents > 0 else 'pos' }}">{{ (p.owing_cents if p.owing_cents >= 0 else -p.owing_cents) | money }}</strong></li>
     </ul>
   {% endmacro %}

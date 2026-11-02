@@ -31,6 +31,7 @@ from fiscus.models import (
     RecurringTransfer,
     Scenario,
     ScenarioAdjustment,
+    TaxPayment,
     User,
 )
 from tests.conftest import CsrfClient, Env
@@ -52,6 +53,7 @@ OWNED_TABLES = [
     'budget_spends',
     'budget_groups',
     'tax_deductions',
+    'tax_payments',
     'goals',
     'goal_moves',
     'scenarios',
@@ -94,6 +96,7 @@ class Ids:
     goal: int
     goal_move: int
     group: int
+    tax_payment: int
 
 
 @pytest.fixture
@@ -187,6 +190,10 @@ def seeded(env: Env) -> tuple[CsrfClient, CsrfClient, Ids, User, User]:
         )
 
         a.post('/budget/groups', data={'name': 'Bills'})
+        a.post(
+            '/tax/payments',
+            data={'amount': '250', 'quarter': '2026-07-01', 'paid_from': f'account:{acct}'},
+        )
 
         def one(model: Any) -> int:
             found = db.execute(select(model.id).where(model.user_id == alex.id)).scalars().first()
@@ -209,6 +216,7 @@ def seeded(env: Env) -> tuple[CsrfClient, CsrfClient, Ids, User, User]:
             goal=one(Goal),
             goal_move=one(GoalMove),
             group=one(BudgetGroup),
+            tax_payment=one(TaxPayment),
         )
     return a, b, ids, alex, blake
 
@@ -230,6 +238,7 @@ READS = [
     '/pay?payday=pay:{schedule}',
     '/bills/import/{staged}',
     '/goals/{goal}',
+    '/tax?payment={tax_payment}',
 ]
 
 WRITES: list[tuple[str, dict[str, Any]]] = [
@@ -304,6 +313,12 @@ WRITES: list[tuple[str, dict[str, Any]]] = [
     ('/goals/{goal}/delete', {}),
     ('/goals', {'name': 'x', 'account_id': '{account}'}),
     ('/goals', {'name': 'x', 'category_id': '{category}'}),
+    ('/tax/payments/{tax_payment}', {'amount': '1', 'quarter': '2026-07-01'}),
+    ('/tax/payments/{tax_payment}/delete', {}),
+    (
+        '/tax/payments',
+        {'amount': '1', 'quarter': '2026-07-01', 'paid_from': 'account:{account}'},
+    ),
 ]
 
 

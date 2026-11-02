@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from fiscus.clock import Clock, utcnow_naive
 from fiscus.domain import goals as calc
-from fiscus.models import Account, BudgetSpend, Category, Goal, GoalMove, User
+from fiscus.models import Account, BudgetSpend, Category, Goal, GoalMove, TaxPayment, User
 from fiscus.money import fmt
 from fiscus.services import budgeting, ledger
 from fiscus.services.access import maybe_owned, owned
@@ -142,8 +142,11 @@ def put_aside(
 
 
 def remove_move(db: Session, user: User, row: GoalMove) -> None:
-    """Remove a goal move and the budget spend recorded with it."""
+    """Remove a goal move and the budget spend recorded with it, or the tax
+    paid with a BAS it took out (D75)."""
     spend = maybe_owned(db, BudgetSpend, row.spend_id, user)
+    for paid in db.execute(owned(TaxPayment, user).where(TaxPayment.goal_move_id == row.id)):
+        db.delete(paid[0])
     db.delete(row)
     if spend is not None:
         db.delete(spend)
@@ -153,8 +156,13 @@ def remove_move(db: Session, user: User, row: GoalMove) -> None:
 def delete_goal(db: Session, user: User, goal: Goal) -> None:
     """Delete a goal and what was put aside into it from budget lines: both
     halves of each go, as when one entry is removed (D34). What was taken out
-    of it stays off its accounts (D73)."""
+    of it stays off its accounts (D73), and tax paid out of it stays paid
+    (D75)."""
     ledger.keep_taken_out(db, user, goal.id)
+    moves = select(GoalMove.id).where(GoalMove.goal_id == goal.id)
+    for paid in db.execute(owned(TaxPayment, user).where(TaxPayment.goal_move_id.in_(moves))):
+        paid[0].goal_move_id = None
+    db.flush()
     for row in list(goal.moves):
         spend = maybe_owned(db, BudgetSpend, row.spend_id, user)
         if spend is not None:

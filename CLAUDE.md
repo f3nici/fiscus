@@ -22,7 +22,8 @@ works them, from the first repayment the bank set, D70, D71); forecasting with s
 turned off staying off (D46, D47, D50, D51); the budget (each line its
 bills plus an estimate on top, D64; a line's entries in its Edit panel,
 moved or changed there, D72);
-bill import; the tax estimate, each job taxed on its own figures (D38); the
+bill import; the tax estimate, each job taxed on its own figures (D38),
+less tax paid with a BAS, counted in its quarter's year (D75); the
 dashboard; ntfy reminders through ntfy.sh or a server of the person's own
 (D53), payslips to put in among them; backups, downloaded from Settings;
 payslip PDFs, single or in bulk, recording schedule paydays; casual pay;

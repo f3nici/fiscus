@@ -310,8 +310,9 @@ class Transaction(Base, Owned):
     dedup_hash: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime)
     # Written for a bill marked paid by hand, a payslip, spending taken off a
-    # budget or money taken out of a goal, so the account's balance moves with
-    # it (D42, D49, D73). Deleted with it.
+    # budget, money taken out of a goal or tax paid with a BAS from an account,
+    # so the account's balance moves with it (D42, D49, D73, D75). Deleted
+    # with it.
     bill_payment_id: Mapped[int | None] = mapped_column(
         ForeignKey('bill_payments.id', ondelete='CASCADE', use_alter=True),
         nullable=True,
@@ -325,6 +326,10 @@ class Transaction(Base, Owned):
     )
     goal_move_id: Mapped[int | None] = mapped_column(
         ForeignKey('goal_moves.id', ondelete='CASCADE'), nullable=True, unique=True
+    )
+    # Tax paid with a BAS from an account (D75).
+    tax_payment_id: Mapped[int | None] = mapped_column(
+        ForeignKey('tax_payments.id', ondelete='CASCADE'), nullable=True, unique=True
     )
 
 
@@ -588,6 +593,27 @@ class TaxDeduction(Base, Owned):
     # Financial year label, "2026-27".
     year: Mapped[str] = mapped_column(String(7))
     amount_cents: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class TaxPayment(Base, Owned):
+    """Income tax paid ahead with a BAS: a PAYG instalment (D75). It counts
+    against the financial year of the quarter it is for, which can be the
+    year before the day it was paid (April to June is paid in July)."""
+
+    __tablename__ = 'tax_payments'
+    __table_args__ = (Index('ix_tax_payments_user_quarter', 'user_id', 'quarter'),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'))
+    date: Mapped[date] = mapped_column(Date)  # paid on
+    quarter: Mapped[dt.date] = mapped_column(Date)  # the first day of the quarter it is for
+    amount_cents: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+    # Taken out of the tax goal: that goal move, removed with it either way.
+    # Deleting the goal keeps the payment, unlinked.
+    goal_move_id: Mapped[int | None] = mapped_column(
+        ForeignKey('goal_moves.id', ondelete='SET NULL'), nullable=True, unique=True
+    )
 
 
 class Scenario(Base, Owned):
