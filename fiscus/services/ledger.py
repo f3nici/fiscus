@@ -18,6 +18,7 @@ from fiscus.models import (
     BudgetSpend,
     Category,
     GoalMove,
+    LoanRepayment,
     Payslip,
     TaxPayment,
     Transaction,
@@ -70,6 +71,11 @@ def _last_rows(db: Session, user: User, as_of: date) -> dict[int, AccountBalance
     ).scalars():
         out[r.account_id] = r
     return out
+
+
+def typed_days(db: Session, user: User, as_of: date) -> dict[int, date]:
+    """The day of each account's last balance typed in on or before `as_of`."""
+    return {aid: r.date for aid, r in _last_rows(db, user, as_of).items()}
 
 
 def _last_typed(db: Session, user: User, as_of: date) -> dict[int, tuple[date, int]]:
@@ -171,7 +177,7 @@ def paid_into(db: Session, user: User, account_id: int | None) -> int | None:
     return spending_account(db, user, accts)
 
 
-type Link = Payslip | BillPayment | BudgetSpend | GoalMove | TaxPayment
+type Link = Payslip | BillPayment | BudgetSpend | GoalMove | TaxPayment | LoanRepayment
 
 
 def _link(link: Link) -> tuple[InstrumentedAttribute[int | None], str]:
@@ -184,6 +190,8 @@ def _link(link: Link) -> tuple[InstrumentedAttribute[int | None], str]:
         return Transaction.goal_move_id, 'goal-move'
     if isinstance(link, TaxPayment):
         return Transaction.tax_payment_id, 'tax-payment'
+    if isinstance(link, LoanRepayment):
+        return Transaction.loan_repayment_id, 'loan-repayment'
     return Transaction.budget_spend_id, 'budget-spend'
 
 
@@ -207,8 +215,8 @@ def follow(
 ) -> None:
     """Move an account's balance with a payslip, a bill marked paid by hand
     (D42), spending taken off a budget (D49), money taken out of a goal
-    (D73) or tax paid with a BAS from an account (D75): one transaction
-    linked to it,
+    (D73), tax paid with a BAS from an account (D75) or a loan repayment
+    marked paid (D76): one transaction linked to it,
     changed when it is and deleted with it (the foreign key cascades). It goes
     into `paid_into(account_id)`. Nothing is written for a zero amount or a
     person with no accounts."""
@@ -236,7 +244,8 @@ def follow(
 
 def held(db: Session, user: User, link: Link, today: date) -> tuple[str, date] | None:
     """The account and day of the balance typed in that already has the
-    transaction of a payslip, bill, spend or goal move, so it moved nothing;
+    transaction of a payslip, bill, spend, goal move or loan repayment, so it
+    moved nothing;
     None if it counts, is still to come, or wrote nothing."""
     col, _prefix = _link(link)
     txn = linked(db, user, link)
@@ -333,8 +342,9 @@ class _Running:
 
 
 # The dedup key of a spend's transaction kept when its category was deleted
-# (D58), or of money taken out of a goal kept when the goal was (D73). Like
-# their own, it stays out of the spending average.
+# (D58), of money taken out of a goal kept when the goal was (D73), or of a
+# loan repayment kept when the loan was (D76). Like their own, it stays out
+# of the spending average.
 KEPT = 'kept-spend:'
 
 
@@ -364,6 +374,19 @@ def keep_taken_out(db: Session, user: User, goal_id: int) -> None:
         owned(Transaction, user).where(Transaction.goal_move_id.in_(moves))
     ).scalars():
         txn.goal_move_id = None
+        txn.dedup_hash = f'{KEPT}{txn.id}'
+    db.flush()
+
+
+def keep_repaid(db: Session, user: User, loan_id: int) -> None:
+    """Unlink the transactions of the loan's repayments marked paid, so
+    deleting it (and them with it) leaves what was repaid off its accounts
+    (D76), as deleting a goal does (D73)."""
+    marked = select(LoanRepayment.id).where(LoanRepayment.loan_id == loan_id)
+    for txn in db.execute(
+        owned(Transaction, user).where(Transaction.loan_repayment_id.in_(marked))
+    ).scalars():
+        txn.loan_repayment_id = None
         txn.dedup_hash = f'{KEPT}{txn.id}'
     db.flush()
 

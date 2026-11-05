@@ -111,15 +111,48 @@
         {% if loan_lines %}
         <tbody>
           {% for x in loan_lines %}
-            <tr>
+            {% set back_here = back ~ '#loan-' ~ x.loan.id %}
+            <tr id="loan-{{ x.loan.id }}">
               <td>
                 {{ x.loan.name }} repayments <span class="pill pill-upcoming">Home loan</span>
                 <div class="text-xs muted">{{ x.paid_count }} of {{ x.count }} repayment{{ '' if x.count == 1 else 's' }} made this month. Always in the budget while you have the loan.</div>
+                {% for r in x.due %}
+                  <form class="row repay" method="post" action="/loans/{{ x.loan.id }}/repayments/{{ r.day.isoformat() }}/paid">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input type="hidden" name="back" value="{{ back_here }}">
+                    <span class="grow text-xs {{ 'neg' if r.day < today else '' }}">{{ r.cents | money }} due {{ 'today' if r.day == today else r.day | d('dm') }}, not off {{ x.account.name }} yet</span>
+                    <button class="btn btn-sm btn-primary" type="submit" aria-label="Mark the {{ r.cents | money }} repayment of {{ r.day | d }} paid">Paid</button>
+                  </form>
+                {% endfor %}
+                {% if x.due %}<div class="text-xs muted">Once it has come out, Paid takes it off {{ x.account.name }} until you next type that balance in.</div>{% endif %}
               </td>
               <td class="num" data-label="Left"><strong>{{ x.remaining_cents | money }}</strong></td>
               <td class="num" data-label="Spent">{{ x.paid_cents | money }}</td>
               <td class="num" data-label="Budget">{{ x.budget_cents | money }}</td>
-              <td class="cell-full"><a class="text-sm" href="/loans/{{ x.loan.id }}">Loan</a></td>
+              <td class="cell-full cell-actions">
+                <a class="text-sm" href="/loans/{{ x.loan.id }}">Loan</a>
+                {% if x.marked %}
+                  <details>
+                    <summary class="text-sm">Marked paid</summary>
+                    <div class="mt-sm" id="repaid-{{ x.loan.id }}">
+                      <div class="label">Marked paid this month</div>
+                      <ul class="list spent-list">
+                        {% for r in x.marked %}
+                          <li>
+                            <span class="grow"><span class="title">{{ r.day | d('dm') }}</span></span>
+                            <span class="num">{{ r.cents | money }}</span>
+                            <form class="inline" method="post" action="/loans/{{ x.loan.id }}/repayments/{{ r.day.isoformat() }}/unpaid" data-confirm="Mark the repayment of {{ r.day | d }} not paid? Its {{ r.cents | money }} goes back on the account it came off.">
+                              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                              <input type="hidden" name="back" value="{{ back_here }}">
+                              <button class="btn btn-sm" type="submit" aria-label="Mark the {{ r.cents | money }} repayment of {{ r.day | d }} not paid">Not paid</button>
+                            </form>
+                          </li>
+                        {% endfor %}
+                      </ul>
+                    </div>
+                  </details>
+                {% endif %}
+              </td>
             </tr>
           {% endfor %}
         </tbody>

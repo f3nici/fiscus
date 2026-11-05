@@ -295,6 +295,23 @@ matches ticked. A payslip put in with **Match to a payday by date** goes on it
 when no payday matches and the employer names it (or an earlier payment's
 employer does), and a payslip PDF does the same.
 
+## Home loan repayments
+
+With a home loan in Fiscus, its repayments are the first line in the budget.
+Fiscus works out each one from the loan, but cannot see the bank take it, so
+once one falls due the line shows it with **Paid** beside it ("$914.63 due
+today, not off Everyday yet"). Press Paid once it has come out: it comes off
+the account the repayments come from (chosen on the loan), dated the day it
+was due, until you next type that balance in. Until then it is still to spend
+in the budget, and the forecast takes it off tomorrow, so what is free to
+spend is right either way.
+
+Type a balance in a day or more after a repayment and it already has it:
+there is nothing to mark. Marked one by mistake? Open **Marked paid** on the
+line and press **Not paid**; the money goes back on the account. A loan whose
+repayments are "Not tracked" has nothing to mark. The dashboard says when a
+repayment is waiting to be marked.
+
 ## Tax paid with your BAS
 
 If you pay PAYG instalments on a BAS, put each one in on the Tax page under

@@ -67,6 +67,7 @@ def dashboard(request: Request, user: User = Depends(current_user), db: Session 
         loans.summarise(db, user, loan, today) for loan in db.execute(owned(Loan, user)).scalars()
     ]
     put_in = pay.to_put_in(db, user, today)
+    repay = loans.due(db, user, today)
     overdue = bills.overdue(db, user, today)
     has_any = bool(accts) or bool(
         db.execute(select(Loan.id).where(Loan.user_id == user.id)).first()
@@ -77,6 +78,7 @@ def dashboard(request: Request, user: User = Depends(current_user), db: Session 
         {
             'accounts': accts,
             'put_in': put_in,
+            'repay': repay,
             'overdue': overdue,
             'balances': bal,
             'total': sum(bal.get(a.id, 0) for a in accts),

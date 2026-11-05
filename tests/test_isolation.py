@@ -25,6 +25,7 @@ from fiscus.models import (
     GoalMove,
     Loan,
     LoanRate,
+    LoanRepayment,
     Owned,
     PaySchedule,
     Payslip,
@@ -49,6 +50,7 @@ OWNED_TABLES = [
     'payslips',
     'loans',
     'loan_rates',
+    'loan_repayments',
     'budgets',
     'budget_spends',
     'budget_groups',
@@ -135,6 +137,11 @@ def seeded(env: Env) -> tuple[CsrfClient, CsrfClient, Ids, User, User]:
         },
     )
     assert resp.status_code == 303
+    # A repayment marked paid, for B to try to undo.
+    loan_id = resp.headers['location'].rsplit('/', 1)[1]
+    assert a.post(f'/loans/{loan_id}/repayments/2026-09-15/paid').status_code == 303
+    with env.db() as db:
+        assert db.execute(select(LoanRepayment.id)).scalar_one()
     rates = (
         b'name,amount,frequency,category,due_date\n'
         b'Stirling council rates,520,quarterly,Housing,2026-11-15\n'
@@ -286,6 +293,8 @@ WRITES: list[tuple[str, dict[str, Any]]] = [
     ('/loans/{loan}/rates', {'effective_date': '2026-10-01', 'new_rate': '1'}),
     ('/loans/{loan}/rates/{rate}/delete', {}),
     ('/loans/{loan}/offsets', {'account_id': '{account}'}),
+    ('/loans/{loan}/repayments/2026-09-15/paid', {}),
+    ('/loans/{loan}/repayments/2026-09-15/unpaid', {}),
     ('/loans/{loan}/delete', {}),
     ('/bills/import/{staged}/apply', {}),
     ('/scenarios/{scenario}/delete', {}),

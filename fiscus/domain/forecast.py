@@ -30,7 +30,7 @@ class Flow:
     date: date
     account_id: int
     amount_cents: int
-    kind: str  # pay | irregular | bill | transfer | one_off | income
+    kind: str  # pay | irregular | bill | loan | transfer | one_off | income
     label: str
     ref: int | None = None
 
@@ -93,15 +93,17 @@ def still_to_spend(
     days: int,
     start_day: int,
     lines: list[BudgetLine],
-    repayments: list[tuple[date, int]],
+    repayments: list[tuple[date, date, int]],
 ) -> list[int]:
     """What is still budgeted for the rest of each day's budget month, today
     and every day of the forecast (D51): each line's left (nothing for one
-    overspent) and the loan repayments still to come in it. Today's is the
-    budget page's Still to spend. Each later day takes off what the forecast
-    spends from a line that day, its share of the budget and its bills due in
-    that budget month. A new budget month gives every line its budget again,
-    on top of what a saved-up line holds."""
+    overspent) and the loan repayments due in it still to be paid. Today's is
+    the budget page's Still to spend. Each later day takes off what the
+    forecast spends from a line that day, its share of the budget and its
+    bills due in that budget month. A new budget month gives every line its
+    budget again, on top of what a saved-up line holds. A repayment is (the
+    day the forecast pays it, the day it is due, cents): one fallen due and
+    not off its account yet is paid tomorrow (D76)."""
     period = recurrence.month_period(today, start_day)
     held = [Fraction(line.left_cents) for line in lines]
     bills_on: dict[date, list[tuple[int, date, int]]] = {}
@@ -121,7 +123,7 @@ def still_to_spend(
             for i, due, cents in bills_on.get(day, []):
                 if period[0] <= due <= period[1]:
                     held[i] -= cents
-        loans = sum(c for d, c in repayments if day < d <= period[1])
+        loans = sum(c for paid, d, c in repayments if day < paid and period[0] <= d <= period[1])
         out.append(sum(max(0, _cents(h)) for h in held) + loans)
     return out
 

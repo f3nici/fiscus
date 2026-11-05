@@ -33,6 +33,17 @@
     </div>
   {% endif %}
 
+  {% if repay %}
+    {% set last = repay | sort(attribute='day') | last %}
+    <div class="alert alert-info" id="repay-note">
+      {% if repay | length == 1 %}A home loan repayment, {{ last.cents | money }} on {{ last.day | d('dm') }}, is still to mark paid.
+        <a href="/budget#loan-{{ last.loan.id }}">Mark it paid</a> once it has come out.
+      {% else %}{{ repay | length }} home loan repayments are still to mark paid, the latest {{ last.cents | money }} on {{ last.day | d('dm') }}.
+        <a href="/budget#loan-{{ last.loan.id }}">Mark them paid</a> once they have come out.
+      {% endif %}
+    </div>
+  {% endif %}
+
   {% if forecast.low_balance %}
     <div class="alert alert-warn">
       Low balance ahead: <strong>{{ forecast.low_balance.account }}</strong> is projected to reach

@@ -1192,3 +1192,100 @@ def test_transactions_rebuilt_for_tax_payments_keep_their_links(tmp_path: Path) 
     with engine.connect() as c:
         assert c.execute(text('SELECT id FROM transactions ORDER BY id')).scalars().all() == [1, 2]
         assert c.execute(text('SELECT transaction_id FROM bill_payments')).scalar_one() == 1
+
+
+def test_transactions_rebuilt_for_loan_repayments_keep_their_links(tmp_path: Path) -> None:
+    """0037 (D76) adds loan repayments marked paid and links a transaction to
+    one, cascading; the rebuild keeps a bill payment matched to its
+    transaction and a tax payment's, and going back drops the repayments'
+    transactions only."""
+    url = f'sqlite:///{tmp_path / "fiscus.db"}'
+    cfg = alembic_config(url)
+    command.upgrade(cfg, '0036')
+    engine = create_engine(url)
+    with engine.begin() as c:
+        c.execute(
+            text(
+                'INSERT INTO users (id, username, display_name, is_admin, is_active,'
+                " user_handle, data_version, created_at) VALUES (1, 'alex', 'Alex', 1, 1, :h,"
+                " 0, '2026-01-01')"
+            ),
+            {'h': bytes([1]) * 64},
+        )
+        c.execute(
+            text(
+                'INSERT INTO accounts (id, user_id, name, type, opening_balance_cents,'
+                " is_set_aside, archived, created_at) VALUES (1, 1, 'Everyday', 'transaction',"
+                " 0, 0, 0, '2026-01-01')"
+            )
+        )
+        c.execute(
+            text(
+                'INSERT INTO transactions (id, user_id, account_id, date, amount_cents,'
+                " description, dedup_hash, created_at) VALUES (1, 1, 1, '2026-09-15', -12140,"
+                " 'ORIGIN ENERGY', 'h', '2026-09-15')"
+            )
+        )
+        c.execute(
+            text(
+                'INSERT INTO bills (id, user_id, name, amount_cents, frequency, next_due,'
+                " active, varies, created_at) VALUES (1, 1, 'Power', 12140, 'monthly',"
+                " '2026-09-15', 1, 0, '2026-01-01')"
+            )
+        )
+        c.execute(
+            text(
+                'INSERT INTO bill_payments (id, bill_id, user_id, due_date, paid_on,'
+                " amount_cents, transaction_id, created_at) VALUES (1, 1, 1, '2026-09-15',"
+                " '2026-09-15', 12140, 1, '2026-09-15')"
+            )
+        )
+        c.execute(
+            text(
+                'INSERT INTO tax_payments (id, user_id, date, quarter, amount_cents, created_at)'
+                " VALUES (1, 1, '2026-10-20', '2026-07-01', 90000, '2026-10-20')"
+            )
+        )
+        c.execute(
+            text(
+                'INSERT INTO transactions (id, user_id, account_id, date, amount_cents,'
+                ' description, dedup_hash, created_at, tax_payment_id) VALUES'
+                " (2, 1, 1, '2026-10-20', -90000, 'BAS', 'tax-payment:1', '2026-10-20', 1)"
+            )
+        )
+        c.execute(
+            text(
+                'INSERT INTO loans (id, user_id, name, principal_cents, start_date,'
+                ' term_months, repayment_frequency, balance_cents, balance_date,'
+                " repayment_account_id) VALUES (1, 1, 'Home', 62377490, '2026-10-26', 360,"
+                " 'weekly', 62377490, '2026-10-26', 1)"
+            )
+        )
+    command.upgrade(cfg, '0037')
+    fks = {fk['referred_table']: fk for fk in inspect(engine).get_foreign_keys('transactions')}
+    assert fks['loan_repayments']['options'] == {'ondelete': 'CASCADE'}
+    with engine.begin() as c:
+        assert c.execute(text('SELECT transaction_id FROM bill_payments')).scalar_one() == 1
+        assert c.execute(text('SELECT tax_payment_id FROM transactions WHERE id = 2')).scalar() == 1
+        c.execute(
+            text(
+                'INSERT INTO loan_repayments (id, user_id, loan_id, due_date, amount_cents,'
+                " created_at) VALUES (1, 1, 1, '2026-11-05', 91463, '2026-11-05')"
+            )
+        )
+        c.execute(
+            text(
+                'INSERT INTO transactions (id, user_id, account_id, date, amount_cents,'
+                ' description, dedup_hash, created_at, loan_repayment_id) VALUES'
+                " (3, 1, 1, '2026-11-05', -91463, 'Home repayment', 'loan-repayment:1',"
+                " '2026-11-05', 1)"
+            )
+        )
+    command.downgrade(cfg, '0036')
+    assert 'loan_repayments' not in inspect(engine).get_table_names()
+    cols = {col['name'] for col in inspect(engine).get_columns('transactions')}
+    assert 'loan_repayment_id' not in cols
+    with engine.connect() as c:
+        assert c.execute(text('SELECT id FROM transactions ORDER BY id')).scalars().all() == [1, 2]
+        assert c.execute(text('SELECT transaction_id FROM bill_payments')).scalar_one() == 1
+    engine.dispose()

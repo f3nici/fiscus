@@ -30,7 +30,7 @@
   {% if moves %}
     <div class="card mt">
       <h2>Since {{ account.balance_updated_on | d }}</h2>
-      <p class="muted text-sm">Bills marked paid, payslips, spending taken off the budget and money taken out of goals since you typed the balance in have moved it. Typing it in again starts afresh from what the bank shows.</p>
+      <p class="muted text-sm">Bills and loan repayments marked paid, payslips, spending taken off the budget and money taken out of goals since you typed the balance in have moved it. Typing it in again starts afresh from what the bank shows.</p>
       <ul class="list">
         {% for t in moves %}
           <li>

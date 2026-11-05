@@ -14,10 +14,8 @@ from sqlalchemy.orm import Session
 
 from fiscus.clock import Clock
 from fiscus.domain import recurrence
-from fiscus.domain.loan import repayments as loan_repayments
-from fiscus.models import Loan, User
-from fiscus.services import bills, forecasting, ledger, pay
-from fiscus.services.access import owned
+from fiscus.models import User
+from fiscus.services import bills, forecasting, loans, pay
 
 VIEWS = ('month', 'week', 'day', 'agenda')
 
@@ -66,8 +64,9 @@ class Grid:
     prev: date
     next: date
     weeks: list[list[Day]]
-    # Agenda from today: bills still unpaid from before it, which the
-    # balances count as going out tomorrow.
+    # Agenda from today: bills still unpaid from before it, and loan
+    # repayments not off their account yet, which the balances count as going
+    # out tomorrow.
     overdue: list[Event] = field(default_factory=list)
 
 
@@ -101,27 +100,30 @@ def events(db: Session, user: User, start: date, end: date, today: date) -> list
                 item.schedule.id if item.schedule else None,
             )
         )
-    loans = db.execute(owned(Loan, user)).scalars().all()
-    balances = ledger.balances(db, user, today) if loans else {}
-    for loan in loans:
-        spec = forecasting.loan_spec(db, loan)
-        # Today's offset held steady, as on the loan page.
-        offset = sum(max(0, balances.get(a, 0)) for a in spec.offset_account_ids)
-        for day, payment in loan_repayments(spec, start, end, offset):
-            out.append(
-                Event(
-                    day,
-                    'loan',
-                    f'{loan.name} repayment',
-                    -payment,
-                    'paid' if day <= today else 'scheduled',
-                    None,
-                    loan.id,
-                )
+    # Paid once off its account (D76), with today's offset held steady.
+    for r in loans.scheduled(db, user, start, end, today):
+        out.append(
+            Event(
+                r.day,
+                'loan',
+                f'{r.loan.name} repayment',
+                -r.cents,
+                _loan_status(r, today),
+                None,
+                r.loan.id,
             )
+        )
     order = {'pay': 0, 'bill': 1, 'loan': 2}
     out.sort(key=lambda e: (e.date, order.get(e.kind, 3), e.title))
     return out
+
+
+def _loan_status(r: loans.Repayment, today: date) -> str:
+    if r.made:
+        return 'paid'
+    if r.status == 'due':
+        return 'overdue' if r.day < today else 'due_soon'
+    return 'scheduled'
 
 
 def _range(view: str, focus: date) -> tuple[date, date, date, date, date, str]:
@@ -193,5 +195,17 @@ def grid(db: Session, clock: Clock, user: User, view: str, focus: date) -> Grid:
                 )
                 for o in bills.overdue(db, user, today)
                 if o.due < start
+            ] + [
+                Event(
+                    r.day,
+                    'loan',
+                    f'{r.loan.name} repayment, due {r.day.day} {r.day.strftime("%b")}',
+                    -r.cents,
+                    'overdue',
+                    None,
+                    r.loan.id,
+                )
+                for r in loans.due(db, user, today)
+                if r.day < start
             ]
     return Grid(view, focus, title, days, prev, nxt, weeks, overdue)

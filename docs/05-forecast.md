@@ -24,6 +24,13 @@ anchor. A bill's "next due" is its anchor.
   the monthly anniversary of the start date (clamped). A typed-in balance
   leaves out what accrued since the last charge, so the first charge after
   the balance date includes it, worked on that balance and today's offset.
+- **Marked paid** (D76): a repayment fallen due comes off the repayment
+  account only once it is marked paid from the budget, which writes a
+  transaction dated its day, or once a balance typed in after its day has it.
+  Until then the budget counts it still to spend and the forecast takes it
+  off tomorrow. The loan's own balance steps on from its balance date either
+  way. Loans not tracked in an account count each repayment made as its day
+  passes.
 - **Order within a day**: scheduled repayments first, then every other flow,
   then the evening's interest on the balance and the offset accounts' balances
   as they now stand.
@@ -55,7 +62,10 @@ today with real balances. Each later day applies:
    (`domain/pay.spread`, D74), bills, planned transfers (both
    legs), scenario one-offs. Unpaid bills overdue within the last 62 days
    (`bills.OVERDUE_CARRY_DAYS`) are assumed to go out tomorrow; the agenda
-   lists them above today;
+   lists them above today. So are loan repayments in that window that have
+   fallen due and are not off their account yet (`loans.due`, D76): not
+   marked paid, and dated on or after its last balance typed in. The loan
+   already counts them repaid, so only the account moves;
 2. loan repayments, debited from the repayment account;
 3. discretionary spending: a per-day amount with a carried fraction, debited
    from the spending account;
@@ -80,7 +90,7 @@ between accounts, D46) and what is still budgeted for the rest of each day's
 budget month (`domain/forecast.still_to_spend`). Today's is the budget's
 Still to spend; later days spend each line as the forecast does (its share
 beyond its bills each day, its bills on their dates, loan repayments on
-theirs), and a new budget month gives each line its budget again, on top of
+theirs, one fallen due and not marked paid tomorrow), and a new budget month gives each line its budget again, on top of
 what a saved-up line holds. Free to spend and a scenario compared each get their
 own trend (D48). A line turned off or on in the chart's legend is kept for
 the person (`user_settings.chart_lines`, D50); the rest show as drawn.

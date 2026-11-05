@@ -496,6 +496,10 @@ button.btn-link .title { color: var(--text); font-weight: 500; }
 .budget-table .cell-actions > details[open] { display: block; margin-top: 6px; }
 .budget-table .cell-actions details[open] { min-width: 300px; }
 .budget-table td .text-xs { margin-top: 4px; line-height: 1.4; }
+/* A loan repayment fallen due, with Paid beside it (D76). */
+.repay { margin-top: 6px; flex-wrap: nowrap; }
+.budget-table td .repay .text-xs { margin-top: 0; }
+.repay .btn { white-space: nowrap; }
 /* An entry taken off a line opens to be changed (D72); its remove stays beside it. */
 .spent-list li:has(> details[open]) { align-items: flex-start; }
 .spent-list details { flex: 1; min-width: 0; }
