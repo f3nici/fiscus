@@ -25,7 +25,7 @@ from fiscus.domain.forecast import (
     run,
 )
 from fiscus.domain.forecast import still_to_spend as _still_to_spend
-from fiscus.domain.loan import LoanSpec, repayments
+from fiscus.domain.loan import repayments
 from fiscus.models import (
     Account,
     BillPayment,
@@ -38,7 +38,7 @@ from fiscus.models import (
     User,
 )
 from fiscus.money import round_div
-from fiscus.services import bills, budgeting, goals, ledger, pay
+from fiscus.services import bills, budgeting, goals, ledger, loans, pay
 from fiscus.services.access import owned
 from fiscus.services.users import settings_for
 
@@ -58,38 +58,6 @@ class Estimate:
 def horizon_days(today: date, months: int) -> int:
     months = min(24, max(1, months))
     return (recurrence.add_months(today, months) - today).days
-
-
-def loan_spec(db: Session, loan: Loan) -> LoanSpec:
-    offsets = (
-        db.execute(
-            select(Account.id).where(
-                Account.loan_id == loan.id,
-                Account.user_id == loan.user_id,
-                Account.archived.is_(False),
-            )
-        )
-        .scalars()
-        .all()
-    )
-    rates = [(r.effective_date, Decimal(r.rate)) for r in loan.rates]
-    if not rates:
-        rates = [(loan.start_date, Decimal(0))]
-    return LoanSpec(
-        id=loan.id,
-        name=loan.name,
-        principal_cents=loan.principal_cents,
-        start_date=loan.start_date,
-        term_months=loan.term_months,
-        frequency=loan.repayment_frequency,
-        balance_cents=loan.balance_cents,
-        balance_date=loan.balance_date,
-        rates=rates,
-        repayment_override_cents=loan.repayment_override_cents,
-        first_repayment=loan.first_repayment_date,
-        account_id=loan.repayment_account_id,
-        offset_account_ids=tuple(offsets),
-    )
 
 
 def estimates(db: Session, user: User, today: date) -> list[Estimate]:
@@ -113,11 +81,13 @@ def estimates(db: Session, user: User, today: date) -> list[Estimate]:
             or t.payslip_id
             or t.budget_spend_id
             or t.goal_move_id
+            or t.loan_repayment_id
             or t.dedup_hash.startswith(ledger.KEPT)
         ):
-            # Bills and pay are forecast from their schedules, and spending
-            # taken off a budget from the budget, not from their history; a
-            # goal's money spent was saved up for, not a cost every month.
+            # Bills and pay are forecast from their schedules, loan repayments
+            # from the loan, and spending taken off a budget from the budget,
+            # not from their history; a goal's money spent was saved up for,
+            # not a cost every month.
             continue
         cat = cats.get(t.category_id) if t.category_id else None
         if cat is not None and cat.is_transfer:
@@ -196,6 +166,20 @@ def build_input(db: Session, user: User, today: date, months: int) -> ForecastIn
         # Still unpaid from the past: assume it goes out tomorrow.
         when = occ.due if occ.due > today else first
         flows.append(Flow(when, target, -occ.bill.amount_cents, 'bill', occ.bill.name, occ.bill.id))
+    # Loan repayments fallen due and not off their account yet go out
+    # tomorrow too (D76). The loan already counts them paid.
+    for r in loans.due(db, user, today):
+        if r.loan.repayment_account_id in valid:
+            flows.append(
+                Flow(
+                    first,
+                    r.loan.repayment_account_id,
+                    -r.cents,
+                    'loan',
+                    f'{r.loan.name} repayment',
+                    r.loan.id,
+                )
+            )
 
     for tr in db.execute(owned(RecurringTransfer, user)).scalars():
         if tr.from_account_id not in valid or tr.to_account_id not in valid:
@@ -212,7 +196,7 @@ def build_input(db: Session, user: User, today: date, months: int) -> ForecastIn
         if monthly_total:
             daily[spend_acct] = Decimal(monthly_total) * 12 / 365
 
-    loans = [loan_spec(db, loan) for loan in db.execute(owned(Loan, user)).scalars()]
+    specs = [loans.loan_spec(db, loan) for loan in db.execute(owned(Loan, user)).scalars()]
     return ForecastInput(
         today=today,
         days=days,
@@ -221,7 +205,7 @@ def build_input(db: Session, user: User, today: date, months: int) -> ForecastIn
         account_types={a.id: a.type for a in accts},
         flows=flows,
         daily=daily,
-        loans=loans,
+        loans=specs,
         low_balance_cents=prefs.low_balance_cents,
     )
 
@@ -311,14 +295,15 @@ def still_to_spend(db: Session, user: User, today: date, days: int) -> list[int]
         )
         for r in rows
     ]
-    # Loan repayments as the budget has them: today's offset held steady.
+    # Loan repayments as the budget has them: today's offset held steady. One
+    # fallen due and not off its account yet is paid tomorrow (D76).
     last = budgeting.period(db, user, horizon)[1]
     balances = ledger.balances(db, user, today)
-    due: list[tuple[date, int]] = []
+    due = [(first, r.day, r.cents) for r in loans.due(db, user, today)]
     for loan in db.execute(owned(Loan, user)).scalars():
-        spec = loan_spec(db, loan)
+        spec = loans.loan_spec(db, loan)
         offset = sum(max(0, balances.get(a, 0)) for a in spec.offset_account_ids)
-        due.extend(repayments(spec, first, last, offset))
+        due.extend((d, d, c) for d, c in repayments(spec, first, last, offset))
     return _still_to_spend(today, days, budgeting.start_day(db, user), lines, due)
 
 

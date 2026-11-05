@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from fiscus.domain.recurrence import add_months
-from fiscus.forms import FormError, choice, money, opt_date, rate, req_date, text
+from fiscus.forms import FormError, choice, iso_date, money, opt_date, rate, req_date, text
 from fiscus.models import Account, Loan, LoanRate, User
+from fiscus.money import fmt
 from fiscus.services import ledger, loans
 from fiscus.services.access import get_owned, maybe_owned, owned
-from fiscus.web import DB, ctx, current_user, redirect, render
+from fiscus.web import DB, ctx, current_user, local_path, redirect, render
 
 router = APIRouter()
 LOAN_FREQS = ('monthly', 'fortnightly', 'weekly')
@@ -227,6 +228,75 @@ def unlink_offset(
     return redirect(f'/loans/{loan.id}', flash='Offset unlinked', request=request)
 
 
+@router.post('/loans/{loan_id}/repayments/{day}/paid')
+def repayment_paid(
+    loan_id: int,
+    day: str,
+    request: Request,
+    back: str = Form('/budget'),
+    user: User = Depends(current_user),
+    db: Session = DB,
+) -> Response:
+    """The repayment of `day` came out: it comes off the repayment account,
+    dated its day (D76)."""
+    loan = get_owned(db, Loan, loan_id, user)
+    when = iso_date(day)
+    if when is None:
+        raise HTTPException(status_code=404)
+    c = ctx(request)
+    today = c.clock.today()
+    target = local_path(back, '/budget')
+    acct = loans.tracked_in(db, user, loan)
+    if acct is None:
+        return redirect(
+            target,
+            flash=f'Choose the account {loan.name} repayments come from on the loan first',
+            request=request,
+        )
+    if when > today:
+        return redirect(target, flash='That repayment has not fallen due yet', request=request)
+    before = ledger.balances(db, user, today)
+    row = loans.mark_paid(db, c.clock, user, loan, when)
+    if row is None:
+        raise HTTPException(status_code=404)
+    flash = (
+        f'{loan.name} repayment of {fmt(row.amount_cents)} on {when.day} {when.strftime("%b")}'
+        f' marked paid{ledger.now_at(db, user, before, today)}'
+    )
+    has = ledger.held(db, user, row, today)
+    if has is not None:
+        flash += f'. The balance typed in for {has[0]} on {has[1].strftime("%d %b")} already has it'
+    return redirect(target, flash=flash, request=request)
+
+
+@router.post('/loans/{loan_id}/repayments/{day}/unpaid')
+def repayment_unpaid(
+    loan_id: int,
+    day: str,
+    request: Request,
+    back: str = Form('/budget'),
+    user: User = Depends(current_user),
+    db: Session = DB,
+) -> Response:
+    """Undo a repayment marked paid by mistake: its transaction goes too."""
+    loan = get_owned(db, Loan, loan_id, user)
+    when = iso_date(day)
+    if when is None:
+        raise HTTPException(status_code=404)
+    today = ctx(request).clock.today()
+    before = ledger.balances(db, user, today)
+    if not loans.unmark(db, user, loan, when):
+        raise HTTPException(status_code=404)
+    return redirect(
+        local_path(back, '/budget'),
+        flash=(
+            f'{loan.name} repayment on {when.day} {when.strftime("%b")} marked not paid'
+            f'{ledger.now_at(db, user, before, today)}'
+        ),
+        request=request,
+    )
+
+
 @router.post('/loans/{loan_id}/delete')
 def delete_loan(
     loan_id: int,
@@ -234,5 +304,8 @@ def delete_loan(
     user: User = Depends(current_user),
     db: Session = DB,
 ) -> Response:
-    db.delete(get_owned(db, Loan, loan_id, user))
+    loan = get_owned(db, Loan, loan_id, user)
+    # What its repayments took off accounts stays off (D76).
+    ledger.keep_repaid(db, user, loan.id)
+    db.delete(loan)
     return redirect('/loans', flash='Loan deleted', request=request)

@@ -310,9 +310,9 @@ class Transaction(Base, Owned):
     dedup_hash: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime)
     # Written for a bill marked paid by hand, a payslip, spending taken off a
-    # budget, money taken out of a goal or tax paid with a BAS from an account,
-    # so the account's balance moves with it (D42, D49, D73, D75). Deleted
-    # with it.
+    # budget, money taken out of a goal, tax paid with a BAS from an account or
+    # a loan repayment marked paid, so the account's balance moves with it
+    # (D42, D49, D73, D75, D76). Deleted with it.
     bill_payment_id: Mapped[int | None] = mapped_column(
         ForeignKey('bill_payments.id', ondelete='CASCADE', use_alter=True),
         nullable=True,
@@ -330,6 +330,10 @@ class Transaction(Base, Owned):
     # Tax paid with a BAS from an account (D75).
     tax_payment_id: Mapped[int | None] = mapped_column(
         ForeignKey('tax_payments.id', ondelete='CASCADE'), nullable=True, unique=True
+    )
+    # A home loan repayment marked paid (D76).
+    loan_repayment_id: Mapped[int | None] = mapped_column(
+        ForeignKey('loan_repayments.id', ondelete='CASCADE'), nullable=True, unique=True
     )
 
 
@@ -472,6 +476,21 @@ class LoanRate(Base, Owned):
     rate: Mapped[str] = mapped_column(String(12))
 
     loan: Mapped[Loan] = relationship(back_populates='rates')
+
+
+class LoanRepayment(Base, Owned):
+    """A scheduled repayment marked paid: it came off the repayment account
+    (D76). Keeps what was paid, whatever the loan asks later."""
+
+    __tablename__ = 'loan_repayments'
+    __table_args__ = (UniqueConstraint('loan_id', 'due_date'),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'), index=True)
+    loan_id: Mapped[int] = mapped_column(ForeignKey('loans.id', ondelete='CASCADE'), index=True)
+    due_date: Mapped[date] = mapped_column(Date)
+    amount_cents: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime)
 
 
 # ------------------------------------------------------------------ planning

@@ -307,7 +307,7 @@ def test_still_to_spend_follows_the_forecast_through_budget_months() -> None:
         saved=True,
     )
     over = BudgetLine(left_cents=-20_00, monthly_cents=100_00, per_day=Fraction(0))
-    loan = [(date(2026, 10, 15), 2_000_00), (date(2026, 11, 15), 2_000_00)]
+    loan = [(d, d, 2_000_00) for d in (date(2026, 10, 15), date(2026, 11, 15))]
     r = still_to_spend(oct_1, 60, 1, [groceries, rego, over], loan)
     day = {oct_1 + timedelta(days=i): v for i, v in enumerate(r)}
     # Today: what each line has left (nothing for one overspent) and the loan.

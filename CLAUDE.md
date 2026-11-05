@@ -8,16 +8,18 @@ installable as a PWA on phones. No external calls, no telemetry, no CDN.
 bootstrap link and CLI recovery links, other sessions ended by revoking a
 passkey or using a recovery link (D56);
 one person, with no users page, nothing shared and no password (D52);
-accounts with balances typed in and kept by day (D39), moved by bills marked
-paid, payslips, spending taken off the budget and money taken out of goals
-until the next is typed in (D42, D45, D49, D73); categories; bills with states, each paid from an account and
+accounts with balances typed in and kept by day (D39), moved by bills and
+loan repayments marked paid, payslips, spending taken off the budget and
+money taken out of goals until the next is typed in (D42, D45, D49, D73,
+D76); categories; bills with states, each paid from an account and
 filed under a category, one that varies expecting the average of its last
 three paid (D66); pay schedules and payslips (listed ten a page), pay
 from a business of one's own as irregular pay expecting a typical month
 (D74); the
 calendar (the month by default, D54); home loan and offset (one loan opens
 straight into it; weekly repayments over a year of 365.25 days, as ANZ
-works them, from the first repayment the bank set, D70, D71); forecasting with scenarios, several ticked together
+works them, from the first repayment the bank set, D70, D71; each marked
+paid from the budget, which takes it off its account, D76); forecasting with scenarios, several ticked together
 (D69), its trend and what is free to spend as the budget has it, lines
 turned off staying off (D46, D47, D50, D51); the budget (each line its
 bills plus an estimate on top, D64; a line's entries in its Edit panel,
@@ -37,8 +39,9 @@ hand (D35); bottom tabs the person chooses, every screen in a menu that
 slides in, and pages sliding between screens (D67); an ink ledger on a blue-grey ground,
 light or dark as the device is set (D68). Since D25 the budget is kept by hand (spending taken off,
 balances typed in); the transactions, statement import, rules and matching
-screens went in D37 and Square sync in D55. Bills marked paid, payslips,
-budget spends and money taken out of goals still write transactions; rows
+screens went in D37 and Square sync in D55. Bills and loan repayments
+marked paid, payslips, budget spends and money taken out of goals still
+write transactions; rows
 those features left stay. Next
 steps are in `docs/10-decisions.md` §3.
 

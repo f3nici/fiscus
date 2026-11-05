@@ -33,6 +33,7 @@ from fiscus.services import (
     calendar_events,
     forecasting,
     ledger,
+    loans,
     reminders,
     taxes,
 )
@@ -244,7 +245,7 @@ def test_repayments_follow_the_first_repayment_date(env: Env) -> None:
     assert repaid() == [date(2026, 10, d) for d in (8, 15, 22, 29)]
     # Interest is still charged on settlement's day of the month.
     with env.db() as db:
-        spec = forecasting.loan_spec(db, db.get(Loan, loan))  # type: ignore[arg-type]
+        spec = loans.loan_spec(db, db.get(Loan, loan))  # type: ignore[arg-type]
     assert L.is_charge_day(spec, date(2026, 10, 28))
     # Blank again: a week after the start, on Mondays.
     a.post(f'/loans/{loan}', data={**form, 'first_repayment_date': ''})
@@ -644,7 +645,7 @@ def test_a_budget_line_can_be_removed(env: Env) -> None:
 
 def test_home_loan_repayments_stay_in_the_budget(env: Env) -> None:
     a, alex, acct = setup_household(env)
-    a.post(
+    resp = a.post(
         '/loans',
         data={
             'name': 'Mortgage',
@@ -657,6 +658,7 @@ def test_home_loan_repayments_stay_in_the_budget(env: Env) -> None:
             'repayment_account_id': str(acct),
         },
     )
+    loan = int(resp.headers['location'].rsplit('/', 1)[1])
     groceries = _groceries(env, alex)
     a.post('/budget', data={'category_id': str(groceries), 'amount': '400'})
     a.post('/budget', data={'new_category': 'Mortgage repayment', 'amount': '3600'})
@@ -669,8 +671,13 @@ def test_home_loan_repayments_stay_in_the_budget(env: Env) -> None:
     # Budgeted: groceries, the stray mortgage line and the loan.
     assert '$7,597.30' in page
     assert 'Remove this line so they are not counted twice' in page
-    # Once the repayment day passes it is spent.
+    # Once the repayment day passes it is due, and spent once marked paid,
+    # which takes it off the account it comes from (D76).
     env.clock.set(env.clock.now() + timedelta(days=10))
+    page = a.get('/budget?month=2026-10').text
+    assert '0 of 1 repayment made' in page
+    assert 'due 10 Oct, not off Everyday yet' in page
+    a.post(f'/loans/{loan}/repayments/2026-10-10/paid')
     page = a.get('/budget?month=2026-10').text
     assert '1 of 1 repayment made' in page
     # Clearing the budget on import leaves the loan in it.
