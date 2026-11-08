@@ -183,8 +183,8 @@ def test_one_offs_already_in_can_be_put_on_it(env: Env) -> None:
     with env.db() as db:
         user = me(db, alex)
         # It counts in its average now: 900 over the 93 days since 1 July.
-        [(_ps, typical)] = pay.schedules(db, user, TODAY)
-        assert typical == round_div(900_00 * 365, 93 * 12)
+        [e] = pay.schedules(db, user, TODAY)
+        assert e.net_cents == round_div(900_00 * 365, 93 * 12)
         # Its account was the spending account, and still is.
         assert ledger.balances(db, user, TODAY)[acct] == 1000_00 + 3 * 900_00
     # Only one-offs can be put on it, and only on irregular pay.
@@ -269,8 +269,8 @@ def test_budget_forecast_tax_and_calendar_expect_a_typical_month(env: Env) -> No
     typical = round_div(10700_00 * 365, 93 * 12)
     with env.db() as db:
         user = me(db, alex)
-        [(_ps, expected)] = pay.schedules(db, user, TODAY)
-        assert expected == typical
+        [e] = pay.schedules(db, user, TODAY)
+        assert e.net_cents == typical
 
         def month(m: int, y: int = 2026) -> int:
             start, end = budgeting.period_starting_in(db, user, date(y, m, 1))

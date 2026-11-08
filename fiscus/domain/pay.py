@@ -12,11 +12,15 @@ payday's expected pay everywhere (D27).
 Irregular pay (D74), from a business say, has no paydays: each payment is a
 payslip on it, whatever the day, and it is expected to bring in a typical
 month, the average of the last year.
+
+Either can instead expect what it paid the same month last year (D77), so a
+quiet January or a busy December shows as one.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+import calendar
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 from fractions import Fraction
@@ -81,17 +85,108 @@ def spread(monthly_cents: int, first: date, last: date) -> list[tuple[date, int]
     365-day year a day, fractions of a cent carried so the days add up. Days
     that come to nothing are left out."""
     per_day = Fraction(monthly_cents * 12, 365)
-    carry = Fraction(0)
-    out: list[tuple[date, int]] = []
+    return _carried((day, per_day) for day in _days(first, last))
+
+
+def spread_by_month(
+    months: Mapping[int, int], monthly_cents: int, first: date, last: date
+) -> list[tuple[date, int]]:
+    """Irregular pay as it went the same month last year (D77), over each day
+    from `first` to `last`: each month's figure in `months` (by month number),
+    else `monthly_cents`, shared over that month's days, so a whole month
+    comes to it. Fractions of a cent carried; days that come to nothing are
+    left out."""
+    return _carried(
+        (
+            day,
+            Fraction(
+                months.get(day.month, monthly_cents),
+                calendar.monthrange(day.year, day.month)[1],
+            ),
+        )
+        for day in _days(first, last)
+    )
+
+
+def _days(first: date, last: date) -> Iterator[date]:
     day = first
     while day <= last:
-        carry += per_day
+        yield day
+        day += timedelta(days=1)
+
+
+def _carried(rates: Iterable[tuple[date, Fraction]]) -> list[tuple[date, int]]:
+    carry = Fraction(0)
+    out: list[tuple[date, int]] = []
+    for day, rate in rates:
+        carry += rate
         whole = round_div(carry.numerator, carry.denominator)
         if whole:
             carry -= whole
             out.append((day, whole))
-        day += timedelta(days=1)
     return out
+
+
+# ------------------------------------------------------ the same month last year
+
+
+def last_twelve_months(today: date) -> list[tuple[date, date]]:
+    """The twelve whole months before today's, oldest first, as their first
+    and last days: each month's last time round that is over (D77)."""
+    this = today.replace(day=1)
+    out: list[tuple[date, date]] = []
+    for back in range(12, 0, -1):
+        first = recurrence.add_months(this, -back)
+        out.append((first, recurrence.add_months(first, 1) - timedelta(days=1)))
+    return out
+
+
+def same_month_per_payday(
+    anchor: date,
+    frequency: str,
+    paid: Iterable[tuple[date, int]],
+    today: date,
+    until: date | None = None,
+) -> dict[int, int]:
+    """Pay that varies, as it went the same month last year (D77): by month
+    number, what was paid for each of the last twelve whole months' paydays
+    (`paid` is each payslip's payday and net) over those paydays, so a month
+    with five weekly paydays expects as much a payday as one with four.
+
+    As in the average (D23), a payday with nothing put in counts as nothing
+    paid, and the months start at the first payday that paid something: a
+    month before it, or with no paydays, is left out and expects the
+    average. Nothing paid in the twelve months leaves them all out."""
+    months = last_twelve_months(today)
+    seen = [(d, c) for d, c in paid if months[0][0] <= d <= months[-1][1]]
+    started = [d for d, c in seen if c > 0]
+    if not started:
+        return {}
+    first = min(started)
+    out: dict[int, int] = {}
+    for lo, hi in months:
+        paydays = sum(
+            1 for _d in recurrence.occurrences(anchor, frequency, max(lo, first), hi, until=until)
+        )
+        if paydays:
+            total = sum(c for d, c in seen if max(lo, first) <= d <= hi)
+            out[lo.month] = round_div(total, paydays)
+    return out
+
+
+def same_month_totals(start: date, paid: Iterable[tuple[date, int]], today: date) -> dict[int, int]:
+    """Irregular pay, as it went the same month last year (D77): by month
+    number, what came in each of the last twelve whole months that it ran
+    all of, from its start or its first payment if that came first. A month
+    it started part way through, or before, is left out and expects a
+    typical month, as are all of them until it has paid something in
+    them."""
+    months = last_twelve_months(today)
+    seen = [(d, c) for d, c in paid if months[0][0] <= d <= months[-1][1]]
+    if not any(c > 0 for _d, c in seen):
+        return {}
+    began = min([start, *(d for d, _c in seen)])
+    return {lo.month: sum(c for d, c in seen if lo <= d <= hi) for lo, hi in months if began <= lo}
 
 
 # ------------------------------------------------------------------ payslips

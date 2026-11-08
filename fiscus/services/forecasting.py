@@ -14,7 +14,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from fiscus.clock import Clock, utcnow_naive
-from fiscus.domain import pay as pay_domain
 from fiscus.domain import recurrence
 from fiscus.domain.forecast import (
     BudgetLine,
@@ -146,13 +145,14 @@ def build_input(db: Session, user: User, today: date, months: int) -> ForecastIn
             ref = item.schedule.id if item.schedule else None
             flows.append(Flow(item.when, target, item.net_cents, 'pay', item.label, ref))
     # Irregular pay has no paydays: a typical month spread over each day it
-    # runs (D74).
-    for ps, typical in expected:
+    # runs (D74), or each month as it went last year (D77).
+    for e in expected:
+        ps = e.schedule
         target = acct_or_default(ps.account_id)
-        if not pay.is_irregular(ps) or typical <= 0 or target is None:
+        if not pay.is_irregular(ps) or target is None:
             continue
         last = end if ps.end_date is None else min(end, ps.end_date)
-        for day, cents in pay_domain.spread(typical, max(first, ps.anchor_date), last):
+        for day, cents in e.spread(max(first, ps.anchor_date), last):
             flows.append(Flow(day, target, cents, 'irregular', ps.name, ps.id))
 
     for occ in bills.occurrences(

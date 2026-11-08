@@ -17,7 +17,7 @@
           <li>
             <span class="grow">
               <span class="title">{{ o.name }}</span>
-              <span class="text-xs muted">{{ o.payday.strftime('%a') }} {{ o.payday | d }} · expected {{ expected.get(o.schedule_id, 0) | money }}</span>
+              <span class="text-xs muted">{{ o.payday.strftime('%a') }} {{ o.payday | d }} · expected {{ owed[o.key] | money }}</span>
             </span>
             <a class="btn btn-sm btn-primary" href="/pay?payday={{ o.key }}#slip-form">Add payslip</a>
             <form class="inline" method="post" action="/pay/schedules/{{ o.schedule_id }}/no-pay">
@@ -39,13 +39,13 @@
             {% if s.frequency == 'irregular' %}
               <span class="grow">
                 <span class="title">{{ s.name }}</span>
-                <span class="text-xs muted">Irregular · a typical month, {{ 'the last year\'s average' if paid_any[s.id] else 'as you put it' }}{% if s.end_date %} · ends {{ s.end_date | d }}{% endif %}</span>
+                <span class="text-xs muted">Irregular · {% if last_year.get(s.id) %}this month, as {{ today.strftime('%B') }} last year{% else %}a typical month, {{ 'the last year\'s average' if paid_any[s.id] else 'as you put it' }}{% endif %}{% if s.end_date %} · ends {{ s.end_date | d }}{% endif %}</span>
               </span>
               <span class="num pos">~{{ expected[s.id] | money }}</span>
             {% else %}
               <span class="grow">
                 <span class="title">{{ s.name }}</span>
-                <span class="text-xs muted">{{ s.frequency | capitalize }} · next {{ next[s.id] | d if next[s.id] else 'none' }}{% if s.end_date %} · ends {{ s.end_date | d }}{% endif %}{% if s.varies %} · varies, {{ 'recent average' if expected[s.id] != s.net_cents else 'your typical pay' }}{% endif %}</span>
+                <span class="text-xs muted">{{ s.frequency | capitalize }} · next {{ next[s.id] | d if next[s.id] else 'none' }}{% if s.end_date %} · ends {{ s.end_date | d }}{% endif %}{% if s.varies %} · varies, {% if last_year.get(s.id) %}as {{ (next[s.id] or today).strftime('%B') }} last year{% else %}{{ 'recent average' if average[s.id] != s.net_cents else 'your typical pay' }}{% endif %}{% endif %}</span>
               </span>
               <span class="num pos">{% if s.varies %}~{% endif %}{{ expected[s.id] | money }}</span>
             {% endif %}
@@ -96,8 +96,10 @@
           </div>
           <div class="field"><label class="label" for="ps-end">Ends (optional)</label><input class="input" type="date" id="ps-end" name="end_date" value="{{ e.end_date.isoformat() if e and e.end_date else '' }}"></div>
           <label class="check full"><input type="checkbox" name="varies" {{ 'checked' if e and e.varies else '' }}> The amount varies (casual or shift work)</label>
+          <label class="check full"><input type="checkbox" name="seasonal" {{ 'checked' if e and e.seasonal else '' }}> Expect what it paid the same month last year, not the average</label>
           <p class="muted text-xs full">Gross and tax are for the tax estimate. Left blank, it uses this job's payslips once there are some, and until then counts the pay as having no tax taken out, as for contract work.</p>
           <p class="muted text-xs full">Irregular is for pay with no set days, such as pay from your own business. Put in each payment as it comes. The budget, forecast and tax estimate expect a typical month: the average of the last year, or what you put here until it has paid anything.</p>
+          <p class="muted text-xs full">Pay that varies, or irregular pay, can expect what it paid the same month last year instead, from its payslips, so a quiet January or a busy December shows as one. A payday with no payslip counts as nothing paid, and a month from before its first payslip expects the average.</p>
         </div>
         <div class="row">
           <button class="btn btn-primary" type="submit">Save</button>

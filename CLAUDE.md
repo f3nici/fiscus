@@ -15,7 +15,8 @@ D76); categories; bills with states, each paid from an account and
 filed under a category, one that varies expecting the average of its last
 three paid (D66); pay schedules and payslips (listed ten a page), pay
 from a business of one's own as irregular pay expecting a typical month
-(D74); the
+(D74), either it or pay that varies expecting the same month last year if
+chosen (D77); the
 calendar (the month by default, D54); home loan and offset (one loan opens
 straight into it; weekly repayments over a year of 365.25 days, as ANZ
 works them, from the first repayment the bank set, D70, D71; each marked

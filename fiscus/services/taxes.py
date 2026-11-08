@@ -10,7 +10,6 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from fiscus.clock import Clock, utcnow_naive
-from fiscus.domain import pay as pay_domain
 from fiscus.domain import tax
 from fiscus.domain.pay import OpenPayday
 from fiscus.models import Account, Goal, GoalMove, Payslip, TaxDeduction, TaxPayment, User
@@ -111,15 +110,17 @@ def view(db: Session, user: User, today: date, tax_dir: Path | None = None) -> T
         if not known and ps.name not in untaxed:
             untaxed.append(ps.name)
     # Irregular pay has no paydays: a typical month for each month left, from
-    # tomorrow, as the forecast has it; today's payments are in the year to
-    # date (D74). Its own gross and tax are for a typical month.
-    for ps, typical in expected:
-        if not pay.is_irregular(ps) or typical <= 0:
+    # tomorrow, as the forecast has it (or each month as it went last year,
+    # D77); today's payments are in the year to date (D74). Its own gross and
+    # tax are for a typical month.
+    for e in expected:
+        ps = e.schedule
+        if not pay.is_irregular(ps):
             continue
         last = fy_end if ps.end_date is None else min(fy_end, ps.end_date)
         first = max(today + timedelta(days=1), ps.anchor_date)
-        net = sum(c for _d, c in pay_domain.spread(typical, first, last))
-        if not net:
+        net = sum(c for _d, c in e.spread(first, last))
+        if net <= 0:
             continue
         typed = ps.net_cents > 0
         figures = tax.PayFigures(
