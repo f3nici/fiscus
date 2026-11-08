@@ -268,8 +268,8 @@ def test_a_varying_schedule_averages_its_payslips(env: Env) -> None:
     with env.db() as db:
         user = db.get(User, alex.id)
         assert user is not None
-        [(_ps, net)] = pay.schedules(db, user, TODAY)
-    assert net == 375_00
+        [e] = pay.schedules(db, user, TODAY)
+    assert e.net_cents == 375_00
     assert '~$375.00' in a.get('/pay').text
 
 

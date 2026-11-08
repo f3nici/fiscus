@@ -5,12 +5,16 @@ when one records it, the payments of irregular pay (D74), and one-off
 payslips. The forecast, calendar, budget and tax all read it, so they agree
 on what was and will be paid. Irregular pay still to come has no dates, so
 each of them takes its typical month (`typical_month`) as it needs it.
+
+Pay that varies, or irregular pay, can expect what it paid the same month
+last year instead of its average (D77): `Expected.on` gives a payday, or a
+month, its figure.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 
 from sqlalchemy import and_, func, or_
@@ -141,7 +145,8 @@ def irregular(db: Session, user: User) -> list[IrregularPay]:
 
 
 def net_per_pay(db: Session, user: User, ps: PaySchedule, today: date) -> int:
-    """What a payday is expected to pay; for irregular pay, a typical month."""
+    """What a payday is expected to pay; for irregular pay, a typical month.
+    The average, whether or not it expects the same month last year."""
     if is_irregular(ps):
         return typical_month(db, user, ps, today)
     if not ps.varies:
@@ -151,12 +156,72 @@ def net_per_pay(db: Session, user: User, ps: PaySchedule, today: date) -> int:
     )
 
 
-def schedules(db: Session, user: User, today: date) -> list[tuple[PaySchedule, int]]:
-    """Every pay schedule with the net it is expected to pay."""
+def seasonal(ps: PaySchedule) -> bool:
+    """Whether it expects the same month last year (D77): pay that varies,
+    or irregular pay, with that chosen."""
+    return ps.seasonal and (ps.varies or is_irregular(ps))
+
+
+def same_month(db: Session, user: User, ps: PaySchedule, today: date) -> dict[int, int]:
+    """What it paid the same month last year, by month number: a payday's
+    share, or irregular pay's month. Empty unless it expects that (D77)."""
+    if not seasonal(ps):
+        return {}
+    months = pay_domain.last_twelve_months(today)
+    first, last = months[0][0], months[-1][1]
+    if is_irregular(ps):
+        paid = [(s.date, s.net_cents) for s in payments(db, user, ps, first, last)]
+        return pay_domain.same_month_totals(ps.anchor_date, paid, today)
+    slips = db.execute(
+        owned(Payslip, user).where(
+            Payslip.schedule_id == ps.id, Payslip.payday >= first, Payslip.payday <= last
+        )
+    ).scalars()
+    return pay_domain.same_month_per_payday(
+        ps.anchor_date,
+        ps.frequency,
+        [(s.payday, s.net_cents) for s in slips if s.payday is not None],
+        today,
+        ps.end_date,
+    )
+
+
+@dataclass(frozen=True)
+class Expected:
+    """What a pay schedule is expected to pay: each payday, or a month of
+    irregular pay."""
+
+    schedule: PaySchedule
+    net_cents: int  # the average (or as typed): per payday, or a typical month
+    # By month number, the same month last year, when it expects that (D77).
+    months: Mapping[int, int] = field(default_factory=dict)
+
+    def on(self, day: date) -> int:
+        """A payday on `day`, or irregular pay's month that `day` is in."""
+        return self.months.get(day.month, self.net_cents)
+
+    def as_last_year(self, day: date) -> bool:
+        """Whether `day`'s figure is the same month last year's."""
+        return day.month in self.months
+
+    def spread(self, first: date, last: date) -> list[tuple[date, int]]:
+        """Irregular pay over each day from `first` to `last`: a typical month,
+        or each month as it went last year, a whole month coming to it."""
+        if self.months:
+            return pay_domain.spread_by_month(self.months, self.net_cents, first, last)
+        return pay_domain.spread(self.net_cents, first, last)
+
+
+def expected(db: Session, user: User, ps: PaySchedule, today: date) -> Expected:
+    return Expected(ps, net_per_pay(db, user, ps, today), same_month(db, user, ps, today))
+
+
+def schedules(db: Session, user: User, today: date) -> list[Expected]:
+    """Every pay schedule with what it is expected to pay."""
     found: Sequence[PaySchedule] = (
         db.execute(owned(PaySchedule, user).order_by(PaySchedule.name)).scalars().all()
     )
-    return [(ps, net_per_pay(db, user, ps, today)) for ps in found]
+    return [expected(db, user, ps, today) for ps in found]
 
 
 @dataclass(frozen=True)
@@ -164,7 +229,8 @@ class PayItem:
     when: date  # when it is paid: the payslip's date, else the payday
     net_cents: int
     schedule: PaySchedule | None
-    expected_cents: int  # the schedule's expected net, or the payslip's for a one-off
+    # The payday's expected net (D77), or the payslip's for a one-off.
+    expected_cents: int
     slip: Payslip | None = None
     payday: date | None = None
 
@@ -187,12 +253,12 @@ def items(
     start: date,
     end: date,
     today: date,
-    expected: list[tuple[PaySchedule, int]] | None = None,
+    expected: list[Expected] | None = None,
 ) -> list[PayItem]:
     """Pay in [start, end] by the date it is paid, in date order: paydays
     (their payslip's figures once in), irregular pay's payments and one-offs."""
     expected = schedules(db, user, today) if expected is None else expected
-    paid_whenever = {ps.id: ps for ps, _net in expected if is_irregular(ps)}
+    paid_whenever = {e.schedule.id: e.schedule for e in expected if is_irregular(e.schedule)}
     pad = timedelta(days=LINK_DAYS)
     slips = db.execute(
         owned(Payslip, user).where(
@@ -210,13 +276,15 @@ def items(
         else:
             loose.append(s)
     out: list[PayItem] = []
-    for ps, net in expected:
+    for e in expected:
+        ps = e.schedule
         for d in recurrence.occurrences(
             ps.anchor_date, ps.frequency, start - pad, end + pad, until=ps.end_date
         ):
             slip = linked.pop((ps.id, d), None)
             when = slip.date if slip else d
             if start <= when <= end:
+                net = e.on(d)
                 out.append(PayItem(when, slip.net_cents if slip else net, ps, net, slip, d))
     # Irregular pay's payments, one-offs, and payslips whose payday the
     # schedule no longer has.

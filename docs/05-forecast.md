@@ -60,7 +60,11 @@ today with real balances. Each later day applies:
    payslip recording it on that payslip's date, irregular pay's payments and
    one-off payslips), irregular pay's typical month a day at a time
    (`domain/pay.spread`, D74), bills, planned transfers (both
-   legs), scenario one-offs. Unpaid bills overdue within the last 62 days
+   legs), scenario one-offs. Pay expecting the same month last year (D77)
+   gives a payday its share of that month's pay, and irregular pay that
+   month's takings over its days (`domain/pay.spread_by_month`), each
+   month the last whole one of its name; a month without that history
+   takes the average. Unpaid bills overdue within the last 62 days
    (`bills.OVERDUE_CARRY_DAYS`) are assumed to go out tomorrow; the agenda
    lists them above today. So are loan repayments in that window that have
    fallen due and are not off their account yet (`loans.due`, D76): not

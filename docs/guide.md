@@ -295,6 +295,34 @@ matches ticked. A payslip put in with **Match to a payday by date** goes on it
 when no payday matches and the employer names it (or an earlier payment's
 employer does), and a payslip PDF does the same.
 
+## Pay that changes with the time of year
+
+With a year of payslips in, pay that varies (casual or shift work) or
+irregular pay can expect what it paid the same month last year instead of its
+average: tick **Expect what it paid the same month last year** on the pay
+schedule (ticking it also marks the pay as varying). A quiet January then
+shows as one in the budget, the forecast, the calendar and the tax estimate,
+and a busy December as one too.
+
+- A payday expects its share of the same month last year: what that month's
+  paydays paid over how many paydays it had, so a month with five weekly
+  paydays brings in more than one with four. A payday with no payslip counts
+  as nothing paid, as the average does.
+- Irregular pay expects what came in that month last year, shared over its
+  days in the forecast, so the month comes to it. A budget month gone by
+  still counts only what came in, and one under way counts what came in when
+  that is more.
+- "Last year" is the twelve whole months before this one, so this month
+  looks at the same month a year ago, and a month more than a year ahead
+  looks at the same one.
+- A month from before the pay's first payslip (or, for irregular pay, before
+  it started), or with no paydays, expects the average, and so does every
+  month until something has been paid in the year. Quarterly pay keeps its
+  average where the budget spreads it over the months.
+
+The Pay page shows what the next payday expects (for irregular pay, this
+month) and says when it is last year's.
+
 ## Home loan repayments
 
 With a home loan in Fiscus, its repayments are the first line in the budget.

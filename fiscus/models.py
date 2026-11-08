@@ -410,6 +410,9 @@ class PaySchedule(Base, Owned):
     # anchor_date is when it started.
     varies: Mapped[bool] = mapped_column(Boolean, default=False)
     match_text: Mapped[str] = mapped_column(String(120), default='')
+    # Pay that varies, or irregular pay, expecting what it paid the same
+    # month last year rather than its average (D77).
+    seasonal: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class Payslip(Base, Owned):

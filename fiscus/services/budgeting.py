@@ -658,13 +658,14 @@ SPREAD_PAY = ('quarterly',)
 
 def spread_pay(db: Session, user: User, start: date, end: date, today: date) -> int:
     """Quarterly pay as a monthly amount (its expected net x 4 / 12), for every
-    such schedule running in the period."""
+    such schedule running in the period. Spread, it keeps its average even
+    when its paydays expect the same month last year (D77)."""
     return sum(
-        recurrence.monthly_equivalent(net, ps.frequency)
-        for ps, net in pay.schedules(db, user, today)
-        if ps.frequency in SPREAD_PAY
-        and ps.anchor_date <= end
-        and (ps.end_date is None or ps.end_date >= start)
+        recurrence.monthly_equivalent(e.net_cents, e.schedule.frequency)
+        for e in pay.schedules(db, user, today)
+        if e.schedule.frequency in SPREAD_PAY
+        and e.schedule.anchor_date <= end
+        and (e.schedule.end_date is None or e.schedule.end_date >= start)
     )
 
 
@@ -674,26 +675,34 @@ class Irregular:
 
     schedule: PaySchedule
     received_cents: int  # its payments dated in the month
-    typical_cents: int  # a typical month, the last year's average
+    # A typical month, the last year's average, or what the same month last
+    # year brought in (D77).
+    typical_cents: int
     expected_cents: int  # what the month counts from it
     closed: bool  # the month is over, or the pay is, so only what came counts
+    as_last_year: bool = False  # typical_cents is the same month last year's
 
 
 def irregular_pay(db: Session, user: User, start: date, end: date, today: date) -> list[Irregular]:
     """What each irregular pay gives a budget month (D74). A month still to
     come, or under way, expects a typical month, or what came in when that
     is more; a month gone by counts only what came in, so a lean one shows
-    as one. A pay that has ended, or not yet started, counts what came."""
+    as one. A pay that has ended, or not yet started, counts what came.
+    Expecting the same month last year (D77), the month expects what its
+    days brought in then, as the forecast spreads it."""
     out: list[Irregular] = []
-    for ps, typical in pay.schedules(db, user, today):
+    for e in pay.schedules(db, user, today):
+        ps = e.schedule
         if not pay.is_irregular(ps):
             continue
         received = sum(s.net_cents for s in pay.payments(db, user, ps, start, end))
         still = end >= today and pay.runs(ps, max(start, today), end)
         if not received and not still:
             continue
+        last_year = e.as_last_year(start) or e.as_last_year(end)
+        typical = sum(c for _d, c in e.spread(start, end)) if last_year else e.net_cents
         expected = max(received, typical) if still else received
-        out.append(Irregular(ps, received, typical, expected, not still))
+        out.append(Irregular(ps, received, typical, expected, not still, last_year))
     return out
 
 

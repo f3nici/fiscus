@@ -147,7 +147,7 @@ def _prefill(db: Session, user: User, value: str, today: Date) -> SlipForm | Non
     if found is None:
         return None
     ps, when = found
-    net = pay.net_per_pay(db, user, ps, today)
+    net = pay.expected(db, user, ps, today).on(when)
     scaled = not ps.varies or not ps.net_cents
     return SlipForm(
         date=when.isoformat(),
@@ -198,12 +198,22 @@ def _page(
     c = ctx(request)
     today = c.clock.today()
     expected = pay.schedules(db, user, today)
-    schedules = [ps for ps, _net in expected]
+    schedules = [e.schedule for e in expected]
     nxt = {s.id: recurrence.next_on_or_after(s.anchor_date, s.frequency, today) for s in schedules}
     for s in schedules:
         d = nxt[s.id]
         if d is not None and s.end_date and d > s.end_date:
             nxt[s.id] = None
+    # What each is expected to pay next: its next payday, or irregular pay's
+    # month under way, as the same month last year when it expects that (D77).
+    shown = {e.schedule.id: e.on(nxt[e.schedule.id] or today) for e in expected}
+    last_year = {
+        e.schedule.id: e.as_last_year(nxt[e.schedule.id] or today)
+        for e in expected
+        if pay.seasonal(e.schedule)
+    }
+    by_id = {e.schedule.id: e for e in expected}
+    to_put_in = pay.to_put_in(db, user, today)
     # The soonest payday across every schedule, for the page's heading.
     soonest = min(
         ((when, s.name) for s in schedules if (when := nxt[s.id]) is not None), default=None
@@ -263,7 +273,10 @@ def _page(
         'pay/index.html',
         {
             'schedules': schedules,
-            'expected': {ps.id: net for ps, net in expected},
+            'expected': shown,
+            'average': {e.schedule.id: e.net_cents for e in expected},
+            'last_year': last_year,
+            'owed': {o.key: by_id[o.schedule_id].on(o.payday) for o in to_put_in},
             'next': nxt,
             'soonest': soonest,
             'slips': slips,
@@ -278,7 +291,7 @@ def _page(
             'accounts': ledger.accounts(db, user),
             'ytd': {'gross': ytd[0], 'tax': ytd[1], 'net': ytd[2]},
             'edit': maybe_owned(db, PaySchedule, int_or(request.query_params.get('edit')), user),
-            'to_put_in': pay.to_put_in(db, user, today),
+            'to_put_in': to_put_in,
             'form': form or SlipForm(date=today.isoformat()),
             'slip': slip,
             'options': options,
@@ -304,6 +317,7 @@ def save_schedule(
     end_date: str = Form(''),
     account_id: int = Form(0),
     varies: str = Form(''),
+    seasonal: str = Form(''),
     # No longer on the form (D25 hid transactions); saving from it clears any old text.
     match_text: str = Form(''),
     user: User = Depends(current_user),
@@ -313,8 +327,11 @@ def save_schedule(
     try:
         anchor = req_date(anchor_date, 'A payday')
         freq = choice(frequency, PAY_FREQUENCIES, 'Frequency')
-        # Irregular pay always takes its average (D74).
+        # Irregular pay always takes its average (D74), or the same month
+        # last year (D77). Pay with paydays expecting the same month last
+        # year is pay that varies.
         whenever = freq == recurrence.IRREGULAR
+        by_month = seasonal == 'on'
         values = dict(
             name=text(name, 'Name', 80),
             frequency=freq,
@@ -323,7 +340,8 @@ def save_schedule(
             gross_cents=_opt_positive(gross, 'Gross pay'),
             tax_withheld_cents=_opt_positive(tax_withheld, 'Tax withheld'),
             end_date=ends_after(anchor, opt_date(end_date, 'End date')),
-            varies=varies == 'on' and not whenever,
+            varies=(varies == 'on' or by_month) and not whenever,
+            seasonal=by_month,
             match_text='' if whenever else ' '.join(match_text.split())[:120],
         )
     except FormError as exc:
