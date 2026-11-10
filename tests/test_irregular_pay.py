@@ -8,11 +8,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from fiscus.domain import recurrence
-from fiscus.domain.forecast import apply_scenario
+from fiscus.domain.forecast import Flow, ForecastInput, IrregularSpread, apply_scenario, run
 from fiscus.domain.pay import IrregularPay, match_irregular, spread, typical_month
-from fiscus.models import PaySchedule, Payslip, User
-from fiscus.money import round_div
+from fiscus.models import PaySchedule, Payslip, Scenario, User
+from fiscus.money import fmt, round_div
 from fiscus.services import budgeting, calendar_events, forecasting, ledger, pay, taxes
+from fiscus.services.users import settings_for
 from tests.conftest import CsrfClient, Env
 from tests.test_bills import make_account
 from tests.test_paydays import simple_slip, slips
@@ -79,6 +80,81 @@ def test_a_month_spread_over_its_days_adds_up() -> None:
     odd = spread(1000_01, date(2026, 10, 2), date(2027, 10, 1))
     assert sum(c for _d, c in odd) == 1000_01 * 12
     assert spread(1000_00, TODAY, TODAY - timedelta(days=1)) == []
+
+
+def test_a_pay_change_to_irregular_pay_is_by_the_month() -> None:
+    # Studio expects $3,000 a typical month; Shop has expected nothing yet.
+    last = date(2027, 10, 1)
+    studio = IrregularSpread(7, 1, 'Studio', TODAY + timedelta(days=1), last)
+    shop = IrregularSpread(9, 1, 'Shop', date(2027, 1, 1), last)
+    salary = Flow(date(2026, 10, 8), 1, 900_00, 'pay', 'Acme', 8)
+    flows = [salary] + [
+        Flow(d, 1, c, 'irregular', 'Studio', 7) for d, c in spread(3000_00, studio.first, last)
+    ]
+    inp = ForecastInput(
+        today=TODAY,
+        days=(last - TODAY).days,
+        balances={1: 0},
+        account_names={1: 'Everyday'},
+        account_types={1: 'transaction'},
+        flows=flows,
+        irregular=[studio, shop],
+    )
+
+    def change(sid: int, on: str, **p: int) -> tuple[str, dict[str, object]]:
+        return ('income_change', {'from_date': on, 'pay_schedule_id': sid, **p})
+
+    def studio_days(
+        changed: ForecastInput, first: date, last: date = last
+    ) -> list[tuple[date, int]]:
+        return [
+            (f.date, f.amount_cents)
+            for f in changed.flows
+            if f.kind == 'irregular' and f.ref == 7 and first <= f.date <= last
+        ]
+
+    def total(days: list[tuple[date, int]]) -> int:
+        return sum(c for _d, c in days)
+
+    nov, jan = date(2026, 11, 1), date(2027, 1, 1)
+    dec31 = jan - timedelta(days=1)
+    # $500 less a month from January: the days before are as they were.
+    cut = apply_scenario(inp, [change(7, '2027-01-01', delta_cents=-500_00)])
+    assert total(studio_days(cut, jan)) == total(studio_days(inp, jan)) - total(
+        spread(500_00, jan, last)
+    )
+    assert studio_days(cut, TODAY, dec31) == studio_days(inp, TODAY, dec31)
+    assert run(cut).combined[-1] == run(inp).combined[-1] - total(spread(500_00, jan, last))
+    # Pay with paydays, and the other irregular pay, are left as they are.
+    assert salary in cut.flows and not [f for f in cut.flows if f.ref == 9]
+    assert len(inp.flows) == len(flows)  # the input is never changed
+
+    # A new net is its month from then, in place of the typical one.
+    lower = apply_scenario(inp, [change(7, '2026-11-01', new_net_cents=2000_00)])
+    assert studio_days(lower, nov) == spread(2000_00, nov, last)
+    oct31 = nov - timedelta(days=1)
+    assert studio_days(lower, TODAY, oct31) == studio_days(inp, TODAY, oct31)
+    # A new net, and $300 less from January, whichever is listed first.
+    both = [
+        change(7, '2026-11-01', new_net_cents=2000_00),
+        change(7, '2027-01-01', delta_cents=-300_00),
+    ]
+    one, other = (apply_scenario(inp, both), apply_scenario(inp, both[::-1]))
+    assert one.flows == other.flows
+    assert studio_days(one, nov, dec31) == studio_days(lower, nov, dec31)
+    assert total(studio_days(one, jan)) == total(studio_days(lower, jan)) - total(
+        spread(300_00, jan, last)
+    )
+    # A later new net takes over from an earlier change.
+    later = [
+        change(7, '2026-11-01', delta_cents=500_00),
+        change(7, '2027-01-01', new_net_cents=1000_00),
+    ]
+    assert studio_days(apply_scenario(inp, later), jan) == spread(1000_00, jan, last)
+    # Irregular pay expecting nothing yet gets a month from when it starts.
+    started = apply_scenario(inp, [change(9, '2026-10-01', new_net_cents=1200_00)])
+    shop_days = [(f.date, f.amount_cents) for f in started.flows if f.ref == 9]
+    assert shop_days == spread(1200_00, shop.first, last) and shop_days[0][0] == jan
 
 
 def test_irregular_pay_has_no_dates_and_is_matched_by_name() -> None:
@@ -286,7 +362,8 @@ def test_budget_forecast_tax_and_calendar_expect_a_typical_month(env: Env) -> No
         assert {f.account_id for f in daily} == {acct} and daily[0].date == TODAY + timedelta(1)
         year = [f.amount_cents for f in daily if f.date <= date(2027, 10, 1)]
         assert sum(year) == typical * 12
-        # A pay change is per payday; irregular pay has none to change.
+        # A pay change to all of them is to every payday; irregular pay has
+        # none, so it is left as it is.
         changed = apply_scenario(
             forecasting.build_input(db, user, TODAY, 12),
             [('income_change', {'from_date': '2026-10-01', 'delta_cents': 100_00})],
@@ -315,12 +392,40 @@ def test_budget_forecast_tax_and_calendar_expect_a_typical_month(env: Env) -> No
     assert 'Fenici Design: $9,000.00 in, a typical month is' in page
     assert 'Fenici Design: $1,200.00 came in' in a.get('/budget?month=2026-09').text
     assert 'Fenici Design: a typical month, $' in a.get('/budget?month=2026-11').text
-    # The scenario form offers only pay with paydays to change.
+    # The scenario form offers it beside pay with paydays, by the month (D78).
     weekly = {'name': 'Acme', 'frequency': 'weekly', 'anchor_date': '2026-09-03', 'net': '500'}
     assert a.post('/pay/schedules', data=weekly).status_code == 303
     scenario = a.post('/scenarios', data={'name': 'Lean year'}).headers['location']
     form = a.get(scenario).text
-    assert '>Acme</option>' in form and 'Fenici Design</option>' not in form
+    assert '>Acme</option>' in form and f'value="{sid}">Fenici Design</option>' in form
+    assert 'Irregular pay changes by the month' in form
+    now = fmt(round_div(19700_00 * 365, 93 * 12))
+    assert f'Fenici Design expects {now} a typical month, from the last year.' in form
+
+
+def test_a_scenario_changes_irregular_pay_by_the_month(env: Env) -> None:
+    alex = env.user('alex')
+    a = env.login(alex)
+    acct = make_account(a)
+    sid = irregular(a, acct)
+    for on, net in (('2026-07-20', '3000'), ('2026-08-05', '6500'), ('2026-09-28', '1200')):
+        payment(a, sid, on, net)
+    scenario = a.post('/scenarios', data={'name': 'Quiet year'}).headers['location']
+    form = {'kind': 'income_change', 'pay_schedule_id': str(sid), 'from_date': '2026-11-01'}
+    assert a.post(f'{scenario}/adjustments', data=form | {'delta': '-1000'}).status_code == 303
+    page = a.get(scenario).text
+    assert 'Fenici Design, from 2026-11-01 change -$1,000.00 a month' in page
+    sc_id = int(scenario.rsplit('/', 1)[1])
+    with env.db() as db:
+        user = me(db, alex)
+        [sc] = db.execute(select(Scenario)).scalars().all()
+        months = settings_for(db, user).forecast_months
+        base = forecasting.base(db, env.clock, user, months)
+        lean = forecasting.scenario(db, env.clock, user, [sc], months)
+        less = sum(c for _d, c in spread(1000_00, date(2026, 11, 1), base.dates[-1]))
+        assert lean.combined[-1] == base.combined[-1] - less
+        assert lean.combined[:31] == base.combined[:31]  # to 31 October
+    assert a.get(f'/forecast?scenario_id={sc_id}').status_code == 200
 
 
 def test_ended_irregular_pay_expects_nothing_more(env: Env) -> None:

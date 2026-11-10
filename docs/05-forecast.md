@@ -103,8 +103,10 @@ the person (`user_settings.chart_lines`, D50); the rest show as drawn.
 
 `apply_scenario` deep-copies the input and applies adjustments:
 `one_off`, `income_change` (new net or a delta, from a date, one schedule or
-all; a change is per payday, so irregular pay, which has none, is left as it
-is, D74), `rate_change`, `new_bill`, `new_income` (net, recurring, its own kind of
+all; a change is per payday, and for irregular pay, chosen by name, per month:
+a new net is its month from that day, spread as a typical month is, and a delta
+that much a month, over the days in `ForecastInput.irregular`, D78; all of them
+is every payday and leaves irregular pay as it is), `rate_change`, `new_bill`, `new_income` (net, recurring, its own kind of
 flow so an income change to every schedule leaves it alone), `extra_repayment`
 (one-off or recurring). Rate and pay changes apply in date order, so a later
 one takes over from its date; the rest add up in any order.
