@@ -10,7 +10,7 @@ import pytest
 from sqlalchemy import select
 
 from fiscus.domain.uploads import MAX_BYTES, ImportError_, decode
-from fiscus.forms import FormError, int_or, rate
+from fiscus.forms import FormError, int_or, percent, rate
 from fiscus.models import Goal, Loan, UserSettings
 from fiscus.money import MoneyError, parse_cents
 from fiscus.services import ntfy
@@ -31,6 +31,19 @@ def test_money_refuses_exponents() -> None:
 def test_rates_refuse_non_numbers(value: str) -> None:
     with pytest.raises(FormError):
         rate(value, 'Rate')
+
+
+def test_percentages() -> None:
+    assert [percent(v, 'P') for v in ('3.5', ' 10% ', '-2.50', '0.0', '100')] == [
+        '3.5',
+        '10',
+        '-2.5',
+        '0',
+        '100',
+    ]
+    for bad in ('NaN', 'Infinity', 'abc', '', '100.01', '-101'):
+        with pytest.raises(FormError):
+            percent(bad, 'P')
 
 
 def test_int_or() -> None:

@@ -101,7 +101,7 @@ def test_a_pay_change_to_irregular_pay_is_by_the_month() -> None:
         irregular=[studio, shop],
     )
 
-    def change(sid: int, on: str, **p: int) -> tuple[str, dict[str, object]]:
+    def change(sid: int, on: str, **p: int | str) -> tuple[str, dict[str, object]]:
         return ('income_change', {'from_date': on, 'pay_schedule_id': sid, **p})
 
     def studio_days(
@@ -151,6 +151,23 @@ def test_a_pay_change_to_irregular_pay_is_by_the_month() -> None:
         change(7, '2027-01-01', new_net_cents=1000_00),
     ]
     assert studio_days(apply_scenario(inp, later), jan) == spread(1000_00, jan, last)
+    # A percentage scales each month from then (D79), fractions carried, so
+    # the days add up as the whole would; with a new net, it is of that.
+    rise = apply_scenario(inp, [change(7, '2027-01-01', percent='10')])
+    assert studio_days(rise, TODAY, dec31) == studio_days(inp, TODAY, dec31)
+    assert abs(total(studio_days(rise, jan)) - total(studio_days(inp, jan)) * 11 / 10) <= 1
+    assert all(
+        abs(c * 10 - b * 11) <= 10
+        for (_d, c), (_e, b) in zip(studio_days(rise, jan), studio_days(inp, jan), strict=True)
+    )
+    up = apply_scenario(inp, [change(7, '2026-11-01', new_net_cents=2000_00, percent='10')])
+    assert studio_days(up, nov) == spread(2200_00, nov, last)
+    # After a change by, the percentage is of both.
+    after = [change(7, '2026-11-01', delta_cents=500_00), change(7, '2027-01-01', percent='-50')]
+    halved = apply_scenario(inp, after)
+    more = [(d, c) for d, c in spread(500_00, nov, last) if d >= jan]
+    expected = (total(studio_days(inp, jan)) + total(more)) / 2
+    assert abs(total(studio_days(halved, jan)) - expected) <= 1
     # Irregular pay expecting nothing yet gets a month from when it starts.
     started = apply_scenario(inp, [change(9, '2026-10-01', new_net_cents=1200_00)])
     shop_days = [(f.date, f.amount_cents) for f in started.flows if f.ref == 9]

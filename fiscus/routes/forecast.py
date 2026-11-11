@@ -18,6 +18,7 @@ from fiscus.forms import (
     int_or,
     money,
     opt_date,
+    percent,
     rate,
     req_date,
     text,
@@ -313,6 +314,8 @@ async def add_adjustment(
             }
         elif kind == 'income_change':
             ps = maybe_owned(db, PaySchedule, int_or(f('pay_schedule_id')), user)
+            # A pay rise or cut by a percentage (D79).
+            pct = percent(f('percent'), 'Change by %') if f('percent') else '0'
             params = {
                 'from_date': req_date(f('from_date'), 'From').isoformat(),
                 'pay_schedule_id': ps.id if ps else None,
@@ -320,6 +323,7 @@ async def add_adjustment(
                 if f('new_net')
                 else None,
                 'delta_cents': money(f('delta'), 'Change') if f('delta') else 0,
+                'percent': pct if pct != '0' else None,
             }
         elif kind == 'rate_change':
             loan = get_owned(db, Loan, int_or(f('loan_id')), user)
