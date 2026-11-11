@@ -15,6 +15,7 @@ from fiscus.domain.forecast import (
     BudgetLine,
     Flow,
     ForecastInput,
+    ScenarioError,
     apply_scenario,
     run,
     still_to_spend,
@@ -487,6 +488,39 @@ def test_scenario_rate_and_pay_changes_take_over_in_date_order() -> None:
     for changes in ([new_net, cut], [cut, new_net]):
         flows = apply_scenario(inp, changes).flows
         assert [f.amount_cents for f in flows if f.kind == 'pay'] == [2_500_00, 2_200_00]
+
+
+def test_scenario_pay_rise_by_a_percentage() -> None:
+    # D79: a percentage of each payday from its date, after a new net and
+    # before a change by, whichever scenario it came from.
+    pay = [
+        Flow(date(2026, 10, 2), 1, 2_000_00, 'pay', 'Salary', 1),
+        Flow(date(2026, 10, 16), 1, 1_234_56, 'pay', 'Salary', 1),
+        Flow(date(2026, 10, 30), 1, 2_000_00, 'pay', 'Salary', 1),
+        Flow(date(2026, 10, 9), 2, 500_00, 'pay', 'Tutoring', 2),
+    ]
+    inp = base_input(flows=pay, days=60)
+
+    def salary(changes: list[tuple[str, dict[str, object]]]) -> list[int]:
+        flows = apply_scenario(inp, changes).flows
+        return [f.amount_cents for f in flows if f.ref == 1]
+
+    rise = ('income_change', {'from_date': '2026-10-10', 'pay_schedule_id': 1, 'percent': '3.5'})
+    # 3.5% of $1,234.56 is $43.2096, so $1,277.77.
+    assert salary([rise]) == [2_000_00, 1_277_77, 2_070_00]
+    new_net = ('income_change', {'from_date': '2026-10-01', 'new_net_cents': 2_500_00})
+    cut = ('income_change', {'from_date': '2026-10-20', 'delta_cents': -300_00})
+    for changes in ([new_net, rise, cut], [cut, rise, new_net]):
+        assert salary(changes) == [2_500_00, 2_587_50, 2_287_50]
+    both = {'from_date': '2026-10-01', 'percent': '-10', 'delta_cents': 50_00}
+    assert salary([('income_change', both)]) == [1_850_00, 1_161_10, 1_850_00]
+    # One schedule chosen leaves the other alone; none chosen is every payday.
+    assert [f.amount_cents for f in apply_scenario(inp, [rise]).flows][3] == 500_00
+    every = apply_scenario(inp, [('income_change', {'from_date': '2026-10-01', 'percent': '10'})])
+    assert [f.amount_cents for f in every.flows] == [2_200_00, 1_358_02, 2_200_00, 550_00]
+    assert [f.amount_cents for f in inp.flows] == [2_000_00, 1_234_56, 2_000_00, 500_00]
+    with pytest.raises(ScenarioError):
+        apply_scenario(inp, [('income_change', {'from_date': '2026-10-01', 'percent': 'lots'})])
 
 
 # ------------------------------------------------------------------------ tax

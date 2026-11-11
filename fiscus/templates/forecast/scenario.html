@@ -22,7 +22,7 @@
             <span class="title">{{ kinds.get(a.kind, a.kind) }}</span>
             <span class="text-xs muted">
               {% if a.kind == 'one_off' %}{{ p.label }}: {{ p.amount_cents | money }} on {{ p.date }} in {{ names.get(p.account_id, '?') }}
-              {% elif a.kind == 'income_change' %}{% set ps = pay_names.get(p.pay_schedule_id) %}{% set by_month = ps and ps.frequency == 'irregular' %}{% if ps %}{{ ps.name }}, {% endif %}from {{ p.from_date }}{% if p.new_net_cents is not none %} net pay becomes {{ p.new_net_cents | money }}{% if by_month %} a month{% endif %}{% endif %}{% if p.delta_cents %} change {{ p.delta_cents | money_signed }}{% if by_month %} a month{% endif %}{% endif %}
+              {% elif a.kind == 'income_change' %}{% set ps = pay_names.get(p.pay_schedule_id) %}{% set by_month = ps and ps.frequency == 'irregular' %}{% if ps %}{{ ps.name }}, {% endif %}from {{ p.from_date }}{% if p.new_net_cents is not none %} net pay becomes {{ p.new_net_cents | money }}{% if by_month %} a month{% endif %}{% endif %}{% if p.percent %} change {{ '' if p.percent.startswith('-') else '+' }}{{ p.percent }}%{% endif %}{% if p.delta_cents %} change {{ p.delta_cents | money_signed }}{% if by_month %} a month{% endif %}{% endif %}
               {% elif a.kind == 'rate_change' %}{{ p.rate }}% from {{ p.from_date }}
               {% elif a.kind in ('new_bill', 'new_income') %}{{ p.name }}: {{ p.amount_cents | money }} {{ p.frequency | replace('_', '-') }} from {{ p.start_date }}{% if p.end_date %} to {{ p.end_date }}{% endif %} into {{ names.get(p.account_id, '?') }}
               {% elif a.kind == 'extra_repayment' %}{{ p.amount_cents | money }} {{ p.frequency | replace('_', '-') }} from {{ p.date }}
@@ -62,10 +62,11 @@
       </div>
       <div class="field" data-kind="income_change rate_change"><label class="label" for="s-from">From</label><input class="input" type="date" id="s-from" name="from_date" value="{{ today.isoformat() }}"></div>
       <div class="field" data-kind="income_change"><label class="label" for="s-newnet">New net pay (optional)</label><input class="input" id="s-newnet" name="new_net" inputmode="decimal"></div>
+      <div class="field" data-kind="income_change"><label class="label" for="s-pct">Or change by % (e.g. 3.5 for a pay rise)</label><input class="input" id="s-pct" name="percent" inputmode="decimal"></div>
       <div class="field" data-kind="income_change"><label class="label" for="s-delta">Or change by (e.g. -200)</label><input class="input" id="s-delta" name="delta" inputmode="decimal"></div>
       {% if irregular %}
         <p class="muted text-xs full" data-kind="income_change">
-          Irregular pay changes by the month: its new net pay is a month's, and a change is that much a month.
+          Irregular pay changes by the month: its new net pay is a month's, a percentage is of each month, and a change is that much a month.
           {% for ps, typical, averaged in irregular %}{{ ps.name }} expects {{ typical | money }} a typical month{% if averaged %}, from the last year{% else %}, as typed in until it has paid something{% endif %}. {% endfor %}
           All of them changes pay with paydays only.
         </p>

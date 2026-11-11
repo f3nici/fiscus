@@ -23,6 +23,7 @@ from fiscus.models import (
     Loan,
     PaySchedule,
     Payslip,
+    ScenarioAdjustment,
     Transaction,
     User,
 )
@@ -337,6 +338,35 @@ def test_the_forecast_free_to_spend_and_a_new_income(env: Env) -> None:
     assert f'With "Second job": up about {fmt(st.per_month)} a month' in page
     # The real forecast is as it was.
     assert compared['combined'] == data['combined']
+
+
+def test_a_pay_rise_by_a_percentage(env: Env) -> None:
+    """A scenario's pay change can be a percentage (D79)."""
+    a, *_ = setup_household(env)
+    sid = int(a.post('/scenarios', data={'name': 'Pay rise'}).headers['location'].rsplit('/', 1)[1])
+    with env.db() as db:
+        wages = db.execute(select(PaySchedule.id)).scalar_one()
+    change = {'kind': 'income_change', 'pay_schedule_id': str(wages), 'from_date': '2026-10-10'}
+    # Not a number, or too big, is refused.
+    for bad in ('lots', '250'):
+        resp = a.post(f'/scenarios/{sid}/adjustments', data=change | {'percent': bad})
+        assert resp.status_code == 303 and 'Change%20by%20%25' in resp.headers['set-cookie']
+    resp = a.post(
+        f'/scenarios/{sid}/adjustments', data=change | {'percent': '3.5%'}, follow_redirects=True
+    )
+    assert 'Acme wages, from 2026-10-10 change +3.5%' in resp.text
+    with env.db() as db:
+        [adj] = db.execute(select(ScenarioAdjustment)).scalars().all()
+        assert adj.params['percent'] == '3.5'
+    base = chart_data(a.get('/forecast?months=1').text)['combined']
+    rise = chart_data(a.get(f'/forecast?months=1&scenario_id={sid}').text)['scenario']['combined']
+    # 3.5% of $2,500 on 16 and 30 October; 2 October is before it.
+    assert rise[-1] - base[-1] == 2 * 87_50
+    # 0% is no percentage.
+    a.post(f'/scenarios/{sid}/adjustments', data=change | {'percent': '0', 'delta': '10'})
+    with env.db() as db:
+        newest = select(ScenarioAdjustment).order_by(ScenarioAdjustment.id.desc()).limit(1)
+        assert db.execute(newest).scalar_one().params['percent'] is None
 
 
 def test_scenarios_compared_together(env: Env) -> None:

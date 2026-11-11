@@ -21,7 +21,8 @@ calendar (the month by default, D54); home loan and offset (one loan opens
 straight into it; weekly repayments over a year of 365.25 days, as ANZ
 works them, from the first repayment the bank set, D70, D71; each marked
 paid from the budget, which takes it off its account, D76); forecasting with scenarios, several ticked together
-(D69), a pay change reaching irregular pay by the month (D78), its trend and what is free to spend as the budget has it, lines
+(D69), a pay change reaching irregular pay by the month (D78) and
+able to be a percentage (D79), its trend and what is free to spend as the budget has it, lines
 turned off staying off (D46, D47, D50, D51); the budget (each line its
 bills plus an estimate on top, D64; a line's entries in its Edit panel,
 moved or changed there, D72);

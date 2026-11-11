@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import calendar
 import copy
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
@@ -320,30 +321,66 @@ def _i(params: dict[str, Any], key: str) -> int:
         raise ScenarioError(f'{key} must be a whole number') from exc
 
 
+def _factor(params: dict[str, Any]) -> Fraction | None:
+    """What a pay change's percentage multiplies pay by, if it has one."""
+    value = params.get('percent')
+    if value in (None, ''):
+        return None
+    try:
+        pct = Decimal(str(value))
+    except ArithmeticError as exc:
+        raise ScenarioError('percent must be a number') from exc
+    if not pct.is_finite():
+        raise ScenarioError('percent must be a number')
+    return 1 + Fraction(pct) / 100
+
+
 def _takes_over(adjustment: tuple[str, dict[str, Any]]) -> date:
     kind, p = adjustment
     return _d(p, 'from_date') if kind in ('rate_change', 'income_change') else date.min
 
 
 def _by_the_month(
-    flows: list[Flow], pay: IrregularSpread, start: date, new: int | None, delta: int
+    flows: list[Flow],
+    pay: IrregularSpread,
+    start: date,
+    new: int | None,
+    factor: Fraction | None,
+    delta: int,
 ) -> list[Flow]:
     """Irregular pay changed from `start` (D78): a new net is its month from
     then, spread a day at a time as a typical month is, in place of what was
-    expected; a change adds that much a month on top."""
+    expected; a percentage scales its month (D79); a change adds that much a
+    month on top."""
     first = max(start, pay.first)
+
+    def mine(f: Flow) -> bool:
+        return f.kind == 'irregular' and f.ref == pay.schedule_id and f.date >= first
+
     monthly = delta
     if new is not None:
-        monthly += new
-        flows = [
-            f
-            for f in flows
-            if not (f.kind == 'irregular' and f.ref == pay.schedule_id and f.date >= first)
-        ]
+        monthly += new if factor is None else _cents(new * factor)
+        flows = [f for f in flows if not mine(f)]
+    elif factor is not None:
+        flows = _scaled(flows, mine, factor)
     return flows + [
         Flow(day, pay.account_id, cents, 'irregular', pay.label, pay.schedule_id)
         for day, cents in spread(monthly, first, pay.last)
     ]
+
+
+def _scaled(flows: list[Flow], hit: Callable[[Flow], bool], factor: Fraction) -> list[Flow]:
+    """The flows `hit` picks, each times `factor`, fractions of a cent carried
+    from day to day so they add up as the whole would."""
+    out = list(flows)
+    carry = Fraction(0)
+    for i in sorted((i for i, f in enumerate(flows) if hit(f)), key=lambda i: flows[i].date):
+        f = flows[i]
+        carry += f.amount_cents * factor
+        whole = _cents(carry)
+        carry -= whole
+        out[i] = Flow(f.date, f.account_id, whole, f.kind, f.label, f.ref)
+    return out
 
 
 def apply_scenario(
@@ -371,11 +408,15 @@ def apply_scenario(
             chosen = None if target in (None, '') else int(str(target))
             new_amount = p.get('new_net_cents')
             new = int(new_amount) if new_amount not in (None, '') else None
+            factor = _factor(p)
             delta = int(p.get('delta_cents') or 0)
             changed: list[Flow] = []
             for f in out.flows:
                 if f.kind == 'pay' and f.date >= start and (chosen is None or f.ref == chosen):
+                    # A new net, then a percentage of it (D79), then a change.
                     amount = f.amount_cents if new is None else new
+                    if factor is not None:
+                        amount = _cents(amount * factor)
                     changed.append(
                         Flow(f.date, f.account_id, amount + delta, f.kind, f.label, f.ref)
                     )
@@ -386,7 +427,7 @@ def apply_scenario(
             # month (D78). All of them is every payday, as before.
             for pay in out.irregular:
                 if chosen is not None and pay.schedule_id == chosen:
-                    out.flows = _by_the_month(out.flows, pay, start, new, delta)
+                    out.flows = _by_the_month(out.flows, pay, start, new, factor, delta)
         elif kind == 'rate_change':
             loan_id = _i(p, 'loan_id')
             start = _d(p, 'from_date')

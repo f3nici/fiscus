@@ -80,6 +80,18 @@ def text(value: str, label: str, max_len: int = 120) -> str:
     return v[:max_len]
 
 
+def percent(value: str, label: str) -> str:
+    """A change by a percentage, such as 3.5 for a pay rise or -10 for a
+    cut, as a decimal string."""
+    try:
+        p = Decimal(value.strip().rstrip('%').strip())
+    except InvalidOperation as exc:
+        raise FormError(f'{label}: enter a percentage such as 3.5') from exc
+    if not p.is_finite() or not -100 <= p <= 100:
+        raise FormError(f'{label}: enter a percentage between -100 and 100')
+    return format(p.normalize(), 'f') if p else '0'
+
+
 def rate(value: str, label: str) -> str:
     try:
         r = Decimal(value.strip().rstrip('%'))

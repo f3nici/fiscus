@@ -799,6 +799,12 @@ def test_irregular_pay_on_a_phone(server: tuple[str, Any], browser: Any) -> None
         page.locator('#kind >> xpath=ancestor::form').screenshot(path=f'{shots}/change.png')
     page.click('#kind >> xpath=ancestor::form//button[@type="submit"]')
     page.wait_for_selector('text=change -$1,000.00 a month')
+    # And a rise by a percentage (D79).
+    page.select_option('#kind', 'income_change')
+    page.select_option('#s-pay', label='Fenici Design')
+    page.fill('#s-pct', '3.5')
+    page.click('#kind >> xpath=ancestor::form//button[@type="submit"]')
+    page.wait_for_selector('text=change +3.5%')
     assert page.evaluate(fits)
     if shots:
         page.screenshot(path=f'{shots}/scenario.png', full_page=True)
