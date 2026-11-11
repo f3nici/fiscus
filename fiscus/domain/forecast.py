@@ -22,6 +22,7 @@ from typing import Any
 
 from fiscus.domain import recurrence
 from fiscus.domain.loan import LoanSim, LoanSpec
+from fiscus.domain.pay import spread
 from fiscus.money import round_div
 
 
@@ -33,6 +34,19 @@ class Flow:
     kind: str  # pay | irregular | bill | loan | transfer | one_off | income
     label: str
     ref: int | None = None
+
+
+@dataclass(frozen=True)
+class IrregularSpread:
+    """Irregular pay as the forecast spreads it (D74): its 'irregular' flows
+    go into `account_id` from `first` to `last`. A scenario's pay change to
+    it is by the month over the same days (D78)."""
+
+    schedule_id: int
+    account_id: int
+    label: str
+    first: date
+    last: date
 
 
 @dataclass
@@ -47,6 +61,7 @@ class ForecastInput:
     daily: dict[int, Decimal] = field(default_factory=dict)
     loans: list[LoanSpec] = field(default_factory=list)
     low_balance_cents: int = 0
+    irregular: list[IrregularSpread] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -310,6 +325,27 @@ def _takes_over(adjustment: tuple[str, dict[str, Any]]) -> date:
     return _d(p, 'from_date') if kind in ('rate_change', 'income_change') else date.min
 
 
+def _by_the_month(
+    flows: list[Flow], pay: IrregularSpread, start: date, new: int | None, delta: int
+) -> list[Flow]:
+    """Irregular pay changed from `start` (D78): a new net is its month from
+    then, spread a day at a time as a typical month is, in place of what was
+    expected; a change adds that much a month on top."""
+    first = max(start, pay.first)
+    monthly = delta
+    if new is not None:
+        monthly += new
+        flows = [
+            f
+            for f in flows
+            if not (f.kind == 'irregular' and f.ref == pay.schedule_id and f.date >= first)
+        ]
+    return flows + [
+        Flow(day, pay.account_id, cents, 'irregular', pay.label, pay.schedule_id)
+        for day, cents in spread(monthly, first, pay.last)
+    ]
+
+
 def apply_scenario(
     inp: ForecastInput, adjustments: list[tuple[str, dict[str, Any]]]
 ) -> ForecastInput:
@@ -332,23 +368,25 @@ def apply_scenario(
         elif kind == 'income_change':
             start = _d(p, 'from_date')
             target = p.get('pay_schedule_id')
+            chosen = None if target in (None, '') else int(str(target))
             new_amount = p.get('new_net_cents')
+            new = int(new_amount) if new_amount not in (None, '') else None
             delta = int(p.get('delta_cents') or 0)
             changed: list[Flow] = []
             for f in out.flows:
-                hit = (
-                    f.kind == 'pay'
-                    and f.date >= start
-                    and (target in (None, '') or f.ref == int(target))
-                )
-                if hit:
-                    amount = int(new_amount) if new_amount not in (None, '') else f.amount_cents
+                if f.kind == 'pay' and f.date >= start and (chosen is None or f.ref == chosen):
+                    amount = f.amount_cents if new is None else new
                     changed.append(
                         Flow(f.date, f.account_id, amount + delta, f.kind, f.label, f.ref)
                     )
                 else:
                     changed.append(f)
             out.flows = changed
+            # Irregular pay has no paydays: chosen by name, it changes by the
+            # month (D78). All of them is every payday, as before.
+            for pay in out.irregular:
+                if chosen is not None and pay.schedule_id == chosen:
+                    out.flows = _by_the_month(out.flows, pay, start, new, delta)
         elif kind == 'rate_change':
             loan_id = _i(p, 'loan_id')
             start = _d(p, 'from_date')

@@ -783,6 +783,28 @@ def test_irregular_pay_on_a_phone(server: tuple[str, Any], browser: Any) -> None
     assert page.evaluate(fits)
     if shots:
         page.screenshot(path=f'{shots}/budget.png')
+
+    # A scenario changes it by the month (D78).
+    page.goto(f'{base}/scenarios')
+    page.fill('input[name=name]', 'Quiet year')
+    page.click('input[name=name] >> xpath=ancestor::form//button[@type="submit"]')
+    page.wait_for_selector('h1:has-text("Quiet year")')
+    page.select_option('#kind', 'income_change')
+    hint = page.locator('p:has-text("Irregular pay changes by the month")')
+    assert hint.is_visible() and 'Fenici Design expects' in hint.inner_text()
+    page.select_option('#s-pay', label='Fenici Design')
+    page.fill('#s-delta', '-1000')
+    assert page.evaluate(fits)
+    if shots:
+        page.locator('#kind >> xpath=ancestor::form').screenshot(path=f'{shots}/change.png')
+    page.click('#kind >> xpath=ancestor::form//button[@type="submit"]')
+    page.wait_for_selector('text=change -$1,000.00 a month')
+    assert page.evaluate(fits)
+    if shots:
+        page.screenshot(path=f'{shots}/scenario.png', full_page=True)
+    page.click('a:has-text("Compare with base")')
+    page.wait_for_selector('p:has-text(\'With "Quiet year":\')')
+    assert page.evaluate(fits)
     assert errors == [], errors
     context.close()
 

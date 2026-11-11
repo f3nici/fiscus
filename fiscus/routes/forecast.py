@@ -247,6 +247,8 @@ def show_scenario(
     db: Session = DB,
 ) -> Response:
     sc = get_owned(db, Scenario, scenario_id, user)
+    today = ctx(request).clock.today()
+    pays = db.execute(owned(PaySchedule, user).order_by(PaySchedule.name)).scalars().all()
     return render(
         request,
         'forecast/scenario.html',
@@ -255,14 +257,17 @@ def show_scenario(
             'kinds': SCENARIO_KINDS,
             'accounts': ledger.accounts(db, user),
             'loans': db.execute(owned(Loan, user)).scalars().all(),
-            # A pay change is per payday; irregular pay has none (D74).
-            'pays': [
-                ps
-                for ps in db.execute(owned(PaySchedule, user)).scalars()
-                if not pay.is_irregular(ps)
+            'pays': pays,
+            # Irregular pay changes by the month (D78): its typical month from
+            # the last year, and whether it has paid anything in it yet.
+            'irregular': [
+                (ps, pay.typical_month(db, user, ps, today), pay.averaged(db, user, ps, today))
+                for ps in pays
+                if pay.is_irregular(ps)
             ],
             'freqs': FREQUENCIES,
             'names': {a.id: a.name for a in ledger.accounts(db, user, include_archived=True)},
+            'pay_names': {ps.id: ps for ps in pays},
         },
     )
 

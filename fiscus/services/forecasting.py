@@ -20,6 +20,7 @@ from fiscus.domain.forecast import (
     Flow,
     ForecastInput,
     ForecastResult,
+    IrregularSpread,
     apply_scenario,
     run,
 )
@@ -145,14 +146,20 @@ def build_input(db: Session, user: User, today: date, months: int) -> ForecastIn
             ref = item.schedule.id if item.schedule else None
             flows.append(Flow(item.when, target, item.net_cents, 'pay', item.label, ref))
     # Irregular pay has no paydays: a typical month spread over each day it
-    # runs (D74), or each month as it went last year (D77).
+    # runs (D74), or each month as it went last year (D77). Its days are kept
+    # so a scenario can change it by the month (D78).
+    irregular: list[IrregularSpread] = []
     for e in expected:
         ps = e.schedule
         target = acct_or_default(ps.account_id)
         if not pay.is_irregular(ps) or target is None:
             continue
+        since = max(first, ps.anchor_date)
         last = end if ps.end_date is None else min(end, ps.end_date)
-        for day, cents in e.spread(max(first, ps.anchor_date), last):
+        if since > last:
+            continue
+        irregular.append(IrregularSpread(ps.id, target, ps.name, since, last))
+        for day, cents in e.spread(since, last):
             flows.append(Flow(day, target, cents, 'irregular', ps.name, ps.id))
 
     for occ in bills.occurrences(
@@ -207,6 +214,7 @@ def build_input(db: Session, user: User, today: date, months: int) -> ForecastIn
         daily=daily,
         loans=specs,
         low_balance_cents=prefs.low_balance_cents,
+        irregular=irregular,
     )
 
 
